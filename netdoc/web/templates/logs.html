@@ -1,0 +1,550 @@
+{% extends "base.html" %}
+{% block title %}Logi{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-terminal me-2"></i>Logi i aktywnosc</h5>
+  <div class="d-flex align-items-center gap-2">
+    <span class="badge bg-secondary" id="logStatus" title="Czas ostatniego odświeżenia danych">...</span>
+    <div class="form-check form-switch mb-0"
+         title="Automatyczne odświeżanie: Aktywność sieci co 10s, pozostałe zakładki co 5s">
+      <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
+      <label class="form-check-label small" for="autoRefresh">Auto</label>
+    </div>
+    <button class="btn btn-outline-secondary btn-sm" id="refreshBtn" onclick="refreshActive()"
+            title="Odśwież teraz">
+      <i class="bi bi-arrow-clockwise"></i>
+    </button>
+  </div>
+</div>
+
+<ul class="nav nav-tabs mb-0" id="logTabs">
+  <li class="nav-item">
+    <button class="nav-link active" data-tab="events">
+      <i class="bi bi-activity me-1"></i>Aktywnosc sieci
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-tab="scanner">
+      <i class="bi bi-cpu me-1"></i>Log skanera
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-tab="watchdog">
+      <i class="bi bi-shield-check me-1"></i>Log watchdog
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-tab="workers">
+      <i class="bi bi-activity me-1"></i>Workery Docker
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-tab="cred">
+      <i class="bi bi-key me-1"></i>Log credentiali
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-tab="ai">
+      <i class="bi bi-cpu me-1"></i>AI Zapytania
+    </button>
+  </li>
+</ul>
+
+<div class="card" style="border-top-left-radius:0">
+  <div class="card-body p-0">
+
+    {# ── Aktywnosc sieci ── #}
+    <div id="tab-events">
+      <div class="d-flex align-items-center gap-3 p-2 border-bottom" style="background:var(--bg3)">
+        <select class="form-select form-select-sm" style="width:130px" id="eventsLimit">
+          <option value="50">50 zdarzen</option>
+          <option value="100" selected>100 zdarzen</option>
+          <option value="200">200 zdarzen</option>
+        </select>
+        <span class="text-muted small">Zdarzenia UP/DOWN z tabeli events — odswiezane co 10s</span>
+      </div>
+      <div style="max-height:72vh;overflow-y:auto">
+        <table class="table table-sm table-hover mb-0" id="eventsTable">
+          <thead style="position:sticky;top:0;z-index:1">
+            <tr>
+              <th style="width:145px">Czas</th>
+              <th style="width:110px">Zdarzenie</th>
+              <th style="width:125px">IP</th>
+              <th style="width:100px">Typ</th>
+              <th>Hostname</th>
+              <th style="width:80px" class="text-muted small">Jak dawno</th>
+            </tr>
+          </thead>
+          <tbody id="eventsBody">
+            <tr><td colspan="6" class="text-center text-muted py-3">Ladowanie...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {# ── Log skanera ── #}
+    <div id="tab-scanner" style="display:none">
+      <div class="d-flex align-items-center gap-3 p-2 border-bottom" style="background:var(--bg3)">
+        <select class="form-select form-select-sm" style="width:120px" id="scannerTail">
+          <option value="100">100 linii</option>
+          <option value="200" selected>200 linii</option>
+          <option value="500">500 linii</option>
+        </select>
+        <span class="text-muted small">Plik: <code>logs/scanner.log</code></span>
+      </div>
+      <pre id="scannerOutput" class="mb-0 p-3 font-monospace small"
+           style="background:#0d1117;color:#c9d1d9;max-height:72vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all">Ladowanie...</pre>
+    </div>
+
+    {# ── Log watchdog ── #}
+    <div id="tab-watchdog" style="display:none">
+      <div class="d-flex align-items-center gap-3 p-2 border-bottom" style="background:var(--bg3)">
+        <select class="form-select form-select-sm" style="width:120px" id="watchdogTail">
+          <option value="100">100 linii</option>
+          <option value="200" selected>200 linii</option>
+          <option value="500">500 linii</option>
+        </select>
+        <span class="text-muted small">Plik: <code>logs/watchdog.log</code> — watchdog Docker co 5 min</span>
+      </div>
+      <pre id="watchdogOutput" class="mb-0 p-3 font-monospace small"
+           style="background:#0d1117;color:#c9d1d9;max-height:72vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all">Ladowanie...</pre>
+    </div>
+
+    {# ── Workery Docker ── #}
+    <div id="tab-workers" style="display:none">
+      <div class="d-flex flex-column gap-2 p-2 border-bottom" style="background:var(--bg3)">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <select class="form-select form-select-sm" style="width:120px" id="workersTail">
+            <option value="100">100 linii</option>
+            <option value="200" selected>200 linii</option>
+            <option value="500">500 linii</option>
+          </select>
+          <div class="btn-group btn-group-sm" id="workersSelect" role="group">
+            <button type="button" class="btn btn-outline-info active"    data-container="netdoc-ping">Ping</button>
+            <button type="button" class="btn btn-outline-warning"        data-container="netdoc-cred">Cred</button>
+            <button type="button" class="btn btn-outline-danger"         data-container="netdoc-vuln">Vuln</button>
+            <button type="button" class="btn btn-outline-secondary"      data-container="netdoc-snmp">SNMP poll</button>
+            <button type="button" class="btn btn-outline-primary"        data-container="netdoc-community">Community</button>
+            <button type="button" class="btn btn-outline-success"        data-container="netdoc-internet">Internet</button>
+            <button type="button" class="btn btn-outline-secondary"      data-container="netdoc-web">Web</button>
+            <button type="button" class="btn btn-outline-secondary"      data-container="netdoc-api">API</button>
+          </div>
+          <span class="text-muted small" id="workersLabel">Docker stdout: <code>netdoc-ping</code></span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <input type="text" id="workersFilter" class="form-control form-control-sm"
+                 style="width:260px" placeholder="Filtruj: wpisz IP, słowo kluczowe…" autocomplete="off">
+          <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('workersFilter').value='';applyWorkersFilter()">
+            <i class="bi bi-x"></i>
+          </button>
+          <span class="text-muted small" id="workersFilterCount"></span>
+        </div>
+      </div>
+      <pre id="workersOutput" class="mb-0 p-3 font-monospace small"
+           style="background:#0d1117;color:#c9d1d9;max-height:68vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all">Ladowanie...</pre>
+    </div>
+
+    {# ── Log credentiali ── #}
+    <div id="tab-cred" style="display:none">
+      <div class="d-flex align-items-center gap-3 p-2 border-bottom flex-wrap" style="background:var(--bg3)">
+        <select class="form-select form-select-sm" style="width:120px" id="credTail">
+          <option value="100">100 linii</option>
+          <option value="200" selected>200 linii</option>
+          <option value="500">500 linii</option>
+        </select>
+        <div class="btn-group btn-group-sm" id="credFilter" role="group"
+             title="Filtruj log według protokołu — pokazuje tylko linie zawierające wybrany tag">
+          <button type="button" class="btn btn-outline-secondary active" data-filter="" title="Pokaż wszystkie linie">Wszystko</button>
+          <button type="button" class="btn btn-outline-info"      data-filter="SSH"    title="Filtruj: testy SSH (port 22)">SSH</button>
+          <button type="button" class="btn btn-outline-warning"   data-filter="WEB"    title="Filtruj: testy Web API / HTTP (porty 80, 443, 8080)">WEB</button>
+          <button type="button" class="btn btn-outline-success"   data-filter="FTP"    title="Filtruj: testy FTP (port 21)">FTP</button>
+          <button type="button" class="btn btn-outline-danger"    data-filter="RDP"    title="Filtruj: testy RDP (port 3389)">RDP</button>
+          <button type="button" class="btn btn-outline-secondary" data-filter="BANNER" title="Filtruj: odczyt banerów TCP (identyfikacja usług)">BANNER</button>
+        </div>
+        <span class="text-muted small">Plik: <code>logs/cred.log</code></span>
+      </div>
+      <pre id="credOutput" class="mb-0 p-3 font-monospace small"
+           style="background:#0d1117;color:#c9d1d9;max-height:72vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all">Ladowanie...</pre>
+    </div>
+
+    {# ── AI Zapytania ── #}
+    <div id="tab-ai" style="display:none">
+      <div class="d-flex align-items-center gap-3 p-2 border-bottom flex-wrap" style="background:var(--bg3)">
+        <select class="form-select form-select-sm" style="width:130px" id="aiLogsLimit">
+          <option value="20">20 zapytań</option>
+          <option value="50" selected>50 zapytań</option>
+          <option value="100">100 zapytań</option>
+        </select>
+        <span class="text-muted small">Historia zapytań AI per-urządzenie (prompt + odpowiedź)</span>
+      </div>
+      <div style="max-height:72vh;overflow-y:auto">
+        <table class="table table-sm table-hover mb-0" id="aiLogsTable">
+          <thead style="position:sticky;top:0;z-index:1">
+            <tr>
+              <th style="width:145px">Czas</th>
+              <th style="width:110px">IP</th>
+              <th style="width:120px">Urządzenie</th>
+              <th style="width:70px">Model</th>
+              <th style="width:90px">Ocena</th>
+              <th>Uzasadnienie</th>
+              <th style="width:70px" title="Pokaż pełny prompt i odpowiedź JSON">Szczeg.</th>
+            </tr>
+          </thead>
+          <tbody id="aiLogsBody">
+            <tr><td colspan="7" class="text-center text-muted py-3">Ładowanie...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {# ── Modal szczegółów AI ── #}
+    <div class="modal fade" id="aiLogDetailModal" tabindex="-1">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header py-2">
+            <h6 class="modal-title" id="aiLogDetailTitle"><i class="bi bi-cpu me-2"></i>Szczegóły zapytania AI</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body p-3">
+            <ul class="nav nav-tabs mb-3" id="aiDetailTabs">
+              <li class="nav-item"><button class="nav-link active" data-target="aiDetailPrompt">Prompt</button></li>
+              <li class="nav-item"><button class="nav-link" data-target="aiDetailResult">Odpowiedź JSON</button></li>
+            </ul>
+            <div id="aiDetailPrompt">
+              <pre class="small p-3 rounded" style="background:#0d1117;color:#c9d1d9;white-space:pre-wrap;word-break:break-word;max-height:60vh;overflow-y:auto" id="aiLogPromptPre">—</pre>
+            </div>
+            <div id="aiDetailResult" style="display:none">
+              <pre class="small p-3 rounded" style="background:#0d1117;color:#c9d1d9;white-space:pre-wrap;word-break:break-word;max-height:60vh;overflow-y:auto" id="aiLogResultPre">—</pre>
+            </div>
+          </div>
+          <div class="modal-footer py-2">
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let activeTab = "events";
+let autoScrollScanner = true;
+let autoScrollWatchdog = true;
+let autoScrollCred = true;
+let autoScrollWorkers = true;
+let credRawText = "";   // cache surowego tekstu — filtrowanie bez ponownego fetch
+let credActiveFilter = "";
+let activeWorkerContainer = "netdoc-ping";
+let workersRawText = ""; // cache logow workera — filtrowanie bez ponownego fetch
+
+// ── Zakladki ─────────────────────────────────────────────────────────────────
+document.querySelectorAll("#logTabs .nav-link").forEach(btn => {
+  btn.addEventListener("click", function() {
+    document.querySelectorAll("#logTabs .nav-link").forEach(b => b.classList.remove("active"));
+    this.classList.add("active");
+    activeTab = this.dataset.tab;
+    ["events","scanner","watchdog","workers","cred","ai"].forEach(t => {
+      document.getElementById("tab-" + t).style.display = (t === activeTab ? "" : "none");
+    });
+    refreshActive();
+  });
+});
+
+// ── Aktywnosc sieci ───────────────────────────────────────────────────────────
+function fmtAgo(isoStr) {
+  const d = new Date(isoStr + "Z");
+  const s = Math.round((Date.now() - d.getTime()) / 1000);
+  if (s < 60)  return s + "s";
+  if (s < 3600) return Math.round(s/60) + " min";
+  if (s < 86400) return Math.round(s/3600) + "h";
+  return Math.round(s/86400) + "d";
+}
+
+function fetchEvents() {
+  const limit = document.getElementById("eventsLimit").value;
+  fetch("/api/logs/events?limit=" + limit)
+    .then(r => r.json())
+    .then(data => {
+      const tbody = document.getElementById("eventsBody");
+      if (!data.events || !data.events.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Brak zdarzen w bazie.</td></tr>';
+        setStatus("ok");
+        return;
+      }
+      tbody.innerHTML = data.events.map(ev => {
+        const isUp   = ev.event_type === "device_appeared";
+        const isDown = ev.event_type === "device_disappeared";
+        const rowCls = isUp ? "table-success" : (isDown ? "table-danger" : "");
+        const badge  = isUp
+          ? '<span class="badge badge-up">UP</span>'
+          : (isDown ? '<span class="badge badge-down">DOWN</span>'
+                    : '<span class="badge bg-secondary">' + ev.event_type + '</span>');
+        const host = ev.hostname ? '<span class="text-muted">' + ev.hostname + '</span>' : '<span class="text-muted">—</span>';
+        return '<tr class="' + rowCls + '">' +
+          '<td class="font-monospace small">' + ev.time + '</td>' +
+          '<td>' + badge + '</td>' +
+          '<td class="font-monospace small">' + ev.device_ip + '</td>' +
+          '<td class="small text-muted">' + ev.device_type + '</td>' +
+          '<td class="small">' + host + '</td>' +
+          '<td class="small text-muted">' + fmtAgo(ev.time) + '</td>' +
+          '</tr>';
+      }).join("");
+      setStatus("ok");
+    })
+    .catch(() => setStatus("err"));
+}
+
+// ── Kolorowanie logow tekstowych ──────────────────────────────────────────────
+function colorizeLog(text) {
+  return text.split("\n").map(line => {
+    if (line.includes("[ERROR]") || line.includes("ERROR:") || line.includes("[BLAD]"))
+      return '<span style="color:#ff7b72">' + line + '</span>';
+    if (line.includes("[WARNING]") || line.includes("Warning") || line.includes("[WARN]"))
+      return '<span style="color:#e3b341">' + line + '</span>';
+    if (line.includes("[OK]"))
+      return '<span style="color:#7ee787">' + line + '</span>';
+    if (line.includes("[INFO]") || line.includes("INFO:"))
+      return '<span style="color:#7ee787">' + line + '</span>';
+    if (line.includes("[WAIT]"))
+      return '<span style="color:#79c0ff">' + line + '</span>';
+    if (line.startsWith("===") || line.startsWith("["))
+      return '<span style="color:#79c0ff;font-weight:bold">' + line + '</span>';
+    return '<span style="color:#8b949e">' + line + '</span>';
+  }).join("\n");
+}
+
+function fetchScanner() {
+  const tail = document.getElementById("scannerTail").value;
+  const pre  = document.getElementById("scannerOutput");
+  fetch("/api/logs/scanner?tail=" + tail)
+    .then(r => r.text())
+    .then(t => {
+      pre.innerHTML = colorizeLog(t);
+      if (autoScrollScanner) pre.scrollTop = pre.scrollHeight;
+      setStatus("ok");
+    })
+    .catch(() => setStatus("err"));
+}
+
+function fetchWatchdog() {
+  const tail = document.getElementById("watchdogTail").value;
+  const pre  = document.getElementById("watchdogOutput");
+  fetch("/api/logs/watchdog?tail=" + tail)
+    .then(r => r.text())
+    .then(t => {
+      pre.innerHTML = colorizeLog(t);
+      if (autoScrollWatchdog) pre.scrollTop = pre.scrollHeight;
+      setStatus("ok");
+    })
+    .catch(() => setStatus("err"));
+}
+
+function applyCredFilter(rawText) {
+  const pre = document.getElementById("credOutput");
+  if (!credActiveFilter) {
+    pre.innerHTML = colorizeLog(rawText);
+  } else {
+    const filtered = rawText.split("\n")
+      .filter(l => l.includes(credActiveFilter))
+      .join("\n");
+    pre.innerHTML = colorizeLog(filtered || "(brak linii dla filtru: " + credActiveFilter + ")");
+  }
+  if (autoScrollCred) pre.scrollTop = pre.scrollHeight;
+}
+
+function fetchCred() {
+  const tail = document.getElementById("credTail").value;
+  fetch("/api/logs/cred?tail=" + tail)
+    .then(r => r.text())
+    .then(t => {
+      credRawText = t;
+      applyCredFilter(t);
+      setStatus("ok");
+    })
+    .catch(() => setStatus("err"));
+}
+
+function applyWorkersFilter() {
+  const pre = document.getElementById("workersOutput");
+  const q   = document.getElementById("workersFilter").value.trim().toLowerCase();
+  const countEl = document.getElementById("workersFilterCount");
+  if (!q) {
+    pre.innerHTML = colorizeLog(workersRawText);
+    countEl.textContent = "";
+  } else {
+    const lines = workersRawText.split("\n").filter(l => l.toLowerCase().includes(q));
+    countEl.textContent = lines.length + " linii";
+    pre.innerHTML = colorizeLog(lines.join("\n") || "(brak linii dla: " + q + ")");
+  }
+  if (autoScrollWorkers) pre.scrollTop = pre.scrollHeight;
+}
+
+function fetchWorkers() {
+  const tail = document.getElementById("workersTail").value;
+  fetch("/api/logs/docker/" + activeWorkerContainer + "?tail=" + tail)
+    .then(r => r.text())
+    .then(t => {
+      workersRawText = t;
+      applyWorkersFilter();
+      setStatus("ok");
+    })
+    .catch(() => setStatus("err"));
+}
+
+// ── AI Logs ────────────────────────────────────────────────────────────────────
+function fetchAiLogs() {
+  const limit = document.getElementById("aiLogsLimit").value;
+  fetch("/api/logs/ai?limit=" + limit)
+    .then(r => r.json())
+    .then(items => {
+      const tbody = document.getElementById("aiLogsBody");
+      if (!Array.isArray(items) || items.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-3">Brak zapytań AI w historii.</td></tr>`;
+        setStatus("ok"); return;
+      }
+      tbody.innerHTML = items.map(it => {
+        const obsBadge = it.is_obsolete === true
+          ? `<span class="badge bg-danger">Do wymiany</span>`
+          : it.is_obsolete === false
+            ? `<span class="badge bg-success">OK</span>`
+            : `<span class="badge bg-secondary">?</span>`;
+        const modelShort = (it.model || "claude").replace("claude-", "").replace("-latest", "");
+        const reason = (it.reason || it.summary || "").substring(0, 80);
+        return `<tr>
+          <td class="font-monospace small text-muted">${it.assessed_at}</td>
+          <td class="font-monospace small">${it.device_ip}</td>
+          <td class="small">${it.device_label !== it.device_ip ? it.device_label : ""}</td>
+          <td class="small text-muted">${modelShort}</td>
+          <td>${obsBadge}</td>
+          <td class="small text-muted">${reason}${(it.reason||"").length > 80 ? "…" : ""}</td>
+          <td>
+            <button class="btn btn-sm btn-outline-secondary ai-log-detail-btn" style="font-size:.7rem;padding:.15rem .4rem"
+              title="Pokaż pełny prompt wysłany do AI oraz odpowiedź JSON"
+              data-prompt="${encodeURIComponent(it.prompt)}"
+              data-result="${encodeURIComponent(it.result_json)}"
+              data-label="${it.device_label} (${it.assessed_at})">
+              <i class="bi bi-eye"></i>
+            </button>
+          </td>
+        </tr>`;
+      }).join("");
+
+      // Podepnij eventy do przycisków szczegółów
+      const bsModal = new bootstrap.Modal(document.getElementById("aiLogDetailModal"));
+      document.querySelectorAll(".ai-log-detail-btn").forEach(btn => {
+        btn.addEventListener("click", function() {
+          document.getElementById("aiLogDetailTitle").textContent = "AI: " + this.dataset.label;
+          const promptPre = document.getElementById("aiLogPromptPre");
+          const resultPre = document.getElementById("aiLogResultPre");
+          promptPre.textContent = decodeURIComponent(this.dataset.prompt) || "(brak promptu)";
+          try {
+            resultPre.textContent = JSON.stringify(JSON.parse(decodeURIComponent(this.dataset.result)), null, 2);
+          } catch(e) {
+            resultPre.textContent = decodeURIComponent(this.dataset.result);
+          }
+          // Reset tabs
+          document.getElementById("aiDetailPrompt").style.display = "";
+          document.getElementById("aiDetailResult").style.display = "none";
+          document.querySelectorAll("#aiDetailTabs .nav-link").forEach((b, i) => b.classList.toggle("active", i === 0));
+          bsModal.show();
+        });
+      });
+      setStatus("ok");
+    })
+    .catch(() => setStatus("err"));
+}
+
+// Tabs w modalu AI log detail
+document.querySelectorAll("#aiDetailTabs .nav-link").forEach(btn => {
+  btn.addEventListener("click", function() {
+    document.querySelectorAll("#aiDetailTabs .nav-link").forEach(b => b.classList.remove("active"));
+    this.classList.add("active");
+    document.getElementById("aiDetailPrompt").style.display = this.dataset.target === "aiDetailPrompt" ? "" : "none";
+    document.getElementById("aiDetailResult").style.display = this.dataset.target === "aiDetailResult" ? "" : "none";
+  });
+});
+
+function refreshActive() {
+  if      (activeTab === "events")   fetchEvents();
+  else if (activeTab === "scanner")  fetchScanner();
+  else if (activeTab === "watchdog") fetchWatchdog();
+  else if (activeTab === "workers")  fetchWorkers();
+  else if (activeTab === "cred")     fetchCred();
+  else if (activeTab === "ai")       fetchAiLogs();
+}
+
+function setStatus(state) {
+  const s = document.getElementById("logStatus");
+  s.textContent = new Date().toLocaleTimeString();
+  s.className = "badge " + (state === "ok" ? "bg-success" : "bg-danger");
+}
+
+// Auto-scroll detection dla logow tekstowych
+document.getElementById("scannerOutput").addEventListener("scroll", function() {
+  autoScrollScanner = (this.scrollTop + this.clientHeight >= this.scrollHeight - 50);
+});
+document.getElementById("watchdogOutput").addEventListener("scroll", function() {
+  autoScrollWatchdog = (this.scrollTop + this.clientHeight >= this.scrollHeight - 50);
+});
+document.getElementById("credOutput").addEventListener("scroll", function() {
+  autoScrollCred = (this.scrollTop + this.clientHeight >= this.scrollHeight - 50);
+});
+document.getElementById("workersOutput").addEventListener("scroll", function() {
+  autoScrollWorkers = (this.scrollTop + this.clientHeight >= this.scrollHeight - 50);
+});
+
+// Przycisk wyboru kontenera
+document.querySelectorAll("#workersSelect button").forEach(btn => {
+  btn.addEventListener("click", function() {
+    document.querySelectorAll("#workersSelect button").forEach(b => b.classList.remove("active"));
+    this.classList.add("active");
+    activeWorkerContainer = this.dataset.container;
+    document.getElementById("workersLabel").innerHTML =
+      'Docker stdout: <code>' + activeWorkerContainer + '</code>';
+    fetchWorkers();
+  });
+});
+
+// Filtry protokolow w zakladce cred
+document.querySelectorAll("#credFilter button").forEach(btn => {
+  btn.addEventListener("click", function() {
+    document.querySelectorAll("#credFilter button").forEach(b => b.classList.remove("active"));
+    this.classList.add("active");
+    credActiveFilter = this.dataset.filter;
+    if (credRawText) applyCredFilter(credRawText);
+    else fetchCred();
+  });
+});
+
+// Filtr tekstowy w zakładce workers
+document.getElementById("workersFilter").addEventListener("input", applyWorkersFilter);
+
+// Zmiana liczby linii / zdarzen
+["scannerTail","watchdogTail","workersTail","credTail","eventsLimit"].forEach(id => {
+  document.getElementById(id).addEventListener("change", refreshActive);
+});
+
+// Auto-refresh
+let interval = null;
+function startAutoRefresh() {
+  if (interval) clearInterval(interval);
+  const ms = activeTab === "events" ? 10000 : 5000;
+  interval = setInterval(() => {
+    if (document.getElementById("autoRefresh").checked) refreshActive();
+  }, ms);
+}
+
+document.getElementById("autoRefresh").addEventListener("change", function() {
+  if (this.checked) startAutoRefresh();
+  else { clearInterval(interval); interval = null; }
+});
+
+// Start
+refreshActive();
+startAutoRefresh();
+</script>
+{% endblock %}

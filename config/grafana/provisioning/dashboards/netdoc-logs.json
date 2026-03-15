@@ -1,0 +1,341 @@
+{
+  "uid": "netdoc-logs",
+  "title": "NetDoc — Logi",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Logi kontenerow",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "logs",
+      "title": "Wszystkie kontenery NetDoc",
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "netdoc_loki"
+      },
+      "targets": [
+        {
+          "expr": "{container=~\"netdoc.*\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "netdoc_loki"
+          }
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "Logi per serwis",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 15
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 4,
+      "type": "logs",
+      "title": "API",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "netdoc_loki"
+      },
+      "targets": [
+        {
+          "expr": "{container=\"netdoc-api\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "netdoc_loki"
+          }
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    },
+    {
+      "id": 5,
+      "type": "logs",
+      "title": "Web Panel",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "netdoc_loki"
+      },
+      "targets": [
+        {
+          "expr": "{container=\"netdoc-web\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "netdoc_loki"
+          }
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    },
+    {
+      "id": 6,
+      "type": "logs",
+      "title": "Ping Worker",
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 0,
+        "y": 26
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "netdoc_loki"
+      },
+      "targets": [
+        {
+          "expr": "{container=\"netdoc-ping\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "netdoc_loki"
+          }
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    },
+    {
+      "id": 7,
+      "type": "logs",
+      "title": "SNMP Worker",
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 8,
+        "y": 26
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "netdoc_loki"
+      },
+      "targets": [
+        {
+          "expr": "{container=\"netdoc-snmp\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "netdoc_loki"
+          }
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    },
+    {
+      "id": 8,
+      "type": "logs",
+      "title": "Vuln Worker",
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 16,
+        "y": 26
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "netdoc_loki"
+      },
+      "targets": [
+        {
+          "expr": "{container=\"netdoc-vuln\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "netdoc_loki"
+          }
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    },
+    {
+      "id": 9,
+      "type": "logs",
+      "title": "Cred Worker",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 36
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "netdoc_loki"
+      },
+      "targets": [
+        {
+          "expr": "{container=\"netdoc-cred\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "netdoc_loki"
+          }
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    },
+    {
+      "id": 10,
+      "type": "logs",
+      "title": "PostgreSQL",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 36
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "netdoc_loki"
+      },
+      "targets": [
+        {
+          "expr": "{container=\"netdoc-postgres\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "netdoc_loki"
+          }
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    }
+  ],
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Panel Admin",
+      "url": "http://localhost:5000",
+      "type": "link",
+      "targetBlank": true
+    },
+    {
+      "title": "Bezpieczenstwo",
+      "url": "http://localhost:5000/security",
+      "type": "link",
+      "targetBlank": true
+    },
+    {
+      "title": "Prometheus",
+      "url": "http://localhost:9090",
+      "type": "link",
+      "targetBlank": true
+    }
+  ],
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1
+}

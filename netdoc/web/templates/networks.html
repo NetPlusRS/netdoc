@@ -1,0 +1,1052 @@
+{% extends "base.html" %}
+{% block title %}Sieci{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>Sieci ({{ networks|length }})</h5>
+  <div class="d-flex gap-2">
+    {% set active_count = networks | selectattr("is_active") | list | length %}
+    {% if active_count > 0 %}
+    <button class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#pauseAllModal"
+            title="Wstrzymaj wszystkie aktywne sieci — skaner odpauzuje automatycznie te, do ktorych jestes podlaczony">
+      <i class="bi bi-pause-fill me-1"></i>Pauzuj wszystkie ({{ active_count }})
+    </button>
+    {% endif %}
+    <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#bulkAddModal">
+      <i class="bi bi-list-ul me-1"></i>Dodaj wiele
+    </button>
+    <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addNetModal">
+      <i class="bi bi-plus-lg me-1"></i>Dodaj siec
+    </button>
+  </div>
+</div>
+
+<!-- Info panel -->
+<div class="accordion mb-3" id="netInfoAccordion">
+  <div class="accordion-item" style="background:var(--bg2);border:1px solid var(--border);">
+    <h2 class="accordion-header">
+      <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#netInfoBody"
+        style="background:var(--bg3);color:var(--text);border-radius:0;">
+        <i class="bi bi-info-circle me-2 text-info"></i>Jak dzialaja sieci w NetDoc?
+      </button>
+    </h2>
+    <div id="netInfoBody" class="accordion-collapse collapse">
+      <div class="accordion-body small" style="background:var(--bg2);color:var(--text);">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <div class="d-flex align-items-start gap-2">
+              <i class="bi bi-plus-circle-fill text-success mt-1" style="font-size:1.1rem;flex-shrink:0;"></i>
+              <div>
+                <strong>Dodanie sieci</strong><br>
+                Siec zostaje dodana jako <em>aktywna</em>. Przy nastepnym uruchomieniu skanera
+                (<code>run_scanner.py</code>) zakres CIDR zostanie uwzgledniony w fazie discovery (ping sweep + nmap).
+                Urzadzenia odkryte w tym zakresie trafi do bazy danych i beda widoczne na liscie urzadzen.
+                Dane historyczne nie sa kasowane.
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="d-flex align-items-start gap-2">
+              <i class="bi bi-pause-circle-fill text-warning mt-1" style="font-size:1.1rem;flex-shrink:0;"></i>
+              <div>
+                <strong>Pauza sieci (zatrzymanie)</strong><br>
+                Siec staje sie <em>nieaktywna</em> — skaner (run_scanner.py) pomija ten zakres
+                w przyszlych skanach discovery. Urzadzenia juz wykryte i zapisane w bazie
+                <strong>pozostaja w systemie</strong> i <strong>nadal sa monitorowane</strong>
+                przez ping-workera (dostepnosc) oraz workersy SNMP/podatnosci.
+                Jezeli chcesz calkowicie zatrzymac monitoring segmentu — uzyj opcji usuniecia urzadzen.
+                Dane historyczne (skany, logi) nie sa kasowane.
+                <strong>Opcjonalnie</strong>: przy zatrzymaniu mozesz jednoczesnie usunac wszystkie
+                urzadzenia z tego zakresu — beda ponownie odkryte gdy siec wroci do aktywnych.
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="d-flex align-items-start gap-2">
+              <i class="bi bi-trash-fill text-danger mt-1" style="font-size:1.1rem;flex-shrink:0;"></i>
+              <div>
+                <strong>Usuniecie sieci</strong><br>
+                Konfiguracja sieci (CIDR, notatka) jest kasowana z bazy. Skaner przestaje skanowac ten zakres.
+                Urzadzenia odkryte wczesniej w tej sieci <strong>domyslnie pozostaja</strong> w bazie
+                (historia skanow, podatnosci, dane SNMP). Mozesz wybrać opcje <em>"rowniez usun urzadzenia"</em>
+                — wowczas wszystkie urzadzenia z tego zakresu IP zostana skasowane i przy ewentualnym
+                ponownym dodaniu sieci zostana odkryte od nowa.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mt-2 pt-2 border-top" style="border-color:var(--border)!important;">
+          <i class="bi bi-lightbulb text-warning me-1"></i>
+          <strong>Uwaga:</strong> Skaner hostowy (<code>run_scanner.py</code>) czyta aktywne sieci z bazy przy kazdym uruchomieniu.
+          Zmiany w statusie sieci beda widoczne w nastepnym cyklu skanowania (domyslnie co 5 min przez Task Scheduler).
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="d-flex gap-2 align-items-center mb-2">
+  <input type="text" id="netSearch" class="form-control form-control-sm" style="max-width:300px"
+         placeholder="Szukaj CIDR lub notatki…" autocomplete="off">
+  <span id="netSearchCount" class="text-muted small"></span>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0" id="networksTable">
+      <thead>
+        <tr>
+          <th class="net-sort" data-col="cidr" style="cursor:pointer;user-select:none">CIDR <span class="sort-icon">↕</span></th>
+          <th>Zrodlo</th>
+          <th class="net-sort" data-col="status" style="cursor:pointer;user-select:none">Status <span class="sort-icon">↕</span></th>
+          <th class="net-sort" data-col="active" style="cursor:pointer;user-select:none" data-bs-toggle="tooltip" title="Aktywne / nieaktywne urzadzenia w tym zakresie">Urzadzenia <span class="sort-icon text-success">↓</span></th>
+          <th class="net-sort" data-col="maxhosts" style="cursor:pointer;user-select:none" data-bs-toggle="tooltip" title="Maksymalna liczba adresowalnych hostow w tej podsieci (2^(32-prefix) - 2)">Maks. hostow <span class="sort-icon">↕</span></th>
+          <th class="net-sort" data-col="first_seen" style="cursor:pointer;user-select:none">Pierwsza detekcja <span class="sort-icon">↕</span></th>
+          <th class="net-sort" data-col="last_seen" style="cursor:pointer;user-select:none">Ostatnia detekcja <span class="sort-icon">↕</span></th>
+          <th>Notatka</th>
+          <th>Akcje</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for n in networks %}
+        {% set dc = device_counts.get(n.cidr, {"active": 0, "inactive": 0}) %}
+        {% set active_count = dc.active %}
+        {% set inactive_count = dc.inactive %}
+        {% set dev_count = active_count + inactive_count %}
+        {% set prefix = n.cidr.split('/')[1] | int %}
+        {# /32 = 1 host (host route, VPN peer), /31 = 2 hosty (RFC 3021 point-to-point),
+           reszta = standardowa formula 2^(32-prefix) - 2 #}
+        {% if prefix == 32 %}
+          {% set max_hosts = 1 %}
+        {% elif prefix == 31 %}
+          {% set max_hosts = 2 %}
+        {% else %}
+          {% set max_hosts = (2 ** (32 - prefix) - 2) | int %}
+        {% endif %}
+        <tr data-cidr="{{ n.cidr }}" data-active="{{ active_count }}" data-inactive="{{ inactive_count }}"
+            data-maxhosts="{{ max_hosts }}"
+            data-first="{{ n.first_seen.strftime('%Y-%m-%d') if n.first_seen else '' }}"
+            data-last="{{ n.last_seen.strftime('%Y-%m-%d %H:%M') if n.last_seen else '' }}"
+            data-status="{{ 'aktywna' if n.is_active else 'nieaktywna' }}"
+            data-notes="{{ n.notes or '' }}">
+          <td class="font-monospace">{{ n.cidr }}</td>
+          <td>
+            {% if n.source and n.source.value == "manual" %}
+              <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Siec dodana recznie przez uzytkownika z panelu lub .env">manual</span>
+            {% elif n.source and n.source.value == "auto" %}
+              <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Siec wykryta automatycznie przez skaner na podstawie interfejsow sieciowych hosta">auto</span>
+            {% elif n.source and n.source.value == "lldp" %}
+              <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Siec odkryta via protokol LLDP/CDP z sasiedniego urzadzenia sieciowego">lldp</span>
+            {% else %}
+              <span class="badge bg-secondary">{{ n.source.value if n.source else "?" }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if n.is_active %}
+              <span class="badge bg-success" data-bs-toggle="tooltip"
+                title="Skaner aktywnie przeszukuje ten zakres CIDR w kazdym cyklu (co {{ scan_interval_minutes }} min). Nowe urzadzenia sa automatycznie dodawane do bazy.">aktywna</span>
+            {% else %}
+              <span class="badge bg-secondary" data-bs-toggle="tooltip"
+                title="Siec wstrzymana — skaner pomija ten zakres. Urzadzenia juz wykryte pozostaja w bazie i sa nadal monitorowane (ping/SNMP). Wznow aby wlaczyc ponowne skanowanie discovery.">nieaktywna</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if dev_count > 0 %}
+              <a href="/devices?cidr={{ n.cidr | urlencode }}" class="text-decoration-none d-inline-flex gap-1 align-items-center"
+                 data-bs-toggle="tooltip" title="Kliknij aby zobaczyc urzadzenia z sieci {{ n.cidr }}">
+                {% if active_count > 0 %}
+                <span class="badge bg-success">{{ active_count }} aktywne</span>
+                {% endif %}
+                {% if inactive_count > 0 %}
+                <span class="badge bg-secondary">{{ inactive_count }} nieaktywne</span>
+                {% endif %}
+              </a>
+            {% else %}
+              <span class="text-muted" data-bs-toggle="tooltip" title="Brak urzadzen z tego zakresu w bazie">0</span>
+            {% endif %}
+          </td>
+          <td class="small text-muted font-monospace">
+            {% if max_hosts >= 1000 %}
+              <span data-bs-toggle="tooltip" title="/{{ prefix }} — {{ max_hosts }} adresowalnych hostow">{{ "{:,}".format(max_hosts).replace(",", " ") }}</span>
+            {% else %}
+              <span data-bs-toggle="tooltip" title="/{{ prefix }} — {{ max_hosts }} adresowalnych hostow">{{ max_hosts }}</span>
+            {% endif %}
+          </td>
+          <td class="small text-muted">{{ n.first_seen.strftime("%Y-%m-%d") if n.first_seen else "—" }}</td>
+          <td class="small text-muted">{{ n.last_seen.strftime("%Y-%m-%d %H:%M") if n.last_seen else "—" }}</td>
+          <td class="notes-cell small" data-net-id="{{ n.id }}" data-notes="{{ n.notes or '' }}">
+            <span class="notes-display text-muted">{{ n.notes or "—" }}</span>
+            <button class="btn btn-link btn-sm p-0 ms-1 notes-edit-btn text-muted" title="Edytuj notatke" style="opacity:.5;font-size:.75rem;vertical-align:baseline;">
+              <i class="bi bi-pencil"></i>
+            </button>
+          </td>
+          <td class="d-flex gap-1">
+            {% if n.is_active %}
+            <!-- Pause: opens modal -->
+            <button class="btn btn-outline-warning btn-sm py-0" title="Zatrzymaj skanowanie tej sieci"
+              data-bs-toggle="modal" data-bs-target="#pauseModal"
+              data-net-id="{{ n.id }}" data-net-cidr="{{ n.cidr }}" data-dev-count="{{ dev_count }}">
+              <i class="bi bi-pause-fill"></i>
+            </button>
+            {% else %}
+            <!-- Activate: direct form post -->
+            <form method="post" action="/networks/{{ n.id }}/toggle">
+              <button class="btn btn-outline-success btn-sm py-0" title="Wznow skanowanie tej sieci">
+                <i class="bi bi-play-fill"></i>
+              </button>
+            </form>
+            {% endif %}
+            <!-- Delete: opens modal -->
+            <button class="btn btn-outline-danger btn-sm py-0" title="Usun siec z konfiguracji"
+              data-bs-toggle="modal" data-bs-target="#deleteNetModal"
+              data-net-id="{{ n.id }}" data-net-cidr="{{ n.cidr }}" data-dev-count="{{ dev_count }}">
+              <i class="bi bi-trash"></i>
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="text-center text-muted py-4">Brak sieci. Dodaj zakres do skanowania.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Subnet Calculator -->
+<div class="accordion mt-3 mb-3" id="subnetCalcAccordion">
+  <div class="accordion-item" style="background:var(--bg2);border:1px solid var(--border);">
+    <h2 class="accordion-header">
+      <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#subnetCalcBody"
+        style="background:var(--bg3);color:var(--text);border-radius:0;">
+        <i class="bi bi-calculator me-2 text-info"></i>Kalkulator podsieci
+      </button>
+    </h2>
+    <div id="subnetCalcBody" class="accordion-collapse collapse">
+      <div class="accordion-body" style="background:var(--bg2);color:var(--text);">
+        <div class="row g-3">
+          <!-- Lewa: slider + wyjscie -->
+          <div class="col-md-6">
+            <div class="mb-2">
+              <label class="form-label small mb-1">Adres IP (opcjonalny)</label>
+              <input type="text" id="calcIp" class="form-control form-control-sm font-monospace"
+                placeholder="192.168.1.0" value="192.168.1.0">
+            </div>
+            <div class="mb-2">
+              <label class="form-label small mb-1">
+                Prefix: <strong id="calcPrefixLabel">/24</strong>
+                &nbsp;<span class="text-muted small" id="calcMaskLabel">255.255.255.0</span>
+              </label>
+              <input type="range" class="form-range" id="calcSlider" min="8" max="30" value="24">
+            </div>
+            <div class="mb-2">
+              <label class="form-label small mb-1">lub wpisz pozadana liczbe hostow</label>
+              <input type="number" id="calcHostsInput" class="form-control form-control-sm"
+                placeholder="np. 200" min="1" max="16777214">
+            </div>
+            <div class="mt-3 p-3 rounded small font-monospace" style="background:var(--bg3);border:1px solid var(--border);">
+              <div class="row g-1">
+                <div class="col-5 text-muted">Siec:</div>
+                <div class="col-7" id="calcNetwork">—</div>
+                <div class="col-5 text-muted">Broadcast:</div>
+                <div class="col-7" id="calcBroadcast">—</div>
+                <div class="col-5 text-muted">Pierwszy host:</div>
+                <div class="col-7" id="calcFirst">—</div>
+                <div class="col-5 text-muted">Ostatni host:</div>
+                <div class="col-7" id="calcLast">—</div>
+                <div class="col-5 text-muted">Adresowalnych:</div>
+                <div class="col-7"><strong id="calcHosts" class="text-success">—</strong></div>
+                <div class="col-5 text-muted">Maska:</div>
+                <div class="col-7" id="calcMask">—</div>
+                <div class="col-5 text-muted">Wildcarda:</div>
+                <div class="col-7 text-muted" id="calcWildcard">—</div>
+              </div>
+              <div class="mt-2 pt-2" style="border-top:1px solid var(--border);">
+                <span class="text-muted">CIDR: </span><strong id="calcCidr" class="text-info">—</strong>
+                <button class="btn btn-outline-secondary btn-sm py-0 ms-2" id="calcCopyBtn" title="Kopiuj CIDR do schowka">
+                  <i class="bi bi-clipboard"></i>
+                </button>
+                <button class="btn btn-outline-success btn-sm py-0 ms-1" id="calcAddBtn" title="Dodaj te siec do skanowania">
+                  <i class="bi bi-plus-lg me-1"></i>Dodaj
+                </button>
+              </div>
+            </div>
+          </div>
+          <!-- Prawa: tabela referencji -->
+          <div class="col-md-6">
+            <p class="small text-muted mb-2">Popularne podsieci — kliknij aby wybrać:</p>
+            <table class="table table-sm table-hover mb-0 small" id="calcRefTable" style="cursor:pointer;">
+              <thead><tr><th>Prefix</th><th>Maska</th><th>Hostow</th><th>Typowe zastosowanie</th></tr></thead>
+              <tbody>
+                <tr data-prefix="8"><td>/8</td><td>255.0.0.0</td><td>16&nbsp;777&nbsp;214</td><td class="text-muted">Duze sieci klasy A</td></tr>
+                <tr data-prefix="16"><td>/16</td><td>255.255.0.0</td><td>65&nbsp;534</td><td class="text-muted">Duze kampusy/WAN</td></tr>
+                <tr data-prefix="20"><td>/20</td><td>255.255.240.0</td><td>4&nbsp;094</td><td class="text-muted">Duzy segment LAN</td></tr>
+                <tr data-prefix="22"><td>/22</td><td>255.255.252.0</td><td>1&nbsp;022</td><td class="text-muted">Sredni biurowiec</td></tr>
+                <tr data-prefix="23"><td>/23</td><td>255.255.254.0</td><td>510</td><td class="text-muted">Dwa segmenty /24</td></tr>
+                <tr data-prefix="24" class="table-active"><td>/24</td><td>255.255.255.0</td><td>254</td><td class="text-muted">Typowy LAN biurowy</td></tr>
+                <tr data-prefix="25"><td>/25</td><td>255.255.255.128</td><td>126</td><td class="text-muted">Pol segmentu /24</td></tr>
+                <tr data-prefix="26"><td>/26</td><td>255.255.255.192</td><td>62</td><td class="text-muted">Maly oddzial</td></tr>
+                <tr data-prefix="27"><td>/27</td><td>255.255.255.224</td><td>30</td><td class="text-muted">Segment infrastruktury</td></tr>
+                <tr data-prefix="28"><td>/28</td><td>255.255.255.240</td><td>14</td><td class="text-muted">Segment serwerow</td></tr>
+                <tr data-prefix="29"><td>/29</td><td>255.255.255.248</td><td>6</td><td class="text-muted">Point-to-multipoint</td></tr>
+                <tr data-prefix="30"><td>/30</td><td>255.255.255.252</td><td>2</td><td class="text-muted">Lacze P2P (WAN)</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MAC Vendor Lookup -->
+<div class="accordion mt-3 mb-3" id="macLookupAccordion">
+  <div class="accordion-item" style="background:var(--bg2);border:1px solid var(--border);">
+    <h2 class="accordion-header">
+      <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#macLookupBody"
+        style="background:var(--bg3);color:var(--text);border-radius:0;"
+        id="macLookupToggle">
+        <i class="bi bi-ethernet me-2 text-warning"></i>Lookup MAC → producent
+        <span id="macDbAgeBadge" class="badge bg-secondary ms-2 small fw-normal" style="font-size:.7rem;">
+          ładowanie bazy…
+        </span>
+      </button>
+    </h2>
+    <div id="macLookupBody" class="accordion-collapse collapse">
+      <div class="accordion-body" style="background:var(--bg2);color:var(--text);">
+
+        {# ── Wyszukiwanie MAC ── #}
+        <div class="row g-2 align-items-end mb-3">
+          <div class="col-md-4">
+            <label class="form-label small mb-1">Adres MAC</label>
+            <input type="text" id="macInput" class="form-control form-control-sm font-monospace"
+              placeholder="np. DC:A6:32:11:22:33 lub DCA632">
+          </div>
+          <div class="col-auto">
+            <button class="btn btn-outline-warning btn-sm" id="macLookupBtn">
+              <i class="bi bi-search me-1"></i>Sprawdz
+            </button>
+          </div>
+          <div class="col-md-5">
+            <div id="macResult" class="small mt-1"></div>
+          </div>
+        </div>
+        <div class="mb-3 small text-muted">
+          Wpisz pelny MAC (AA:BB:CC:DD:EE:FF), pierwsze 3 oktety (AA:BB:CC) lub OUI bez separatorow (AABBCC).
+          Baza OUI zawiera wpisy IEEE MA-L/MA-M/MA-S oraz plik manuf Wireshark.
+        </div>
+
+        {# ── Status baz danych IEEE ── #}
+        <div class="mb-3" id="macDbStatusSection">
+          <div class="small fw-semibold mb-1 text-muted"><i class="bi bi-database me-1"></i>Stan baz danych OUI</div>
+          <div class="row g-2" id="macDbStatusCards">
+            <div class="col text-muted small">
+              <span class="spinner-border spinner-border-sm me-1"></span>Sprawdzam stan baz…
+            </div>
+          </div>
+        </div>
+
+        {# ── Przeglądarka producentów ── #}
+        <div class="small fw-semibold mb-2 text-muted"><i class="bi bi-list-ul me-1"></i>Baza producentów</div>
+        <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
+          <input type="text" id="vendorSearch" class="form-control form-control-sm"
+            style="max-width:260px" placeholder="Szukaj producenta…">
+          <select id="vendorSort" class="form-select form-select-sm" style="width:auto">
+            <option value="name">Sortuj: A–Z</option>
+            <option value="count" selected>Sortuj: liczba OUI ↓</option>
+          </select>
+          <span id="vendorTotal" class="text-muted small"></span>
+        </div>
+        <div style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;">
+          <table class="table table-sm table-hover mb-0" id="vendorTable">
+            <thead style="position:sticky;top:0;background:var(--bg3);z-index:1;">
+              <tr>
+                <th class="ps-2 py-1" style="cursor:pointer" id="thVendor">
+                  Producent <i class="bi bi-arrow-down-up text-muted small"></i>
+                </th>
+                <th class="text-end pe-2 py-1" style="cursor:pointer;width:110px" id="thBlocks">
+                  Bloki OUI <i class="bi bi-arrow-down-up text-muted small"></i>
+                </th>
+              </tr>
+            </thead>
+            <tbody id="vendorTableBody">
+              <tr><td colspan="2" class="text-muted small ps-2">
+                <span class="spinner-border spinner-border-sm me-1"></span>Ładowanie…
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-1 small text-muted" id="vendorShowMore"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Eksport CSV -->
+<div class="mb-3 d-flex justify-content-end">
+  <a href="/devices/export.csv" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-download me-1"></i>Eksportuj urzadzenia do CSV
+  </a>
+</div>
+
+<!-- Bulk Add Modal -->
+<div class="modal fade" id="bulkAddModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-list-ul me-2 text-info"></i>Dodaj wiele sieci</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/networks/bulk-add">
+        <div class="modal-body">
+          <div class="alert alert-info py-2 small mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            Wpisz zakresy CIDR — jeden na linii lub oddzielone przecinkiem. Istniejace sieci zostana pominiete.
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Zakresy CIDR *</label>
+            <textarea name="cidrs" class="form-control font-monospace" rows="6"
+              placeholder="192.168.1.0/24&#10;10.0.0.0/8&#10;172.16.0.0/16" required></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+          <button type="submit" class="btn btn-info text-white"><i class="bi bi-plus-lg me-1"></i>Dodaj wszystkie</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Pause All Modal -->
+<div class="modal fade" id="pauseAllModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-pause-circle me-2 text-warning"></i>Wstrzymaj wszystkie sieci</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/networks/pause-all">
+        <div class="modal-body">
+          <p>Wszystkie <strong>{{ networks | selectattr("is_active") | list | length }}</strong> aktywne sieci zostana wstrzymane.</p>
+          <div class="alert alert-info py-2 small">
+            <i class="bi bi-lightbulb me-1"></i>
+            Przy nastepnym cyklu skanowania (co 5 min) skaner automatycznie odpauzuje sieci,
+            do ktorych jestes aktualnie podlaczony. Dane i urzadzenia pozostaja w bazie.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+          <button type="submit" class="btn btn-warning"><i class="bi bi-pause-fill me-1"></i>Wstrzymaj wszystkie</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Pause Modal -->
+<div class="modal fade" id="pauseModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-pause-circle me-2 text-warning"></i>Zatrzymaj siec</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" id="pauseForm">
+        <input type="hidden" name="delete_devices" id="pauseDeleteDevicesVal" value="0">
+        <div class="modal-body">
+          <p>Siec <strong id="pauseNetCidr"></strong> zostanie <strong>zatrzymana</strong>.</p>
+          <div class="alert alert-warning py-2 small">
+            <i class="bi bi-info-circle me-1"></i>
+            Skaner pominie ten zakres w nastepnych skanach. Dane historyczne pozostaja w bazie.
+          </div>
+          <div class="form-check mt-2" id="pauseDeleteOption">
+            <input class="form-check-input" type="checkbox" id="pauseDeleteDevices">
+            <label class="form-check-label" for="pauseDeleteDevices">
+              Rowniez usun <span id="pauseDevCount" class="badge bg-danger">0</span> urzadzen z tego zakresu z bazy
+              <small class="text-muted d-block">Urzadzenia zostana ponownie odkryte przy nastepnym skanowaniu tej sieci.</small>
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+          <button type="submit" class="btn btn-warning">Zatrzymaj</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Network Modal -->
+<div class="modal fade" id="deleteNetModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-trash me-2 text-danger"></i>Usun siec</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" id="deleteNetForm">
+        <input type="hidden" name="delete_devices" id="deleteNetDevicesVal" value="0">
+        <div class="modal-body">
+          <p>Usunac siec <strong id="deleteNetCidr"></strong> z konfiguracji skanowania?</p>
+          <div class="alert alert-info py-2 small">
+            <i class="bi bi-info-circle me-1"></i>
+            Konfiguracja sieci zostanie skasowana. Skaner nie bedzie juz przeszukiwal tego zakresu.
+            Urzadzenia odkryte wczesniej <strong>domyslnie pozostaja</strong> w bazie.
+          </div>
+          <div class="form-check mt-2" id="deleteDevOption">
+            <input class="form-check-input" type="checkbox" id="deleteNetDevices">
+            <label class="form-check-label" for="deleteNetDevices">
+              Rowniez usun <span id="deleteNetDevCount" class="badge bg-danger">0</span> urzadzen z tego zakresu z bazy
+              <small class="text-muted d-block">Urzadzenia zostana ponownie odkryte jesli siec zostanie dodana ponownie.</small>
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+          <button type="submit" class="btn btn-danger">Usun siec</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Add Network Modal -->
+<div class="modal fade" id="addNetModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-plus-circle me-2 text-success"></i>Dodaj siec</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/networks/add">
+        <div class="modal-body">
+          <div class="alert alert-info py-2 small mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            Siec zostanie dodana jako <strong>aktywna</strong>. Skaner uwzgledni ten zakres CIDR
+            przy nastepnym uruchomieniu (co 5 min). Urzadzenia w tym zakresie zostana automatycznie odkryte.
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">CIDR *</label>
+            <input type="text" name="cidr" class="form-control" placeholder="192.168.1.0/24" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Notatka</label>
+            <input type="text" name="notes" class="form-control" placeholder="np. LAN biuro Warszawa">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+          <button type="submit" class="btn btn-success">Dodaj</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% block scripts %}
+<script>
+// Pause modal
+document.getElementById('pauseModal').addEventListener('show.bs.modal', function(e) {
+  const btn = e.relatedTarget;
+  const netId = btn.dataset.netId;
+  const cidr = btn.dataset.netCidr;
+  const devCount = parseInt(btn.dataset.devCount, 10);
+  document.getElementById('pauseNetCidr').textContent = cidr;
+  document.getElementById('pauseDevCount').textContent = devCount;
+  document.getElementById('pauseForm').action = '/networks/' + netId + '/toggle';
+  document.getElementById('pauseDeleteDevices').checked = false;
+  document.getElementById('pauseDeleteDevicesVal').value = '0';
+  // Hide checkbox if no devices
+  document.getElementById('pauseDeleteOption').style.display = devCount > 0 ? '' : 'none';
+});
+document.getElementById('pauseDeleteDevices').addEventListener('change', function() {
+  document.getElementById('pauseDeleteDevicesVal').value = this.checked ? '1' : '0';
+});
+
+// Delete network modal
+document.getElementById('deleteNetModal').addEventListener('show.bs.modal', function(e) {
+  const btn = e.relatedTarget;
+  const netId = btn.dataset.netId;
+  const cidr = btn.dataset.netCidr;
+  const devCount = parseInt(btn.dataset.devCount, 10);
+  document.getElementById('deleteNetCidr').textContent = cidr;
+  document.getElementById('deleteNetDevCount').textContent = devCount;
+  document.getElementById('deleteNetForm').action = '/networks/' + netId + '/delete';
+  document.getElementById('deleteNetDevices').checked = false;
+  document.getElementById('deleteNetDevicesVal').value = '0';
+  document.getElementById('deleteDevOption').style.display = devCount > 0 ? '' : 'none';
+});
+document.getElementById('deleteNetDevices').addEventListener('change', function() {
+  document.getElementById('deleteNetDevicesVal').value = this.checked ? '1' : '0';
+});
+
+// ── Subnet Calculator ─────────────────────────────────────────────────────────
+(function() {
+  // Tablica 33 elementow: netmask dla /0../32
+  const MASKS = [];
+  for (let p = 0; p <= 32; p++) {
+    MASKS[p] = p === 0 ? 0 : (0xFFFFFFFF << (32 - p)) >>> 0;
+  }
+
+  function ipToInt(ip) {
+    const parts = ip.trim().split('.');
+    if (parts.length !== 4) return null;
+    let n = 0;
+    for (const p of parts) {
+      const v = parseInt(p, 10);
+      if (isNaN(v) || v < 0 || v > 255) return null;
+      n = (n * 256 + v) >>> 0;
+    }
+    return n;
+  }
+
+  function intToIp(n) {
+    return [(n >>> 24) & 0xFF, (n >>> 16) & 0xFF, (n >>> 8) & 0xFF, n & 0xFF].join('.');
+  }
+
+  function prefixNeeded(hosts) {
+    // Minimalny prefix dajacy >= hosts adresowalnych
+    for (let p = 30; p >= 8; p--) {
+      if (Math.pow(2, 32 - p) - 2 >= hosts) return p;
+    }
+    return 8;
+  }
+
+  function update() {
+    const prefix = parseInt(document.getElementById('calcSlider').value, 10);
+    const mask = MASKS[prefix];
+    const wildcard = (~mask) >>> 0;
+    const totalHosts = Math.pow(2, 32 - prefix);
+    const usableHosts = Math.max(0, totalHosts - 2);
+
+    // Adres IP
+    const ipStr = document.getElementById('calcIp').value.trim();
+    const ipInt = ipToInt(ipStr);
+    const netInt = ipInt !== null ? (ipInt & mask) >>> 0 : null;
+    const bcInt  = ipInt !== null ? (netInt | wildcard) >>> 0 : null;
+
+    document.getElementById('calcPrefixLabel').textContent = '/' + prefix;
+    document.getElementById('calcMaskLabel').textContent = intToIp(mask);
+    document.getElementById('calcMask').textContent = intToIp(mask);
+    document.getElementById('calcWildcard').textContent = intToIp(wildcard);
+    document.getElementById('calcHosts').textContent = usableHosts.toLocaleString('pl-PL');
+
+    if (netInt !== null) {
+      document.getElementById('calcNetwork').textContent   = intToIp(netInt);
+      document.getElementById('calcBroadcast').textContent = intToIp(bcInt);
+      document.getElementById('calcFirst').textContent     = prefix < 31 ? intToIp(netInt + 1) : intToIp(netInt);
+      document.getElementById('calcLast').textContent      = prefix < 31 ? intToIp(bcInt - 1)  : intToIp(bcInt);
+      document.getElementById('calcCidr').textContent      = intToIp(netInt) + '/' + prefix;
+    } else {
+      ['calcNetwork','calcBroadcast','calcFirst','calcLast'].forEach(id =>
+        document.getElementById(id).textContent = '—');
+      document.getElementById('calcCidr').textContent = '?/' + prefix;
+    }
+
+    // Podswietl wiersz w tabeli referencyjnej
+    document.querySelectorAll('#calcRefTable tbody tr').forEach(tr => {
+      tr.classList.toggle('table-active', parseInt(tr.dataset.prefix, 10) === prefix);
+    });
+  }
+
+  // Slider → update
+  document.getElementById('calcSlider').addEventListener('input', function() {
+    document.getElementById('calcHostsInput').value = '';
+    update();
+  });
+
+  // IP → update
+  document.getElementById('calcIp').addEventListener('input', update);
+
+  // Wpisanie liczby hostow → dopasuj prefix
+  document.getElementById('calcHostsInput').addEventListener('input', function() {
+    const v = parseInt(this.value, 10);
+    if (!isNaN(v) && v >= 1) {
+      const p = prefixNeeded(v);
+      document.getElementById('calcSlider').value = p;
+      update();
+    }
+  });
+
+  // Klikniecie wiersza tabeli referencji
+  document.querySelectorAll('#calcRefTable tbody tr').forEach(tr => {
+    tr.addEventListener('click', function() {
+      document.getElementById('calcSlider').value = this.dataset.prefix;
+      document.getElementById('calcHostsInput').value = '';
+      update();
+    });
+  });
+
+  // Kopiuj CIDR
+  document.getElementById('calcCopyBtn').addEventListener('click', function() {
+    const cidr = document.getElementById('calcCidr').textContent;
+    navigator.clipboard.writeText(cidr).catch(() => {});
+    this.innerHTML = '<i class="bi bi-check-lg"></i>';
+    setTimeout(() => this.innerHTML = '<i class="bi bi-clipboard"></i>', 1500);
+  });
+
+  // Dodaj siec — wypelnia modal i otwiera
+  document.getElementById('calcAddBtn').addEventListener('click', function() {
+    const cidr = document.getElementById('calcCidr').textContent;
+    if (cidr && cidr !== '—' && !cidr.startsWith('?')) {
+      const cidrInput = document.querySelector('#addNetModal input[name="cidr"]');
+      if (cidrInput) cidrInput.value = cidr;
+      new bootstrap.Modal(document.getElementById('addNetModal')).show();
+    }
+  });
+
+  // Init
+  update();
+})();
+
+// ── Detektor nakladania zakresow ──────────────────────────────────────────────
+(function() {
+  function ipToInt(ip) {
+    return ip.split('.').reduce((acc, v) => (acc * 256 + parseInt(v, 10)) >>> 0, 0);
+  }
+  function parseCidr(cidr) {
+    const [ip, prefix] = cidr.split('/');
+    const p = parseInt(prefix, 10);
+    const mask = p === 0 ? 0 : (0xFFFFFFFF << (32 - p)) >>> 0;
+    const net = (ipToInt(ip) & mask) >>> 0;
+    return { net, bc: (net | (~mask >>> 0)) >>> 0 };
+  }
+  function overlaps(a, b) {
+    return a.net <= b.bc && b.net <= a.bc;
+  }
+
+  const rows = document.querySelectorAll('tbody tr[data-cidr]');
+  if (rows.length < 2) return;
+  const parsed = Array.from(rows).map(r => ({ el: r, cidr: r.dataset.cidr, range: parseCidr(r.dataset.cidr) }));
+
+  parsed.forEach((a, i) => {
+    parsed.forEach((b, j) => {
+      if (i >= j) return;
+      if (overlaps(a.range, b.range)) {
+        [a, b].forEach(x => {
+          const td = x.el.querySelector('td.font-monospace');
+          if (td && !td.querySelector('.overlap-warn')) {
+            const badge = document.createElement('span');
+            badge.className = 'overlap-warn badge bg-warning text-dark ms-1';
+            badge.setAttribute('data-bs-toggle', 'tooltip');
+            badge.title = 'Ten zakres naklada sie z: ' + (x === a ? b.cidr : a.cidr);
+            badge.textContent = '⚠';
+            td.appendChild(badge);
+            new bootstrap.Tooltip(badge);
+          }
+        });
+      }
+    });
+  });
+})();
+
+// ── MAC Vendor Lookup ─────────────────────────────────────────────────────────
+document.getElementById('macLookupBtn').addEventListener('click', async function() {
+  const mac = document.getElementById('macInput').value.trim();
+  const res = document.getElementById('macResult');
+  if (!mac) { res.innerHTML = '<span class="text-warning">Wpisz adres MAC.</span>'; return; }
+  res.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm"></span> Szukam...</span>';
+  try {
+    const r = await fetch('/api/mac/' + encodeURIComponent(mac));
+    const d = await r.json();
+    if (d.vendor) {
+      res.innerHTML = '<i class="bi bi-check-circle-fill text-success me-1"></i><strong>' + d.vendor + '</strong>';
+    } else {
+      res.innerHTML = '<i class="bi bi-x-circle text-muted me-1"></i><span class="text-muted">Nieznany producent (OUI nie znaleziony w bazie)</span>';
+    }
+  } catch {
+    res.innerHTML = '<span class="text-danger">Blad zapytania.</span>';
+  }
+});
+document.getElementById('macInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') document.getElementById('macLookupBtn').click();
+});
+
+// ── MAC DB Status + Vendor Browser ────────────────────────────────────────────
+(function () {
+  let _allVendors = [];
+  let _currentSort = 'count';
+  let _currentQ = '';
+  let _dbLoaded = false;
+
+  // Załaduj badge od razu (na stronie głównej — bez otwierania)
+  loadDbStatus();
+
+  // Załaduj pełną listę producentów dopiero po otwarciu accordion
+  document.getElementById('macLookupToggle').addEventListener('click', function() {
+    if (_dbLoaded) return;
+    _dbLoaded = true;
+    loadVendors();
+  });
+
+  async function loadDbStatus() {
+    try {
+      const d = await (await fetch('/api/mac/status')).json();
+      const badge = document.getElementById('macDbAgeBadge');
+      const cards = document.getElementById('macDbStatusCards');
+
+      // Badge w nagłówku: liczba wpisów + czy wymaga aktualizacji
+      const entries = d.entries || 0;
+      const needsUpdate = d.needs_update;
+      badge.textContent = entries.toLocaleString('pl') + ' wpisów' + (needsUpdate ? ' ⚠' : ' ✓');
+      badge.className = 'badge ms-2 small fw-normal ' + (needsUpdate ? 'bg-warning text-dark' : 'bg-success');
+
+      // Karty per źródło IEEE
+      const files = d.files || {};
+      const sources = ['IEEE MA-L', 'IEEE MA-M', 'IEEE MA-S'];
+      let html = '';
+      for (const name of sources) {
+        const f = files[name] || {};
+        if (f.exists) {
+          const age = f.age_days;
+          const sizeKb = f.size_kb || 0;
+          const ageClass = age > 60 ? 'text-danger' : age > 30 ? 'text-warning' : 'text-success';
+          html += `<div class="col-auto">
+            <div class="border rounded px-2 py-1 small" style="background:var(--bg3)">
+              <div class="fw-semibold">${name}</div>
+              <div class="${ageClass}"><i class="bi bi-clock me-1"></i>${age} dni temu</div>
+              <div class="text-muted">${(sizeKb/1024).toFixed(1)} MB</div>
+            </div>
+          </div>`;
+        } else {
+          html += `<div class="col-auto">
+            <div class="border rounded px-2 py-1 small border-secondary" style="background:var(--bg3)">
+              <div class="fw-semibold">${name}</div>
+              <div class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Brak pliku</div>
+            </div>
+          </div>`;
+        }
+      }
+      cards.innerHTML = html || '<div class="text-muted small col">Brak danych o bazach OUI.</div>';
+    } catch (e) {
+      document.getElementById('macDbStatusCards').innerHTML = '<div class="text-danger small col">Błąd pobierania statusu.</div>';
+    }
+  }
+
+  async function loadVendors() {
+    try {
+      const r = await fetch('/api/mac/vendors?sort=count&limit=500');
+      const d = await r.json();
+      _allVendors = d.vendors || [];
+      renderVendors();
+    } catch {
+      document.getElementById('vendorTableBody').innerHTML =
+        '<tr><td colspan="2" class="text-danger small ps-2">Błąd ładowania listy producentów.</td></tr>';
+    }
+  }
+
+  function renderVendors() {
+    const q = _currentQ.toLowerCase();
+    let rows = _allVendors.filter(v => !q || v.vendor.toLowerCase().includes(q));
+    if (_currentSort === 'name') {
+      rows.sort((a, b) => a.vendor.localeCompare(b.vendor));
+    } else {
+      rows.sort((a, b) => b.blocks - a.blocks || a.vendor.localeCompare(b.vendor));
+    }
+    const total = rows.length;
+    const show = rows.slice(0, 200);
+    const tbody = document.getElementById('vendorTableBody');
+    if (!show.length) {
+      tbody.innerHTML = '<tr><td colspan="2" class="text-muted small ps-2">Brak wyników.</td></tr>';
+      document.getElementById('vendorTotal').textContent = '';
+      document.getElementById('vendorShowMore').textContent = '';
+      return;
+    }
+    tbody.innerHTML = show.map(v =>
+      `<tr>
+        <td class="ps-2 py-1 small">${escHtml(v.vendor)}</td>
+        <td class="text-end pe-2 py-1 small font-monospace">${v.blocks}</td>
+      </tr>`
+    ).join('');
+    document.getElementById('vendorTotal').textContent = `${total.toLocaleString('pl')} producentów`;
+    document.getElementById('vendorShowMore').textContent =
+      total > 200 ? `Wyświetlono 200 z ${total.toLocaleString('pl')} — zawęź wyszukiwanie aby zobaczyć więcej.` : '';
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // Wyszukiwanie
+  document.getElementById('vendorSearch').addEventListener('input', function() {
+    _currentQ = this.value.trim();
+    renderVendors();
+  });
+
+  // Sortowanie dropdownem
+  document.getElementById('vendorSort').addEventListener('change', function() {
+    _currentSort = this.value;
+    renderVendors();
+  });
+
+  // Sortowanie przez klik w nagłówek tabeli
+  document.getElementById('thVendor').addEventListener('click', function() {
+    _currentSort = 'name';
+    document.getElementById('vendorSort').value = 'name';
+    renderVendors();
+  });
+  document.getElementById('thBlocks').addEventListener('click', function() {
+    _currentSort = 'count';
+    document.getElementById('vendorSort').value = 'count';
+    renderVendors();
+  });
+})();
+
+// ── Inline edit notatki sieci ──────────────────────────────────────────────────
+document.querySelectorAll('.notes-cell').forEach(function(cell) {
+  const netId   = cell.dataset.netId;
+  const display = cell.querySelector('.notes-display');
+  const editBtn = cell.querySelector('.notes-edit-btn');
+
+  function startEdit() {
+    if (cell.querySelector('input')) return;  // juz otwarte
+    const current = cell.dataset.notes;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = current;
+    input.maxLength = 255;
+    input.autocomplete = 'off';
+    input.className = 'form-control form-control-sm d-inline-block';
+    input.style.cssText = 'width:200px;font-size:.8rem;padding:1px 6px;height:auto;';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'btn btn-sm btn-success py-0 ms-1';
+    saveBtn.innerHTML = '<i class="bi bi-check-lg"></i>';
+    saveBtn.title = 'Zapisz';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn btn-sm btn-secondary py-0 ms-1';
+    cancelBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
+    cancelBtn.title = 'Anuluj';
+
+    display.style.display = 'none';
+    editBtn.style.display = 'none';
+    cell.appendChild(input);
+    cell.appendChild(saveBtn);
+    cell.appendChild(cancelBtn);
+    input.focus();
+    input.select();
+
+    async function save() {
+      const newNotes = input.value.trim();
+      saveBtn.disabled = cancelBtn.disabled = true;
+      saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+      try {
+        const r = await fetch('/networks/' + netId + '/notes', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({notes: newNotes}),
+        });
+        const d = await r.json();
+        if (d.ok) {
+          cell.dataset.notes = newNotes;
+          display.textContent = newNotes || '—';
+          display.className = 'notes-display ' + (newNotes ? 'text-light' : 'text-muted');
+        }
+      } catch {}
+      cleanup();
+    }
+
+    function cleanup() {
+      input.remove(); saveBtn.remove(); cancelBtn.remove();
+      display.style.display = '';
+      editBtn.style.display = '';
+    }
+
+    saveBtn.addEventListener('click', save);
+    cancelBtn.addEventListener('click', cleanup);
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') save();
+      if (e.key === 'Escape') cleanup();
+    });
+  }
+
+  editBtn.addEventListener('click', startEdit);
+  // Dwuklik na tekst notatki tez otwiera edycje
+  display.addEventListener('dblclick', startEdit);
+  display.style.cursor = 'default';
+  display.title = 'Dwuklik aby edytowac';
+});
+
+// ── Sortowanie i wyszukiwanie tabeli sieci ──────────────────────────────────
+(function() {
+  const table = document.getElementById('networksTable');
+  if (!table) return;
+  const tbody = table.querySelector('tbody');
+  const searchEl = document.getElementById('netSearch');
+  const countEl  = document.getElementById('netSearchCount');
+
+  let sortCol = 'active';
+  let sortDir = -1; // -1 = desc (największe najpierw)
+
+  function rowVal(tr, col) {
+    switch (col) {
+      case 'cidr':       return tr.dataset.cidr || '';
+      case 'active':     return parseInt(tr.dataset.active || '0', 10);
+      case 'inactive':   return parseInt(tr.dataset.inactive || '0', 10);
+      case 'maxhosts':   return parseInt(tr.dataset.maxhosts || '0', 10);
+      case 'first_seen': return tr.dataset.first || '';
+      case 'last_seen':  return tr.dataset.last || '';
+      case 'status':     return tr.dataset.status || '';
+      default:           return '';
+    }
+  }
+
+  function applyAll() {
+    const q = (searchEl ? searchEl.value.toLowerCase() : '');
+    const rows = Array.from(tbody.querySelectorAll('tr[data-cidr]'));
+
+    // Filtrowanie
+    let visible = 0;
+    rows.forEach(tr => {
+      const match = !q ||
+        (tr.dataset.cidr || '').toLowerCase().includes(q) ||
+        (tr.dataset.notes || '').toLowerCase().includes(q);
+      tr.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+
+    if (countEl) {
+      countEl.textContent = q ? `${visible} z ${rows.length}` : '';
+    }
+
+    // Sortowanie widocznych wierszy
+    const sorted = rows.filter(tr => tr.style.display !== 'none');
+    sorted.sort((a, b) => {
+      const va = rowVal(a, sortCol);
+      const vb = rowVal(b, sortCol);
+      if (typeof va === 'number') return (va - vb) * sortDir;
+      return va.localeCompare(vb) * sortDir;
+    });
+    sorted.forEach(tr => tbody.appendChild(tr));
+
+    // Ukryte wiersze na koniec
+    rows.filter(tr => tr.style.display === 'none').forEach(tr => tbody.appendChild(tr));
+  }
+
+  // Nagłówki
+  table.querySelectorAll('.net-sort').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (sortCol === col) {
+        sortDir *= -1;
+      } else {
+        sortCol = col;
+        sortDir = (col === 'active' || col === 'inactive' || col === 'maxhosts') ? -1 : 1;
+      }
+      // Aktualizuj ikonki
+      table.querySelectorAll('.net-sort .sort-icon').forEach(el => el.textContent = '↕');
+      th.querySelector('.sort-icon').textContent = sortDir === -1 ? '↓' : '↑';
+      applyAll();
+    });
+  });
+
+  if (searchEl) searchEl.addEventListener('input', applyAll);
+
+  // Inicjalne sortowanie po aktywnych (już posortowane z serwera, ale JS ustawia ikonkę)
+  const activeTh = table.querySelector('.net-sort[data-col="active"] .sort-icon');
+  if (activeTh) activeTh.textContent = '↓';
+})();
+</script>
+{% endblock %}
+{% endblock %}

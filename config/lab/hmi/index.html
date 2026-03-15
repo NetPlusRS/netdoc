@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>SCADA HMI — Panel Operatorski</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Courier New', monospace; background: #0a0a1a; color: #00ff88; min-height: 100vh;
+           display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .panel { border: 2px solid #00ff88; padding: 2rem; width: 380px; background: #0d1117; }
+    .header { text-align: center; margin-bottom: 1.5rem; }
+    .header h1 { font-size: 1rem; letter-spacing: 3px; color: #00ff88; }
+    .header .sub { font-size: .75rem; color: #558866; margin-top: .3rem; }
+    .field { margin-bottom: 1rem; }
+    .field label { display: block; font-size: .75rem; color: #558866; margin-bottom: .3rem; letter-spacing: 1px; }
+    .field input { width: 100%; background: #0a0a1a; border: 1px solid #00aa55; color: #00ff88;
+                   padding: .5rem .7rem; font-family: inherit; font-size: .9rem; outline: none; }
+    .field input:focus { border-color: #00ff88; }
+    .btn { width: 100%; background: #00aa55; border: none; color: #0a0a1a; padding: .6rem;
+           font-family: inherit; font-size: .85rem; cursor: pointer; letter-spacing: 2px; font-weight: bold; }
+    .btn:hover { background: #00ff88; }
+    .status { text-align: center; font-size: .7rem; color: #558866; margin-top: 1.5rem; letter-spacing: 1px; }
+    .blink { animation: blink 1s step-end infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <div class="header">
+      <h1>SCADA HMI v3.2</h1>
+      <div class="sub">Industrial Automation Control System</div>
+      <div class="sub">Schneider Electric Modicon M340</div>
+    </div>
+    <form method="POST" action="/login">
+      <div class="field">
+        <label>OPERATOR ID</label>
+        <input type="text" name="username" placeholder="Enter operator ID" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>ACCESS CODE</label>
+        <input type="password" name="password" placeholder="Enter access code">
+      </div>
+      <button type="submit" class="btn">AUTHORIZE ACCESS</button>
+    </form>
+    <div class="status">
+      <span class="blink">&bull;</span> SYSTEM ONLINE &bull; PLC STATUS: RUNNING &bull;
+      MODBUS/TCP PORT 502 ACTIVE
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,44 @@
+global:
+  scrape_interval: 60s
+  evaluation_interval: 60s
+
+scrape_configs:
+  - job_name: "netdoc-api"
+    static_configs:
+      - targets: ["host.docker.internal:8000"]
+    metrics_path: /metrics
+
+  - job_name: "netdoc-ping"
+    static_configs:
+      - targets: ["host.docker.internal:8001"]
+    metrics_path: /metrics
+    scrape_interval: 5s    # czesciej niz domyslne 60s — ping zmienia sie dynamicznie
+
+  - job_name: "netdoc-snmp"
+    static_configs:
+      - targets: ["host.docker.internal:8002"]
+    metrics_path: /metrics
+    scrape_interval: 30s
+
+  - job_name: "netdoc-cred"
+    static_configs:
+      - targets: ["host.docker.internal:8003"]
+    metrics_path: /metrics
+    scrape_interval: 30s
+  - job_name: "netdoc-vuln"
+    static_configs:
+      - targets: ["host.docker.internal:8004"]
+    metrics_path: /metrics
+    scrape_interval: 60s
+
+  - job_name: "netdoc-community"
+    static_configs:
+      - targets: ["host.docker.internal:8006"]
+    metrics_path: /metrics
+    scrape_interval: 60s
+
+  - job_name: "netdoc-internet"
+    static_configs:
+      - targets: ["host.docker.internal:8005"]
+    metrics_path: /metrics
+    scrape_interval: 30s

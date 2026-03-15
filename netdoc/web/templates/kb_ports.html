@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+{% block title %}Porty KB — NetDoc{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center mb-3 gap-2 flex-wrap">
+  <h4 class="mb-0"><i class="bi bi-plug me-2 text-info"></i>Encyklopedia portów sieciowych</h4>
+  <span class="badge bg-secondary ms-1">{{ total }} portów w bazie</span>
+  <span class="badge bg-secondary ms-1" id="kbVisibleCount"></span>
+</div>
+
+{# ── Filtry ──────────────────────────────────────────────────────────────────── #}
+<form method="get" class="row g-2 mb-2 align-items-end" id="kbFilterForm">
+  <div class="col-sm-4 col-md-3">
+    <input type="text" name="q" value="{{ search }}" class="form-control form-control-sm"
+           id="kbSearch" placeholder="Szukaj: port, nazwa, vendor…" autocomplete="off">
+  </div>
+  <div class="col-sm-3 col-md-2">
+    <select name="cat" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">Wszystkie kategorie</option>
+      {% for key, label in categories.items() %}
+        <option value="{{ key }}" {% if cat_filter == key %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-sm-2 col-md-2">
+    <select name="risk" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">Wszystkie ryzyka</option>
+      <option value="critical" {% if risk_filter=='critical' %}selected{% endif %}>🔴 Krytyczne</option>
+      <option value="high"     {% if risk_filter=='high'     %}selected{% endif %}>🟠 Wysokie</option>
+      <option value="medium"   {% if risk_filter=='medium'   %}selected{% endif %}>🟡 Średnie</option>
+      <option value="low"      {% if risk_filter=='low'      %}selected{% endif %}>🟢 Niskie</option>
+      <option value="info"     {% if risk_filter=='info'     %}selected{% endif %}>ℹ️ Info</option>
+    </select>
+  </div>
+  <div class="col-auto">
+    <div class="form-check form-check-inline mt-1">
+      <input class="form-check-input" type="checkbox" name="ot" value="1" id="otOnly"
+             {% if ot_filter=='1' %}checked{% endif %} onchange="this.form.submit()">
+      <label class="form-check-label small" for="otOnly">Tylko OT/SCADA</label>
+    </div>
+  </div>
+  {% if known_networks %}
+  <div class="col-sm-3 col-md-2">
+    <select name="net" class="form-select form-select-sm" onchange="this.form.submit()"
+            title="Filtruj urządzenia według sieci">
+      <option value="">Wszystkie sieci</option>
+      {% for n in known_networks if n.is_local %}
+      <option value="{{ n.cidr }}" {% if net_filter == n.cidr %}selected{% endif %}>
+        📡 {{ n.cidr }}{% if n.notes %} — {{ n.notes }}{% endif %}
+      </option>
+      {% endfor %}
+      {% set has_other = known_networks | selectattr('is_local','equalto',false) | list %}
+      {% if has_other %}
+      <option disabled>──────────</option>
+      {% for n in known_networks if not n.is_local %}
+      <option value="{{ n.cidr }}" {% if net_filter == n.cidr %}selected{% endif %}>
+        {{ n.cidr }}{% if n.notes %} — {{ n.notes }}{% endif %}
+      </option>
+      {% endfor %}
+      {% endif %}
+    </select>
+  </div>
+  {% endif %}
+  <div class="col-auto">
+    <a href="/kb/ports" class="btn btn-sm btn-outline-secondary">Reset</a>
+  </div>
+</form>
+
+{# ── Toggle: zagrożenia na moich urządzeniach ─────────────────────────────── #}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <button type="button" id="threatToggle"
+          class="btn btn-sm"
+          onclick="kbFilters.toggleThreats()"
+          title="Pokaż tylko porty wykryte na Twoich urządzeniach">
+    <i class="bi bi-shield-exclamation me-1"></i>Tylko zagrożenia na moich urządzeniach
+  </button>
+  <span class="text-muted small" id="kbThreatInfo"></span>
+</div>
+
+{# ── Wyniki ──────────────────────────────────────────────────────────────────── #}
+{% if not entries %}
+  <div class="alert alert-secondary">Brak wyników dla podanych filtrów.</div>
+{% else %}
+  <p class="text-muted small mb-3">
+    Znaleziono: <strong id="kbFoundCount">{{ entries|length }}</strong> wpisów
+  </p>
+
+  {% set risk_badge = {
+    'critical': 'danger',
+    'high':     'warning',
+    'medium':   'info',
+    'low':      'success',
+    'info':     'secondary',
+  } %}
+  {% set risk_label = {
+    'critical': 'Krytyczne',
+    'high':     'Wysokie',
+    'medium':   'Średnie',
+    'low':      'Niskie',
+    'info':     'Info',
+  } %}
+
+  {# Komunikat gdy filtr zagrożeń aktywny i nic nie pasuje #}
+  <div id="kbNoThreats" class="alert alert-success d-none">
+    <i class="bi bi-shield-check me-2"></i>
+    Żaden z portów w tej kategorii nie został wykryty na Twoich urządzeniach.
+  </div>
+
+  <div class="row g-3" id="kbGrid">
+  {% for entry in entries | sort(attribute='port') %}
+    {% set devs = port_devices.get(entry.port, []) %}
+    {% set search_text = (entry.port|string ~ ' ' ~ entry.service ~ ' ' ~ entry.desc ~ ' ' ~ entry.vendors|join(' ')) | lower %}
+    <div class="col-12 col-xl-6 kb-port-card"
+         data-has-devices="{{ '1' if devs else '0' }}"
+         data-search-text="{{ search_text }}">
+      <div class="card h-100 border-0 bg-dark-subtle">
+        <div class="card-body p-3">
+          {# Nagłówek: numer portu + service + OT badge + ryzyko #}
+          <div class="d-flex align-items-start justify-content-between mb-1">
+            <div>
+              <span class="badge bg-secondary font-monospace fs-6 me-2">{{ entry.port }}/{{ entry.proto }}</span>
+              <strong>{{ entry.service }}</strong>
+              {% if entry.get('ot') %}
+                <span class="badge bg-warning text-dark ms-1" title="Protokół przemysłowy / OT">OT</span>
+              {% endif %}
+            </div>
+            <span class="badge bg-{{ risk_badge[entry.risk] }} ms-1 flex-shrink-0">
+              {{ risk_label[entry.risk] }}
+            </span>
+          </div>
+
+          {# Opis #}
+          <p class="text-muted small mb-2">{{ entry.desc }}</p>
+
+          {# Vendors #}
+          <div class="mb-2 small text-muted">
+            <i class="bi bi-buildings me-1"></i>{{ entry.vendors | join(', ') }}
+          </div>
+
+          {# Risk note #}
+          {% if entry.risk != 'info' %}
+          <div class="alert alert-{{ risk_badge[entry.risk] }} py-1 px-2 mb-2 small">
+            <i class="bi bi-{% if entry.risk in ('critical','high') %}exclamation-triangle-fill{% else %}info-circle{% endif %} me-1"></i>
+            {{ entry.risk_note }}
+          </div>
+          {% endif %}
+
+          {# Lista urządzeń z otwartym portem #}
+          {% if devs %}
+          <div class="mt-2">
+            <div class="d-flex align-items-center gap-1 mb-1">
+              <span class="small fw-semibold text-info">
+                <i class="bi bi-hdd-network me-1"></i>Wykryto na {{ devs|length }} urządzeniu(-ach):
+              </span>
+            </div>
+            <div class="d-flex flex-wrap gap-1 align-items-start">
+              {% for dev in devs %}
+              <div class="d-flex align-items-center gap-1 mb-1">
+                {% if dev.accepted %}
+                  {# Zaakceptowane ryzyko — badge z informacją #}
+                  <span class="badge bg-success font-monospace"
+                        title="Ryzyko zaakceptowane{% if dev.accept_reason %}: {{ dev.accept_reason }}{% endif %} · skan: {{ dev.scan_type }} {{ dev.scan_date }}">
+                    <i class="bi bi-shield-check me-1"></i>{{ dev.hostname or dev.ip }}
+                  </span>
+                  <form method="post" action="/kb/ports/revoke" style="display:inline">
+                    <input type="hidden" name="device_id" value="{{ dev.id }}">
+                    <input type="hidden" name="port" value="{{ entry.port }}">
+                    <button type="submit" class="btn btn-sm p-0 border-0 text-muted"
+                            style="font-size:.7rem;line-height:1"
+                            title="Cofnij akceptację">✕</button>
+                  </form>
+                {% else %}
+                  {# Niezaakceptowane — pokaż urządzenie + przycisk akceptacji #}
+                  <a href="/devices#row-{{ dev.id }}" class="text-decoration-none">
+                    <span class="badge {% if dev.is_active %}bg-danger{% else %}bg-secondary{% endif %} font-monospace"
+                          title="{{ dev.hostname or dev.ip }} — skan: {{ dev.scan_type }} {{ dev.scan_date }}">
+                      {{ dev.hostname or dev.ip }}
+                    </span>
+                  </a>
+                  <button type="button"
+                          class="btn btn-sm p-0 border-0 text-muted"
+                          style="font-size:.7rem;line-height:1"
+                          title="Akceptuj ryzyko (port {{ entry.port }} na tym urządzeniu jest znany i zaakceptowany)"
+                          onclick="kbAccept({{ dev.id }}, {{ entry.port }}, '{{ dev.hostname or dev.ip }}')">
+                    <i class="bi bi-shield-plus"></i>
+                  </button>
+                {% endif %}
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% else %}
+          <div class="small text-muted mt-2">
+            <i class="bi bi-check-circle text-success me-1"></i>Nie wykryto w żadnym urządzeniu
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+  </div>
+{% endif %}
+
+{# ── Modal akceptacji ryzyka ──────────────────────────────────────────────── #}
+<div class="modal fade" id="acceptModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title"><i class="bi bi-shield-plus me-2"></i>Akceptuj ryzyko</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/kb/ports/accept">
+        <div class="modal-body py-2">
+          <input type="hidden" name="device_id" id="acceptDeviceId">
+          <input type="hidden" name="port"      id="acceptPort">
+          <p class="small text-muted mb-2" id="acceptDesc"></p>
+          <input type="text" name="reason" class="form-control form-control-sm"
+                 placeholder="Powód akceptacji (opcjonalnie)…" maxlength="200">
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+          <button type="submit" class="btn btn-sm btn-success">
+            <i class="bi bi-shield-check me-1"></i>Akceptuję ryzyko
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── KB Ports: live search + threats toggle + akceptacja ───────────────────────
+(function() {
+  const cards    = () => [...document.querySelectorAll(".kb-port-card")];
+  const countEl  = document.getElementById("kbFoundCount");
+  const infoEl   = document.getElementById("kbThreatInfo");
+  const noThreat = document.getElementById("kbNoThreats");
+  const toggleBtn = document.getElementById("threatToggle");
+
+  const kbFilters = window.kbFilters = {
+    threatsOnly: JSON.parse(localStorage.getItem("kbThreatsOnly") ?? "true"),
+    searchQ: (document.getElementById("kbSearch") || {}).value || "",
+
+    apply() {
+      const q = this.searchQ.trim().toLowerCase();
+      let visible = 0, hasDevices = 0;
+      cards().forEach(card => {
+        const matchSearch = !q || card.dataset.searchText.includes(q);
+        const matchThreat = !this.threatsOnly || card.dataset.hasDevices === "1";
+        const show = matchSearch && matchThreat;
+        card.style.display = show ? "" : "none";
+        if (show) { visible++; if (card.dataset.hasDevices === "1") hasDevices++; }
+      });
+      if (countEl) countEl.textContent = visible;
+      if (noThreat) noThreat.classList.toggle("d-none", hasDevices > 0 || !this.threatsOnly);
+      this._updateToggle();
+    },
+
+    toggleThreats() {
+      this.threatsOnly = !this.threatsOnly;
+      localStorage.setItem("kbThreatsOnly", JSON.stringify(this.threatsOnly));
+      this.apply();
+    },
+
+    _updateToggle() {
+      if (!toggleBtn) return;
+      const on = this.threatsOnly;
+      toggleBtn.className = on
+        ? "btn btn-sm btn-warning"
+        : "btn btn-sm btn-outline-secondary";
+      if (infoEl) infoEl.textContent = on ? "filtr aktywny" : "";
+    },
+  };
+
+  // Live search
+  const searchInput = document.getElementById("kbSearch");
+  if (searchInput) {
+    searchInput.addEventListener("input", function() {
+      kbFilters.searchQ = this.value;
+      kbFilters.apply();
+    });
+    // Nie submittuj formy po Enter w polu wyszukiwania — live search wystarczy
+    searchInput.addEventListener("keydown", function(e) {
+      if (e.key === "Enter") e.preventDefault();
+    });
+  }
+
+  // Inicjalizacja
+  kbFilters.apply();
+})();
+
+// Akceptacja ryzyka — otwiera modal z danymi
+function kbAccept(deviceId, port, label) {
+  document.getElementById("acceptDeviceId").value = deviceId;
+  document.getElementById("acceptPort").value      = port;
+  document.getElementById("acceptDesc").textContent =
+    "Port " + port + " na urządzeniu " + label + " zostanie oznaczony jako świadomie zaakceptowany.";
+  var modal = new bootstrap.Modal(document.getElementById("acceptModal"));
+  modal.show();
+}
+</script>
+{% endblock %}

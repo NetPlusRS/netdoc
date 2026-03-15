@@ -1,0 +1,2223 @@
+{% extends "base.html" %}
+{% block title %}Urzadzenia{% endblock %}
+
+{% block content %}
+{% if ai_assessment_enabled %}
+{# Toast — wskaźnik postępu AI przetwarzania #}
+<div class="position-fixed top-0 end-0 p-3" style="z-index:9999">
+  <div id="aiProgressToast" class="toast align-items-center text-bg-info border-0" role="alert" aria-atomic="true" style="display:none">
+    <div class="d-flex">
+      <div class="toast-body d-flex align-items-center gap-2">
+        <div class="spinner-border spinner-border-sm" role="status"></div>
+        <span id="aiProgressToastMsg">Analizuję urządzenie…</span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h5 class="mb-0"><i class="bi bi-pc-display me-2"></i>Urzadzenia ({{ devices|length }})</h5>
+</div>
+
+{# ── Filtr sieci (pokazywany gdy aktywny) ────────────────────────────────── #}
+<div id="cidrFilterBanner" class="alert alert-info d-flex align-items-center gap-2 py-2 mb-2" style="display:none!important">
+  <i class="bi bi-diagram-3 flex-shrink-0"></i>
+  <div class="flex-grow-1 small">
+    Widoczne tylko urzadzenia z sieci: <strong id="cidrFilterLabel"></strong>
+  </div>
+  <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="cidrFilterClear">
+    <i class="bi bi-x-lg me-1"></i>Pokaz wszystkie
+  </button>
+</div>
+
+{# ── Ostrzezenie o przestarzalych danych monitoringu ────────────────────── #}
+<div id="monitoring-stale-banner"
+     class="alert alert-warning d-flex align-items-center gap-2 py-2 mb-2"
+     role="alert" style="display:none">
+  <i class="bi bi-exclamation-triangle-fill flex-shrink-0"></i>
+  <div>
+    <strong>Ping-worker moze nie dzialac</strong> — ostatni kontakt z jakimkolwiek urzadzeniem:
+    <span id="monitoring-age-text">
+    {% if monitoring_age_min >= 60 %}
+      {{ (monitoring_age_min // 60) }}h {{ (monitoring_age_min % 60) }}min temu
+    {% elif monitoring_age_min >= 2 %}
+      {{ monitoring_age_min }} min temu
+    {% else %}
+      przed chwila
+    {% endif %}
+    </span>
+    (prog alertu: &ge;{{ stale_threshold_min }}min). Statusy UP moga byc nieaktualne.
+  </div>
+</div>
+
+{# ── Pasek podsumowania ──────────────────────────────────────────────────── #}
+<div class="d-flex flex-wrap gap-2 mb-2 align-items-center">
+  <span class="badge rounded-pill bg-secondary fs-6 px-3 py-2"
+        title="Wszystkie wykryte urządzenia">
+    <i class="bi bi-pc-display me-1"></i>{{ summary.total }}
+  </span>
+  <span class="badge rounded-pill px-3 py-2 fs-6"
+        style="background:#238636"
+        title="{{ summary.up }} urządzeń odpowiada na ping">
+    <i class="bi bi-circle-fill me-1" style="font-size:.6rem"></i>{{ summary.up }} UP
+  </span>
+  {% if summary.down > 0 %}
+  <span class="badge rounded-pill bg-danger px-3 py-2 fs-6"
+        title="{{ summary.down }} urządzeń nie odpowiada">
+    <i class="bi bi-circle me-1" style="font-size:.6rem"></i>{{ summary.down }} DOWN
+  </span>
+  {% endif %}
+  <span class="badge rounded-pill px-3 py-2 fs-6"
+        style="background:{% if summary.no_full_scan == 0 %}#238636{% else %}#9e6a03{% endif %}"
+        title="{% if summary.no_full_scan == 0 %}Wszystkie urządzenia mają pełny skan{% else %}{{ summary.no_full_scan }} urządzeń nie ma jeszcze pełnego skanu (1-65535){% endif %}">
+    <i class="bi bi-search me-1"></i>
+    {% if summary.no_full_scan == 0 %}Pełny skan: wszystkie
+    {% else %}{{ summary.no_full_scan }} bez pełnego skanu{% endif %}
+  </span>
+  <span class="badge rounded-pill px-3 py-2 fs-6"
+        style="background:{% if summary.no_vulns == summary.total %}#238636{% else %}#6c757d{% endif %}"
+        title="{{ summary.no_vulns }} urządzeń bez otwartych podatności">
+    <i class="bi bi-shield-check me-1"></i>{{ summary.no_vulns }} bez podatności
+  </span>
+  {% if summary.critical > 0 %}
+  <span class="badge rounded-pill bg-danger px-3 py-2 fs-6"
+        title="{{ summary.critical }} urządzeń z podatnością CRITICAL">
+    <i class="bi bi-exclamation-triangle-fill me-1"></i>{{ summary.critical }} krytyczne
+  </span>
+  {% endif %}
+</div>
+
+{# ── Hosty do uwagi — wypełniane dynamicznie przez JS po filtrze ── #}
+<div id="devAlerts" class="d-flex flex-wrap gap-2 mb-3 align-items-center" style="min-height:0"></div>
+
+{% if scan_job and scan_job != "-" and scanning_ips %}
+<div class="alert alert-info py-2 mb-3 d-flex align-items-center gap-2">
+  <span class="spinner-border spinner-border-sm" role="status"></span>
+  <strong>Full scan w toku</strong> — {{ scan_progress or "uruchamianie…" }}
+  &nbsp;·&nbsp; {{ scanning_ips|length }} urządzeń:
+  <span class="font-monospace small">{{ scanning_ips|sort|join(", ") }}</span>
+</div>
+{% endif %}
+{# ── Pasek filtrów ────────────────────────────────────────────────────────── #}
+<div class="d-flex flex-wrap gap-2 align-items-center mb-2" id="devFiltersBar">
+  <div class="input-group input-group-sm" style="width:220px;flex-shrink:0">
+    <span class="input-group-text"><i class="bi bi-search"></i></span>
+    <input type="search" id="devSearch" class="form-control form-control-sm"
+           placeholder="IP, hostname, MAC, vendor…" autocomplete="off">
+  </div>
+  <button class="btn btn-sm btn-outline-secondary dev-filter-toggle" data-filter="inactive"
+          title="Ukryj urządzenia nieaktywne (DOWN)">
+    <i class="bi bi-eye-slash me-1"></i>Nieaktywne
+  </button>
+  <button class="btn btn-sm btn-outline-secondary dev-filter-toggle" data-filter="trusted"
+          title="Ukryj urządzenia oznaczone jako zaufane">
+    <i class="bi bi-shield-check me-1"></i>Zaufane
+  </button>
+  <button class="btn btn-sm btn-outline-secondary dev-filter-toggle" data-filter="no-vulns"
+          title="Ukryj urządzenia bez otwartych zagrożeń">
+    <i class="bi bi-shield me-1"></i>Bez zagrożeń
+  </button>
+  <button class="btn btn-sm btn-outline-secondary dev-filter-toggle" data-filter="no-cred"
+          title="Pokaż tylko urządzenia bez znanych credentials">
+    <i class="bi bi-key me-1"></i>Bez dostępu
+  </button>
+  <button class="btn btn-sm btn-outline-secondary dev-filter-toggle" data-filter="dhcp"
+          title="Pokaż tylko urządzenia z DHCP (bez stałego IP)">
+    <i class="bi bi-arrow-repeat me-1"></i>DHCP
+  </button>
+  <button class="btn btn-sm btn-outline-secondary dev-filter-toggle" data-filter="only-flag"
+          title="Pokaż tylko urządzenia z flagą">
+    <i class="bi bi-flag me-1"></i>Z flagą
+  </button>
+  {% if known_networks %}
+  {% set top_local_cidr = top_local_cidr | default("") %}
+  {% set has_local = namespace(v=false) %}
+  {% set has_other = namespace(v=false) %}
+  {% for n in known_networks %}
+    {% if n.is_local %}{% set has_local.v = true %}{% else %}{% set has_other.v = true %}{% endif %}
+  {% endfor %}
+  <select id="devNetworkFilter" class="form-select form-select-sm" style="width:auto;min-width:220px;flex-shrink:0"
+          title="Filtruj urządzenia według sieci">
+    <option value="">Wszystkie sieci</option>
+    {% for n in known_networks if n.is_local %}
+    {% set is_top = (n.cidr == top_local_cidr) %}
+    <option value="{{ n.cidr }}">{% if is_top %}★ {% else %}📡 {% endif %}{{ n.cidr }} ({{ n.count }}){% if n.notes %} — {{ n.notes }}{% elif is_top %} — główna sieć{% endif %}</option>
+    {% endfor %}
+    {% if has_local.v and has_other.v %}
+    <option disabled>──────────────</option>
+    {% endif %}
+    {% for n in known_networks if not n.is_local %}
+    <option value="{{ n.cidr }}">{{ n.cidr }}{% if n.count %} ({{ n.count }}){% endif %}{% if n.notes %} — {{ n.notes }}{% endif %}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+  <button class="btn btn-sm btn-outline-secondary" type="button"
+          data-bs-toggle="collapse" data-bs-target="#devAdvFilters"
+          title="Zaawansowane filtry">
+    <i class="bi bi-funnel me-1"></i>Więcej…
+  </button>
+  <button class="btn btn-sm btn-link text-muted p-0" id="devFilterReset" title="Resetuj wszystkie filtry">
+    <i class="bi bi-x-circle me-1"></i>Resetuj
+  </button>
+  {% if ai_assessment_enabled and ai_last_by_device %}
+  <a href="/devices/ai-report" target="_blank"
+     class="btn btn-sm btn-outline-info ms-auto"
+     title="Generuj raport PDF/HTML z ocen AI dla wszystkich przebadanych urządzeń">
+    <i class="bi bi-file-earmark-text me-1"></i>Raport AI
+    <span class="badge bg-info text-dark ms-1">{{ ai_last_by_device|length }}</span>
+  </a>
+  {% endif %}
+  <span class="text-muted small {% if not (ai_assessment_enabled and ai_last_by_device) %}ms-auto{% endif %}" id="devCount"></span>
+</div>
+
+<div class="collapse mb-2" id="devAdvFilters">
+  <div class="card card-body py-2 d-flex flex-wrap gap-3 flex-row">
+    <div>
+      <small class="text-muted d-block mb-1">Typ urządzenia</small>
+      <div class="d-flex flex-wrap gap-1">
+        {% for _t in ["router","switch","ap","firewall","server","workstation","phone","camera","printer","iot","nas","inverter","unknown"] %}
+        <button class="btn btn-sm btn-outline-secondary dev-type-btn" data-type="{{ _t }}">{{ _t }}</button>
+        {% endfor %}
+      </div>
+    </div>
+    <div>
+      <small class="text-muted d-block mb-1">Adresacja IP</small>
+      <div class="d-flex gap-1">
+        <button class="btn btn-sm btn-outline-info dev-iptype-btn" data-iptype="static"><i class="bi bi-lock-fill me-1"></i>Static</button>
+        <button class="btn btn-sm btn-outline-info dev-iptype-btn" data-iptype="dhcp"><i class="bi bi-arrow-repeat me-1"></i>DHCP</button>
+        <button class="btn btn-sm btn-outline-secondary dev-iptype-btn" data-iptype="unknown"><i class="bi bi-question-circle me-1"></i>Unknown</button>
+      </div>
+    </div>
+    <div>
+      <small class="text-muted d-block mb-1">Kolor flagi</small>
+      <div class="d-flex gap-1 align-items-center">
+        {% for _c, _hex in [("red","#dc3545"),("orange","#fd7e14"),("yellow","#ffc107"),("green","#198754"),("blue","#0d6efd"),("purple","#6f42c1")] %}
+        <button class="btn btn-sm dev-flag-btn"
+                data-flag="{{ _c }}"
+                style="background:{{ _hex }};border:2px solid {{ _hex }};color:white;width:28px;height:28px;padding:0"
+                title="Flaga {{ _c }}"></button>
+        {% endfor %}
+        <button class="btn btn-sm btn-outline-secondary dev-flag-btn"
+                data-flag=""
+                style="width:28px;height:28px;padding:0" title="Bez flagi"><i class="bi bi-x"></i></button>
+      </div>
+    </div>
+    <div>
+      <small class="text-muted d-block mb-1">SNMP</small>
+      <div class="d-flex gap-1">
+        <button class="btn btn-sm btn-outline-success dev-snmp-btn" data-snmp="ok"
+                title="Pokaż tylko urządzenia z działającym SNMP"><i class="bi bi-check-circle me-1"></i>SNMP OK</button>
+        <button class="btn btn-sm btn-outline-secondary dev-snmp-btn" data-snmp="none"
+                title="Pokaż urządzenia bez dostępu SNMP"><i class="bi bi-x-circle me-1"></i>Bez SNMP</button>
+      </div>
+    </div>
+    <div>
+      <small class="text-muted d-block mb-1">Min. podatności</small>
+      <div class="d-flex gap-1">
+        {% for _v in [1,3,5,10] %}
+        <button class="btn btn-sm btn-outline-warning dev-minvuln-btn" data-minvuln="{{ _v }}">{{ _v }}+</button>
+        {% endfor %}
+      </div>
+    </div>
+    <div>
+      <small class="text-muted d-block mb-1">Min. severity</small>
+      <div class="d-flex gap-1">
+        <button class="btn btn-sm btn-outline-danger dev-sev-btn" data-sev="critical">Critical</button>
+        <button class="btn btn-sm btn-outline-warning dev-sev-btn" data-sev="high">High</button>
+        <button class="btn btn-sm btn-outline-info dev-sev-btn" data-sev="medium">Medium</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Globalny przycisk czyszczenia wyników portów ─────────────────────── #}
+<div class="d-flex justify-content-end mb-2 gap-2" id="bulkClearBar" style="display:none!important">
+  <button class="btn btn-sm btn-outline-secondary"
+          onclick="document.getElementById('bulkClearModal').style.display=''; new bootstrap.Modal(document.getElementById('bulkClearModal')).show()"
+          title="Usuwa wyniki skanowania portów dla urządzeń widocznych w tabeli (wg aktywnego filtra)">
+    <i class="bi bi-eraser me-1"></i>Wyczyść porty (widoczne)
+  </button>
+  <button class="btn btn-sm btn-outline-danger"
+          onclick="document.getElementById('bulkClearAllModal').style.display=''; new bootstrap.Modal(document.getElementById('bulkClearAllModal')).show()"
+          title="Usuwa wyniki skanowania portów dla WSZYSTKICH urządzeń">
+    <i class="bi bi-x-circle me-1"></i>Wyczyść porty (wszystkie)
+  </button>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+    <table class="table table-hover table-sm mb-0">
+      <thead>
+        <tr>
+          <th class="dev-sortable" data-col="ip" style="cursor:pointer;white-space:nowrap">
+            IP <i class="bi bi-arrow-down-up text-muted sort-icon" style="font-size:.7rem"></i></th>
+          <th class="dev-sortable" data-col="hostname" style="cursor:pointer;white-space:nowrap">
+            Hostname <i class="bi bi-arrow-down-up text-muted sort-icon" style="font-size:.7rem"></i></th>
+          <th class="dev-sortable" data-col="type" style="cursor:pointer;white-space:nowrap">
+            Typ <i class="bi bi-arrow-down-up text-muted sort-icon" style="font-size:.7rem"></i></th>
+          <th class="dev-sortable" data-col="vendor" style="cursor:pointer;white-space:nowrap">
+            Vendor <i class="bi bi-arrow-down-up text-muted sort-icon" style="font-size:.7rem"></i></th>
+          <th>MAC</th>
+          <th class="dev-sortable" data-col="active" style="cursor:pointer;white-space:nowrap">
+            Status <i class="bi bi-arrow-down-up text-muted sort-icon" style="font-size:.7rem"></i></th>
+          <th class="dev-sortable" data-col="snmp" style="cursor:pointer;white-space:nowrap"
+              title="SNMP — czy mamy dostęp do urządzenia przez SNMP i która community działa">
+            SNMP <i class="bi bi-arrow-down-up text-muted sort-icon" style="font-size:.7rem"></i></th>
+          <th title="Dostep (credentials)"><i class="bi bi-key"></i></th>
+          <th class="dev-sortable" data-col="vulns" style="cursor:pointer;white-space:nowrap"
+              title="Otwarte podatnosci — kliknij aby sortować">
+            <i class="bi bi-shield-exclamation"></i> <i class="bi bi-arrow-down-up text-muted sort-icon" style="font-size:.7rem"></i></th>
+          <th class="dev-sortable" data-col="lastseen" style="cursor:pointer;white-space:nowrap">
+            Ostatni kontakt <i class="bi bi-arrow-down-up text-muted sort-icon" style="font-size:.7rem"></i></th>
+          <th class="dev-sortable" data-col="ports" style="cursor:pointer;white-space:nowrap"
+              title="Liczba otwartych portów z ostatniego skanu — kliknij aby sortować">
+            <i class="bi bi-ethernet"></i> <i class="bi bi-arrow-down-up text-muted sort-icon" style="font-size:.7rem"></i></th>
+          <th title="Pełny skan portów 1-65535"><i class="bi bi-search"></i></th>
+          <th>Akcje</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in devices %}
+        {% set vuln_cnt = vuln_counts.get(d.id, 0) %}
+        {% set vuln_sev = vuln_severity.get(d.id, '') %}
+        {% set cred = cred_by_device.get(d.id) %}
+        {% set stats = device_stats.get(d.id, {}) %}
+        {% set cscan = cred_scan_by_device.get(d.id, {}) %}
+        <tr id="row-{{ d.id }}"
+            data-id="{{ d.id }}"
+            data-ip="{{ d.ip }}"
+            data-hostname="{{ (d.hostname or '')|lower }}"
+            data-mac="{{ (d.mac or '')|lower }}"
+            data-vendor="{{ (d.vendor or '')|lower }}"
+            data-active="{{ '1' if d.is_active else '0' }}"
+            data-trusted="{{ '1' if d.is_trusted else '0' }}"
+            data-vulns="{{ vuln_cnt }}"
+            data-severity="{{ vuln_sev }}"
+            data-iptype="{{ d.ip_type }}"
+            data-flag="{{ d.flag_color or '' }}"
+            data-type="{{ d.device_type.value if d.device_type else 'unknown' }}"
+            data-cred="{{ '1' if cred else '0' }}"
+            data-monitored="{{ '1' if d.is_monitored else '0' }}"
+            data-ports="{{ stats.get('display_port_count', -1) }}"
+            data-lastseen="{{ d.last_seen.isoformat() if d.last_seen else '' }}"
+            data-snmp="{{ '2' if d.snmp_community else '0' }}"
+            >
+          <td class="font-monospace">
+            {% if d.ip in scanning_ips %}
+            <span class="spinner-grow spinner-grow-sm text-info me-1"
+                  title="Full scan w toku dla tego urządzenia"></span>
+            {% endif %}
+            {% if d.id in screenshot_device_ids %}
+            <span class="ip-preview-trigger"
+                  data-device-id="{{ d.id }}"
+                  data-ip="{{ d.ip }}"
+                  title="Podgląd HTTP — kliknij aby odświeżyć"
+                  style="cursor:pointer; border-bottom:1px dashed #6c757d;">{{ d.ip }}</span>
+            {% else %}{{ d.ip }}{% endif %}
+            {% if d.ip_type == 'static' %}
+              <i class="bi bi-lock-fill text-secondary ms-1" style="font-size:.7rem;"
+                 title="Adres statyczny — przypisany ręcznie"></i>
+            {% elif d.ip_type == 'dhcp' %}
+              <i class="bi bi-arrow-repeat text-info ms-1" style="font-size:.7rem;"
+                 title="Adres DHCP — przydzielany dynamicznie"></i>
+            {% else %}
+              <i class="bi bi-question-circle text-muted ms-1" style="font-size:.7rem;opacity:.4;"
+                 title="Typ adresacji nieznany — kliknij ⋮ → Oznacz typ IP"></i>
+            {% endif %}
+          </td>
+          <td>{{ d.hostname or "—" }}</td>
+          <td>
+            {%- set _dt = d.device_type.value if d.device_type else "unknown" -%}
+            {%- set _dt_icon = {
+              "router":      "bi-router",
+              "switch":      "bi-diagram-3",
+              "ap":          "bi-wifi",
+              "firewall":    "bi-shield-lock",
+              "server":      "bi-server",
+              "workstation": "bi-pc-display",
+              "phone":       "bi-phone",
+              "camera":      "bi-camera-video",
+              "printer":     "bi-printer",
+              "iot":         "bi-cpu",
+              "nas":         "bi-hdd-stack",
+              "inverter":    "bi-lightning-charge",
+              "unknown":     "bi-question-circle",
+            } -%}
+            {%- set _dt_color = {
+              "router":      "bg-primary",
+              "switch":      "bg-primary bg-opacity-75",
+              "ap":          "bg-info text-dark",
+              "firewall":    "bg-danger",
+              "server":      "bg-secondary",
+              "workstation": "bg-success bg-opacity-75",
+              "phone":       "bg-success",
+              "camera":      "bg-warning text-dark",
+              "printer":     "bg-info text-dark",
+              "iot":         "bg-warning text-dark",
+              "nas":         "bg-secondary",
+              "inverter":    "bg-warning text-dark",
+              "unknown":     "bg-dark",
+            } -%}
+            <span class="badge {{ _dt_color.get(_dt, 'bg-dark') }}" title="{{ _dt }}">
+              <i class="bi {{ _dt_icon.get(_dt, 'bi-question-circle') }} me-1"></i>{{ _dt }}
+            </span>
+          </td>
+          <td class="small text-muted">{{ d.vendor or "—" }}</td>
+          <td class="font-monospace small">
+            {% if d.mac and (d.serial_number or d.asset_tag or d.responsible_person or d.asset_notes) %}
+              {% set _inv_lines = [] %}
+              {% if d.serial_number %}{% set _ = _inv_lines.append('<b>S/N:</b> ' ~ d.serial_number) %}{% endif %}
+              {% if d.asset_tag %}{% set _ = _inv_lines.append('<b>Asset tag:</b> ' ~ d.asset_tag) %}{% endif %}
+              {% if d.responsible_person %}{% set _ = _inv_lines.append('<b>Opiekun:</b> ' ~ d.responsible_person) %}{% endif %}
+              {% if d.support_end %}{% set _ = _inv_lines.append('<b>Wsparcie do:</b> ' ~ d.support_end.isoformat()) %}{% endif %}
+              {% if d.asset_notes %}{% set _ = _inv_lines.append('<b>Uwagi:</b> ' ~ d.asset_notes[:60] ~ ('…' if d.asset_notes|length > 60 else '')) %}{% endif %}
+              <span data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-html="true"
+                data-bs-title="<i class='bi bi-box-seam me-1'></i>Inwentarz"
+                data-bs-content="{{ _inv_lines | join('<br>') }}"
+                style="cursor:help; border-bottom:1px dashed #6c757d;">{{ d.mac }}</span>
+            {% else %}{{ d.mac or "—" }}{% endif %}
+          </td>
+          <td>
+            {# ── Buduj tresc popovera statusu ── #}
+            {% set _fs = d.first_seen.strftime('%Y-%m-%d') if d.first_seen else '?' %}
+            {% set _ls = d.last_seen.strftime('%Y-%m-%d %H:%M') if d.last_seen else '?' %}
+            {% set _ld = stats.last_down.strftime('%Y-%m-%d %H:%M') if stats.last_down else 'brak' %}
+            {% set _lu = stats.last_up.strftime('%Y-%m-%d %H:%M') if stats.last_up else 'brak' %}
+            {% set _d7  = stats.down_7d  or 0 %}
+            {% set _d30 = stats.down_30d or 0 %}
+            {% set _up  = stats.uptime_pct %}
+            {% if not d.is_active and d.last_seen %}
+              {# Oblicz czas trwania niedostepnosci w JS (dynamicznie) #}
+              {% set _down_since = d.last_seen.strftime('%Y-%m-%dT%H:%M:%S') %}
+              {% set _down_row = '<b>DOWN od:</b> <span class=\"down-since\" data-since=\"' ~ _down_since ~ '\">...</span><br>' %}
+            {% else %}
+              {% set _down_row = '' %}
+            {% endif %}
+            {% set _sep = '<hr style=\"margin:3px 0;opacity:.3\">' %}
+            {# ─ Sekcja 1: timing statusu ─ #}
+            {% set _uptime_row = ('<b>Uptime 30d:</b> ' ~ _up ~ '%<br>') if _up is not none else '' %}
+            {# ─ Sekcja 2: dane odkrywania / enrichment ─ #}
+            {% set _os_row    = ('<b>OS (SNMP):</b> ' ~ d.os_version ~ '<br>') if d.os_version else '' %}
+            {% set _ports_row = ('<b>Porty (nmap):</b> ' ~ stats.open_ports_str ~ '<br>') if stats.open_ports_str else '' %}
+            {% set _scan_row  = ('<b>Ost. skan:</b> ' ~ stats.last_scan_time.strftime('%Y-%m-%d') ~ '<br>') if stats.last_scan_time else '' %}
+            {% if stats.last_full_scan %}
+              {% set _full_scan_row = '<b>Pełny skan (1-65535):</b> ' ~ stats.last_full_scan.strftime('%Y-%m-%d') ~ ' &middot; ' ~ (stats.full_scan_ports|string) ~ ' portów<br>' %}
+              {% if stats.full_scan_ports_str %}
+                {% set _full_ports_row = '<b>Otwarte:</b> <span style=\"font-family:monospace;font-size:.85em\">' ~ stats.full_scan_ports_str ~ '</span><br>' %}
+              {% else %}
+                {% set _full_ports_row = '' %}
+              {% endif %}
+            {% else %}
+              {% set _full_scan_row = '<b>Pełny skan:</b> brak<br>' %}
+              {% set _full_ports_row = '' %}
+            {% endif %}
+            {% if stats.vendor_source %}
+              {% if stats.vendor_source == 'OUI (MAC)' and oui_db_date %}
+                {% set _vsrc_row = '<b>Vendor z:</b> OUI (MAC) &middot; baza: ' ~ oui_db_date ~ '<br>' %}
+              {% else %}
+                {% set _vsrc_row = '<b>Vendor z:</b> ' ~ stats.vendor_source ~ '<br>' %}
+              {% endif %}
+            {% else %}
+              {% set _vsrc_row = '' %}
+            {% endif %}
+            {% set _pop_content =
+              _down_row ~
+              '<b>Ostatni kontakt:</b> ' ~ _ls ~ '<br>' ~
+              '<b>Ostatni DOWN:</b> ' ~ _ld ~ '<br>' ~
+              '<b>Ostatni UP:</b> ' ~ _lu ~ '<br>' ~
+              '<b>Znany od:</b> ' ~ _fs ~ '<br>' ~
+              _sep ~
+              _uptime_row ~
+              '<b>DOWN 7d:</b> ' ~ _d7 ~ 'x &nbsp; <b>DOWN 30d:</b> ' ~ _d30 ~ 'x<br>' ~
+              _sep ~
+              '<b>Monitoring:</b> TCP+ICMP co ' ~ ping_interval_s ~ 's (ping-worker)<br>' ~
+              _scan_row ~
+              _full_scan_row ~
+              _full_ports_row ~
+              _ports_row ~
+              _os_row ~
+              _vsrc_row
+            %}
+            {# Oblicz minuty od ostatniego kontaktu — brak last_seen = nigdy nie widziane = uncertain #}
+            {% set _mins_ago = ((now - d.last_seen).total_seconds() / 60)|int if d.last_seen and now else uncertain_min %}
+            {% if d.is_active and _mins_ago >= uncertain_min %}
+              {# AMBER: aktywny w bazie, ale ostatni kontakt dawno — status niepewny #}
+              <span class="badge badge-uncertain status-badge" style="cursor:pointer"
+                    data-device-id="{{ d.id }}"
+                    data-bs-toggle="popover" data-bs-trigger="hover focus"
+                    data-bs-placement="right" data-bs-html="true"
+                    data-bs-title="Status: NIEPEWNY" data-bs-content="{{ _pop_content }}">?</span>
+            {% elif d.is_active %}
+              <span class="badge badge-up status-badge" style="cursor:pointer"
+                    data-device-id="{{ d.id }}"
+                    data-bs-toggle="popover" data-bs-trigger="hover focus"
+                    data-bs-placement="right" data-bs-html="true"
+                    data-bs-title="Status: UP" data-bs-content="{{ _pop_content }}">UP</span>
+            {% else %}
+              <span class="badge badge-down status-badge" style="cursor:pointer"
+                    data-device-id="{{ d.id }}"
+                    data-bs-toggle="popover" data-bs-trigger="hover focus"
+                    data-bs-placement="right" data-bs-html="true"
+                    data-bs-title="Status: DOWN" data-bs-content="{{ _pop_content }}">DOWN</span>
+            {% endif %}
+          </td>
+
+          {# ── SNMP ──────────────────────────────────────────────────────────── #}
+          <td class="text-center">
+            {% if d.snmp_community %}
+              {% set _snmp_ago = '' %}
+              {% if d.snmp_ok_at %}
+                {% set _snmp_diff = (now - d.snmp_ok_at).total_seconds() | int %}
+                {% if _snmp_diff < 3600 %}
+                  {% set _snmp_ago = (_snmp_diff // 60) | string ~ ' min temu' %}
+                {% elif _snmp_diff < 86400 %}
+                  {% set _snmp_ago = (_snmp_diff // 3600) | string ~ ' h temu' %}
+                {% else %}
+                  {% set _snmp_ago = (_snmp_diff // 86400) | string ~ ' dni temu' %}
+                {% endif %}
+              {% endif %}
+              <span class="badge bg-success"
+                    style="cursor:default;font-family:monospace;font-size:.75rem"
+                    title="SNMP OK — community: {{ d.snmp_community }}{% if _snmp_ago %} ({{ _snmp_ago }}){% endif %}">
+                {{ d.snmp_community }}
+              </span>
+            {% else %}
+              <span class="text-muted" style="font-size:.8rem" title="SNMP — brak dostępu lub nie testowano">—</span>
+            {% endif %}
+          </td>
+
+          {# ── Credentials ──────────────────────────────────────────────────── #}
+          {% set ssh_tried = cscan.get('ssh_tried',0) %}
+          {% set ssh_total = cscan.get('ssh_total',0) %}
+          {% set api_tried = cscan.get('api_tried',0) %}
+          {% set api_total = cscan.get('api_total',0) %}
+          {% set rdp_tried = cscan.get('rdp_tried',0) %}
+          {% set rdp_total = cscan.get('rdp_total',0) %}
+          {% set ssh_q  = [ssh_total - ssh_tried, 0] | max %}
+          {% set api_q  = [api_total - api_tried, 0] | max %}
+          {% set rdp_q  = [rdp_total - rdp_tried, 0] | max %}
+          {% set _lat   = cscan.get('last_attempt_at','') %}
+          {% set _lat_s = (_lat[0:10] ~ ' ' ~ _lat[11:16]) if _lat else '—' %}
+          {% set _scan_detail %}<b>SSH</b> {{ ssh_tried }}/{{ ssh_total }} haseł <span style='color:#8b949e'>({{ ssh_q }} w kolejce)</span><br><b>WEB</b> {{ api_tried }}/{{ api_total }} haseł <span style='color:#8b949e'>({{ api_q }} w kolejce)</span><br><b>RDP</b> {{ rdp_tried }}/{{ rdp_total }} haseł <span style='color:#8b949e'>({{ rdp_q }} w kolejce)</span><br><hr style='margin:4px 0'><small style='color:#8b949e'>Ostatni skan: {{ _lat_s }}</small>{% endset %}
+          <td class="text-center">
+            {% if cred %}
+              {% set cred_method = cred.method.value %}
+              {% set cred_user   = cred.username or '(brak loginu)' %}
+              {% set cred_pass   = cred.password_encrypted or '(brak hasla)' %}
+              {% set cred_date   = cred.last_success_at.strftime('%Y-%m-%d %H:%M') if cred.last_success_at else '?' %}
+              <span class="badge bg-success"
+                    style="cursor:pointer"
+                    data-bs-toggle="popover"
+                    data-bs-trigger="hover focus"
+                    data-bs-placement="left"
+                    data-bs-html="true"
+                    data-bs-title="Dostep uzyskany"
+                    data-bs-content="<b>Metoda:</b> {{ cred_method }}<br><b>Login:</b> {{ cred_user }}<br><b>Haslo:</b> <code>{{ cred_pass }}</code><br><b>Kiedy:</b> {{ cred_date }}<hr class='my-1'>{{ _scan_detail }}">
+                <i class="bi bi-key-fill"></i>
+              </span>
+            {% elif d.last_credential_ok_at and d.last_credential_ok_at.year == 1970 %}
+              {% if cscan %}
+              <span class="badge bg-secondary"
+                    style="cursor:pointer"
+                    data-bs-toggle="popover"
+                    data-bs-trigger="hover focus"
+                    data-bs-placement="left"
+                    data-bs-html="true"
+                    data-bs-title="Sprawdzono — brak dostepu"
+                    data-bs-content="{{ _scan_detail }}">
+                <i class="bi bi-key"></i>
+              </span>
+              {% else %}
+              <span class="badge bg-secondary" title="Sprawdzono — brak dostepu">
+                <i class="bi bi-key"></i>
+              </span>
+              {% endif %}
+            {% elif cscan %}
+              <span class="text-muted small"
+                    style="cursor:pointer"
+                    data-bs-toggle="popover"
+                    data-bs-trigger="hover focus"
+                    data-bs-placement="left"
+                    data-bs-html="true"
+                    data-bs-title="Skan credentiali"
+                    data-bs-content="{{ _scan_detail }}">
+                <i class="bi bi-hourglass-split"></i>
+              </span>
+            {% else %}
+              <span class="text-muted small" title="Jeszcze nie sprawdzono">—</span>
+            {% endif %}
+          </td>
+
+          {# ── Podatnosci ───────────────────────────────────────────────────── #}
+          <td class="text-center">
+            {% if vuln_cnt > 0 %}
+              {% if vuln_sev == 'critical' %}{% set sev_cls = 'danger' %}
+              {% elif vuln_sev == 'high' %}{% set sev_cls = 'warning' %}
+              {% elif vuln_sev == 'medium' %}{% set sev_cls = 'info' %}
+              {% else %}{% set sev_cls = 'secondary' %}{% endif %}
+              {% set vd = vuln_details.get(d.id, []) %}
+              {% set _sev_icon = {'critical':'🔴','high':'🟠','medium':'🟡','low':'🟢'} %}
+              {% set _plines = namespace(v=[]) %}
+              {% for item in vd %}
+                {% if item.get("id") %}
+                  {% set _label = _sev_icon.get(item.severity,'⚪') ~ ' ' ~ item.name ~ (' &nbsp;<span class=\'text-muted\'>p.' ~ item.port|string ~ '</span>' if item.port else '') %}
+                  {% set _plines.v = _plines.v + ['<a href="/security#vuln-' ~ item.id|string ~ '" class="vuln-pop-link d-block text-decoration-none" style="line-height:1.9;font-size:.82rem;color:inherit">' ~ _label ~ '</a>'] %}
+                {% else %}
+                  {% set _plines.v = _plines.v + ['<span class="text-muted small px-1">' ~ item.name ~ '</span>'] %}
+                {% endif %}
+              {% endfor %}
+              {% set _footer = '<hr class="my-1"><a href="/security" class="text-muted small text-decoration-none d-block text-center">Wszystkie zagrożenia →</a>' %}
+              <span class="badge bg-{{ sev_cls }} text-decoration-none vuln-badge-pop"
+                    style="cursor:pointer"
+                    data-bs-toggle="popover"
+                    data-bs-trigger="manual"
+                    data-bs-placement="auto"
+                    data-bs-html="true"
+                    title="Zagrożenia urządzenia ({{ vuln_cnt }})"
+                    data-bs-content="{{ _plines.v | join('') ~ _footer }}">
+                {{ vuln_cnt }}
+              </span>
+            {% else %}
+              <span class="text-muted small">—</span>
+            {% endif %}
+          </td>
+
+          <td class="small text-muted">{{ d.last_seen.strftime("%Y-%m-%d %H:%M") if d.last_seen else "—" }}</td>
+
+          {# ── Kolumna: liczba otwartych portów ──────────────────────────── #}
+          <td class="text-center">
+            {% set _pc = stats.get("display_port_count") %}
+            {% if _pc is not none %}
+              {% if _pc >= 500 %}
+                {% set _pc_bg = "#6e0000" %}{% set _pc_fw = "bold" %}
+              {% elif _pc >= 100 %}
+                {% set _pc_bg = "#da3633" %}{% set _pc_fw = "normal" %}
+              {% elif _pc >= 50 %}
+                {% set _pc_bg = "#e3b341" %}{% set _pc_fw = "normal" %}
+              {% elif _pc >= 20 %}
+                {% set _pc_bg = "#e6a817" %}{% set _pc_fw = "normal" %}
+              {% elif _pc >= 6 %}
+                {% set _pc_bg = "#238636" %}{% set _pc_fw = "normal" %}
+              {% else %}
+                {% set _pc_bg = "#444c56" %}{% set _pc_fw = "normal" %}
+              {% endif %}
+              {% set _pc_src = stats.get("display_port_source", "") %}
+              {% set _pc_time = stats.get("display_port_time") %}
+              <span class="badge"
+                    style="background:{{ _pc_bg }};font-weight:{{ _pc_fw }};min-width:2.5rem"
+                    title="{{ _pc }} otwartych portów · {{ _pc_src }}{% if _pc_time %} · {{ _pc_time.strftime('%Y-%m-%d') }}{% endif %}">
+                {{ _pc }}
+              </span>
+            {% else %}
+              <span class="text-muted small">—</span>
+            {% endif %}
+          </td>
+
+          {# ── Pełny skan portów 1-65535 ─────────────────────────────────── #}
+          <td class="text-center">
+            {% if stats.last_full_scan %}
+              {% set _days_ago = ((now - stats.last_full_scan).total_seconds() / 86400)|int %}
+              {% if _days_ago <= 7 %}
+                {% set _scan_color = "text-success" %}
+                {% set _scan_title = "Pełny skan OK — znaleziono " ~ stats.full_scan_ports ~ " otwartych portów TCP (zakres 1-65535) — " ~ stats.last_full_scan.strftime('%Y-%m-%d') %}
+              {% elif _days_ago <= 30 %}
+                {% set _scan_color = "text-warning" %}
+                {% set _scan_title = "Pełny skan starszy niż 7 dni — " ~ stats.last_full_scan.strftime('%Y-%m-%d') %}
+              {% else %}
+                {% set _scan_color = "text-danger" %}
+                {% set _scan_title = "Pełny skan starszy niż 30 dni — " ~ stats.last_full_scan.strftime('%Y-%m-%d') %}
+              {% endif %}
+              <i class="bi bi-check-circle-fill {{ _scan_color }}"
+                 title="{{ _scan_title }}"></i>
+            {% elif d.is_active %}
+              <i class="bi bi-circle text-secondary"
+                 title="Tylko szybki skan (~30 portów) — pełny skan nie był wykonany"></i>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+
+          <td class="text-nowrap">
+            {# Ikona zaufania #}
+            {% if d.is_trusted %}
+            <i class="bi bi-shield-fill text-success me-1"
+               title="Zaufane — {{ d.trust_category or 'brak kategorii' }}{% if d.trust_note %}: {{ d.trust_note }}{% endif %}"></i>
+            {% endif %}
+            {# Kolorowa flaga uzytkownika #}
+            {% if d.flag_color %}
+            {%- set _fc_map = {"red":"danger","orange":"warning","yellow":"warning","green":"success","blue":"primary","purple":"info"} -%}
+            <i class="bi bi-flag-fill text-{{ _fc_map.get(d.flag_color, 'secondary') }} me-1"
+               style="{% if d.flag_color == 'orange' %}color:#fd7e14!important{% elif d.flag_color == 'purple' %}color:#6f42c1!important{% endif %}"
+               title="Flaga: {{ d.flag_color }}"></i>
+            {% endif %}
+            {# Monitorowanie dostepnosci #}
+            {% if d.is_monitored %}
+            <i class="bi bi-bell-fill text-info me-1"
+               title="Monitorowane{% if d.monitor_note %}: {{ d.monitor_note }}{% endif %}"></i>
+            {% endif %}
+            {# Badge konca wsparcia producenta (EoS) lub gwarancji #}
+            {% if inventory_enabled %}
+            {% set _today_d = now.date() %}
+            {% if d.support_end %}
+              {% set _eos_days = (d.support_end - _today_d).days %}
+              {% if _eos_days < 0 %}
+                <span class="badge bg-danger" style="font-size:.65rem"
+                      title="Wsparcie producenta wygaslo {{ d.support_end.isoformat() }}">EoS</span>
+              {% elif _eos_days <= 90 %}
+                <span class="badge bg-warning text-dark" style="font-size:.65rem"
+                      title="Wsparcie producenta wygasa za {{ _eos_days }} dni">EoS</span>
+              {% endif %}
+            {% elif d.warranty_end %}
+              {% set _war_days = (d.warranty_end.date() - _today_d).days %}
+              {% if _war_days < 0 %}
+                <span class="badge bg-danger" style="font-size:.65rem"
+                      title="Gwarancja wygasla {{ d.warranty_end.date().isoformat() }}">GWR</span>
+              {% elif _war_days <= 90 %}
+                <span class="badge bg-warning text-dark" style="font-size:.65rem"
+                      title="Gwarancja wygasa za {{ _war_days }} dni">GWR</span>
+              {% endif %}
+            {% endif %}
+            {% endif %}
+            {# Badge oceny AI #}
+            {% if ai_assessment_enabled %}
+            {% set _ai = ai_last_by_device.get(d.id) %}
+            {% if _ai %}
+              {% set _rl = _ai.get("risk_level", "") %}
+              {% set _obs = _ai.get("is_obsolete") %}
+              {% if _rl in ("critical",) %}
+                {% set _ai_color = "danger" %}
+              {% elif _rl == "high" %}
+                {% set _ai_color = "danger" %}
+              {% elif _rl == "medium" %}
+                {% set _ai_color = "warning" %}
+              {% elif _rl in ("low", "ok") %}
+                {% set _ai_color = "success" %}
+              {% else %}
+                {% set _ai_color = "secondary" %}
+              {% endif %}
+              <span class="badge bg-{{ _ai_color }} dev-ai-assess-btn"
+                    style="font-size:.65rem;cursor:pointer"
+                    role="button" tabindex="0"
+                    data-device-id="{{ d.id }}"
+                    data-device-ip="{{ d.ip }}"
+                    data-device-label="{{ d.hostname or d.ip }}"
+                    title="Ocena AI ({{ _ai.get('assessed_at','') }}): {{ _rl or '?' }}{% if _obs %} · Do wymiany{% endif %}&#10;{{ _ai.get('summary','') }}">
+                AI{% if _obs %}&#x26A0;{% endif %}
+              </span>
+            {% endif %}
+            {% endif %}
+            {# Dropdown z akcjami #}
+            <div class="dropdown d-inline">
+              <button class="btn btn-outline-secondary btn-sm py-0 px-1" data-bs-toggle="dropdown"
+                      aria-expanded="false" title="Akcje">
+                <i class="bi bi-three-dots-vertical"></i>
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li>
+                  <form method="post" action="/devices/{{ d.id }}/reclassify">
+                    <button class="dropdown-item" type="submit">
+                      <i class="bi bi-arrow-repeat me-2 text-info"></i>Reklasyfikuj
+                    </button>
+                  </form>
+                </li>
+                <li>
+                  <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#setTypeModal"
+                    data-device-id="{{ d.id }}" data-device-ip="{{ d.ip }}"
+                    data-device-type="{{ d.device_type.value if d.device_type else '' }}">
+                    <i class="bi bi-pencil me-2 text-secondary"></i>Ustaw typ
+                  </button>
+                </li>
+                <li>
+                  <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#ipTypeModal"
+                    data-device-id="{{ d.id }}" data-device-ip="{{ d.ip }}"
+                    data-ip-type="{{ d.ip_type or 'unknown' }}">
+                    <i class="bi bi-ethernet me-2 text-secondary"></i>Oznacz typ IP
+                  </button>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                  <button class="dropdown-item {% if d.is_trusted %}text-success{% endif %}"
+                    data-bs-toggle="modal" data-bs-target="#trustModal"
+                    data-device-id="{{ d.id }}" data-device-ip="{{ d.ip }}"
+                    data-is-trusted="{{ '1' if d.is_trusted else '0' }}"
+                    data-trust-note="{{ d.trust_note or '' }}"
+                    data-trust-category="{{ d.trust_category or '' }}">
+                    <i class="bi bi-shield{% if d.is_trusted %}-fill{% else %}-check{% endif %} me-2"></i>
+                    {% if d.is_trusted %}Edytuj zaufanie{% else %}Oznacz jako zaufane{% endif %}
+                  </button>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                  <button class="dropdown-item"
+                    data-bs-toggle="modal" data-bs-target="#flagModal"
+                    data-device-id="{{ d.id }}" data-device-ip="{{ d.ip }}"
+                    data-flag-color="{{ d.flag_color or '' }}">
+                    <i class="bi bi-flag me-2 text-warning"></i>Ustaw flagę
+                  </button>
+                </li>
+                <li>
+                  <button class="dropdown-item {% if d.is_monitored %}text-info{% endif %}"
+                    data-bs-toggle="modal" data-bs-target="#monitorModal"
+                    data-device-id="{{ d.id }}" data-device-ip="{{ d.ip }}"
+                    data-is-monitored="{{ '1' if d.is_monitored else '0' }}"
+                    data-monitor-note="{{ d.monitor_note or '' }}">
+                    <i class="bi bi-bell{% if d.is_monitored %}-fill{% endif %} me-2"></i>
+                    {% if d.is_monitored %}Edytuj monitorowanie{% else %}Monitoruj dostępność{% endif %}
+                  </button>
+                </li>
+                {% if inventory_enabled %}
+                <li>
+                  <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#inventoryModal"
+                    data-device-id="{{ d.id }}" data-device-ip="{{ d.ip }}"
+                    data-serial="{{ d.serial_number or '' }}"
+                    data-asset="{{ d.asset_tag or '' }}"
+                    data-purchase-date="{{ d.purchase_date.isoformat() if d.purchase_date else '' }}"
+                    data-purchase-price="{{ d.purchase_price or '' }}"
+                    data-purchase-currency="{{ d.purchase_currency or 'PLN' }}"
+                    data-purchase-vendor="{{ d.purchase_vendor or '' }}"
+                    data-invoice="{{ d.invoice_number or '' }}"
+                    data-warranty-end="{{ d.warranty_end.date().isoformat() if d.warranty_end else '' }}"
+                    data-support-end="{{ d.support_end.isoformat() if d.support_end else '' }}"
+                    data-responsible="{{ d.responsible_person or '' }}"
+                    data-notes="{{ d.asset_notes or '' }}">
+                    <i class="bi bi-box-seam me-2 text-secondary"></i>Inwentarz / ST
+                  </button>
+                </li>
+                {% endif %}
+                {% if ai_assessment_enabled %}
+                <li>
+                  <button class="dropdown-item dev-ai-assess-btn"
+                    data-device-id="{{ d.id }}"
+                    data-device-ip="{{ d.ip }}"
+                    data-device-label="{{ d.hostname or d.ip }}">
+                    <i class="bi bi-cpu me-2 text-info"></i>Ocena AI
+                  </button>
+                </li>
+                {% endif %}
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                  <form method="post" action="/devices/{{ d.id }}/full-scan">
+                    <button class="dropdown-item" type="submit"
+                            title="Zakolejkuj skan wszystkich 65535 portów TCP dla tego urządzenia. Zostanie wykonany przy następnym cyklu skanera.">
+                      <i class="bi bi-search me-2 text-warning"></i>Pełny skan portów (1-65535)
+                    </button>
+                  </form>
+                </li>
+                <li>
+                  <form method="post" action="/devices/{{ d.id }}/clear-ports">
+                    <input type="hidden" name="scan_type" value="nmap_full">
+                    <button class="dropdown-item" type="submit"
+                            title="Usuwa zapisane wyniki pełnego skanu (1-65535) dla tego urządzenia. Dane zostaną odświeżone przy następnym skanie.">
+                      <i class="bi bi-eraser me-2 text-secondary"></i>Wyczyść wyniki pełnego skanu
+                    </button>
+                  </form>
+                </li>
+                <li>
+                  <form method="post" action="/devices/{{ d.id }}/clear-ports">
+                    <button class="dropdown-item" type="submit"
+                            title="Usuwa wszystkie wyniki skanowania portów (szybki + pełny) dla tego urządzenia.">
+                      <i class="bi bi-x-circle me-2 text-secondary"></i>Wyczyść wszystkie wyniki portów
+                    </button>
+                  </form>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                  <button class="dropdown-item text-danger"
+                    data-bs-toggle="modal" data-bs-target="#deleteModal"
+                    data-device-id="{{ d.id }}" data-device-ip="{{ d.ip }}">
+                    <i class="bi bi-trash me-2"></i>Usuń urządzenie
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="11" class="text-center text-muted py-4">Brak urzadzen. Uruchom skanowanie.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+
+<!-- Set Type Modal -->
+<div class="modal fade" id="setTypeModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Ustaw typ urzadzenia</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="setTypeForm" method="post">
+        <div class="modal-body">
+          <p class="text-muted small mb-2" id="setTypeDeviceLabel"></p>
+          <select name="device_type" class="form-select">
+            {% for t in ["router","switch","firewall","server","workstation","domain_controller","phone","camera","printer","iot","nas","ap","inverter","unknown"] %}
+            <option value="{{ t }}">{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+          <button type="submit" class="btn btn-primary">Zapisz</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<!-- Trust Modal -->
+<div class="modal fade" id="trustModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-shield-check me-2"></i>Zaufanie urządzenia</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="trustForm" method="post">
+        <div class="modal-body">
+          <p class="text-muted small mb-3" id="trustDeviceLabel"></p>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Status zaufania</label>
+            <div class="d-flex gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="trusted" id="trustYes" value="1">
+                <label class="form-check-label text-success" for="trustYes">
+                  <i class="bi bi-shield-fill-check me-1"></i>Zaufane
+                </label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="trusted" id="trustNo" value="0">
+                <label class="form-check-label text-muted" for="trustNo">
+                  <i class="bi bi-shield-x me-1"></i>Niezaufane
+                </label>
+              </div>
+            </div>
+          </div>
+          <div id="trustFields">
+            <div class="mb-2">
+              <label class="form-label small">Kategoria</label>
+              <select name="trust_category" class="form-select form-select-sm" id="trustCategory">
+                <option value="">— wybierz —</option>
+                <option value="infrastructure">Infrastruktura (router, switch, firewall)</option>
+                <option value="endpoint">Stacja robocza / serwer</option>
+                <option value="iot">IoT / urządzenie przemysłowe</option>
+                <option value="guest">Gość / tymczasowe</option>
+                <option value="other">Inne</option>
+              </select>
+            </div>
+            <div class="mb-2">
+              <label class="form-label small">Notatka (opcjonalna)</label>
+              <input type="text" name="trust_note" id="trustNote" class="form-control form-control-sm"
+                     placeholder="np. router główny HQ, Moxa NPort 5150A">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+          <button type="submit" class="btn btn-primary" id="trustSaveBtn">Zapisz</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<!-- Bulk Clear Ports (widoczne) Modal -->
+<div class="modal fade" id="bulkClearModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content border-warning">
+      <div class="modal-header" style="background:#664d03;color:#fff">
+        <h5 class="modal-title"><i class="bi bi-eraser me-2"></i>Wyczyść porty</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="bulkClearForm" method="post" action="/devices/clear-ports">
+        <input type="hidden" name="device_ids" id="bulkClearDeviceIds">
+        <input type="hidden" name="scan_type" value="nmap_full">
+        <div class="modal-body">
+          <p class="mb-1">Usuwa wyniki <b>pełnego skanu portów (1-65535)</b> dla <b id="bulkClearCount">?</b> widocznych urządzeń.</p>
+          <p class="text-muted small mb-0"><i class="bi bi-info-circle me-1"></i>Dane zostaną odświeżone po kolejnym skanie.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Anuluj</button>
+          <button type="submit" class="btn btn-warning btn-sm text-dark"><i class="bi bi-eraser me-1"></i>Wyczyść</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Clear Ports (wszystkie) Modal -->
+<div class="modal fade" id="bulkClearAllModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content border-danger">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title"><i class="bi bi-x-circle me-2"></i>Wyczyść porty — WSZYSTKIE</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/devices/clear-ports">
+        <input type="hidden" name="scan_type" value="">
+        <div class="modal-body">
+          <p class="mb-1">Usuwa <b>wszystkie wyniki skanowania portów</b> (szybki + pełny) dla <b>wszystkich urządzeń</b>.</p>
+          <p class="text-danger small mb-0"><i class="bi bi-exclamation-triangle me-1"></i>Tej operacji nie można cofnąć.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Anuluj</button>
+          <button type="submit" class="btn btn-danger btn-sm"><i class="bi bi-x-circle me-1"></i>Wyczyść wszystko</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content border-danger">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title"><i class="bi bi-trash me-2"></i>Usuń urządzenie</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="deleteForm" method="post">
+        <div class="modal-body">
+          <p class="mb-1">Czy na pewno usunąć urządzenie?</p>
+          <p class="fw-bold" id="deleteDeviceLabel"></p>
+          <p class="text-muted small mb-0">
+            <i class="bi bi-info-circle me-1"></i>
+            Urządzenie zostanie ponownie odkryte przy następnym skanie,
+            jeśli nadal jest w sieci.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Anuluj</button>
+          <button type="submit" class="btn btn-danger btn-sm">
+            <i class="bi bi-trash me-1"></i>Usuń
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<!-- Flag Modal -->
+<div class="modal fade" id="flagModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-flag me-2"></i>Flaga urządzenia</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="flagForm" method="post">
+        <div class="modal-body">
+          <p class="text-muted small mb-3" id="flagDeviceLabel"></p>
+          <div class="d-flex flex-wrap gap-2 justify-content-center mb-3">
+            {% for color, label, bg in [
+              ("red","Czerwona","#dc3545"),("orange","Pomarańczowa","#fd7e14"),
+              ("yellow","Żółta","#ffc107"),("green","Zielona","#198754"),
+              ("blue","Niebieska","#0d6efd"),("purple","Fioletowa","#6f42c1")
+            ] %}
+            <label class="flag-color-btn" title="{{ label }}" style="cursor:pointer">
+              <input type="radio" name="flag_color" value="{{ color }}" class="d-none flag-radio">
+              <span style="display:inline-block;width:30px;height:30px;border-radius:50%;
+                           background:{{ bg }};border:3px solid transparent;
+                           transition:border-color .15s"
+                    data-color="{{ color }}"></span>
+            </label>
+            {% endfor %}
+            <label class="flag-color-btn" title="Usuń flagę" style="cursor:pointer">
+              <input type="radio" name="flag_color" value="" class="d-none flag-radio" id="flagNone">
+              <span style="display:inline-block;width:30px;height:30px;border-radius:50%;
+                           border:3px solid #6c757d;background:transparent;text-align:center;
+                           line-height:24px;color:#6c757d;font-size:16px">✕</span>
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Anuluj</button>
+          <button type="submit" class="btn btn-primary btn-sm">Zapisz</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<!-- Monitor Modal -->
+<div class="modal fade" id="monitorModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-bell me-2"></i>Monitorowanie dostępności</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="monitorForm" method="post">
+        <div class="modal-body">
+          <p class="text-muted small mb-3" id="monitorDeviceLabel"></p>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Status monitorowania</label>
+            <div class="d-flex gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="monitored" id="monitorYes" value="1">
+                <label class="form-check-label text-info" for="monitorYes">
+                  <i class="bi bi-bell-fill me-1"></i>Monitorowane
+                </label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="monitored" id="monitorNo" value="0">
+                <label class="form-check-label text-muted" for="monitorNo">
+                  <i class="bi bi-bell-slash me-1"></i>Wyłączone
+                </label>
+              </div>
+            </div>
+          </div>
+          <div id="monitorNoteField">
+            <label class="form-label small">Notatka (opcjonalna)</label>
+            <input type="text" name="monitor_note" id="monitorNote" class="form-control form-control-sm"
+                   placeholder="np. krytyczny serwer produkcyjny, alert natychmiast">
+          </div>
+          <div class="mt-2 p-2 bg-dark rounded small text-muted">
+            <i class="bi bi-info-circle me-1"></i>
+            Alert zostanie wysłany przez Telegram gdy urządzenie przejdzie w status
+            <strong>OFFLINE</strong> lub powróci <strong>ONLINE</strong>.
+            Skonfiguruj Telegram w ustawieniach.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Anuluj</button>
+          <button type="submit" class="btn btn-primary btn-sm">Zapisz</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── Modal: Typ adresacji IP ───────────────────────────────────────────────── #}
+<div class="modal fade" id="ipTypeModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-ethernet me-2"></i>Typ adresacji IP</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="ipTypeForm" method="post">
+        <div class="modal-body">
+          <p class="text-muted small mb-3" id="ipTypeDeviceLabel"></p>
+          <div class="d-flex flex-column gap-2">
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="ip_type" id="ipTypeStatic" value="static">
+              <label class="form-check-label" for="ipTypeStatic">
+                <i class="bi bi-lock-fill me-1 text-secondary"></i><strong>Statyczny</strong>
+                <div class="text-muted small">Adres przypisany ręcznie / na stałe</div>
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="ip_type" id="ipTypeDhcp" value="dhcp">
+              <label class="form-check-label" for="ipTypeDhcp">
+                <i class="bi bi-arrow-repeat me-1 text-info"></i><strong>DHCP</strong>
+                <div class="text-muted small">Adres przydzielany dynamicznie przez serwer DHCP</div>
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="ip_type" id="ipTypeUnknown" value="unknown">
+              <label class="form-check-label" for="ipTypeUnknown">
+                <i class="bi bi-question-circle me-1 text-muted"></i><strong>Nieznany</strong>
+                <div class="text-muted small">Typ adresacji nie jest określony</div>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Anuluj</button>
+          <button type="submit" class="btn btn-primary btn-sm">Zapisz</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% if inventory_enabled %}
+{# ── Modal: Inwentarz / Środki trwałe ──────────────────────────────────────── #}
+<div class="modal fade" id="inventoryModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-box-seam me-2"></i>Inwentarz / Środki trwałe</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="inventoryForm" method="post">
+        <div class="modal-body">
+          <p class="text-muted small mb-3" id="inventoryDeviceLabel"></p>
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label small">Numer seryjny</label>
+              <input type="text" name="serial_number" id="invSerial" class="form-control form-control-sm"
+                     placeholder="np. FCZ2244ABCD">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small">Numer inwentarzowy (Asset tag)</label>
+              <input type="text" name="asset_tag" id="invAsset" class="form-control form-control-sm"
+                     placeholder="np. INW/2026/001">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Data zakupu</label>
+              <input type="date" name="purchase_date" id="invPurchaseDate" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Cena zakupu (netto)</label>
+              <input type="number" step="0.01" name="purchase_price" id="invPrice" class="form-control form-control-sm"
+                     placeholder="0.00">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Waluta</label>
+              <select name="purchase_currency" id="invCurrency" class="form-select form-select-sm">
+                {% for cur in ["PLN","EUR","USD","GBP","CHF"] %}
+                <option value="{{ cur }}">{{ cur }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small">Dostawca (firma sprzedająca)</label>
+              <input type="text" name="purchase_vendor" id="invVendor" class="form-control form-control-sm"
+                     placeholder="np. ABC Electronics sp. z o.o.">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small">Numer faktury / zamówienia</label>
+              <input type="text" name="invoice_number" id="invInvoice" class="form-control form-control-sm"
+                     placeholder="np. FV/2026/1234">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Koniec gwarancji</label>
+              <input type="date" name="warranty_end" id="invWarrantyEnd" class="form-control form-control-sm">
+              <div class="form-text">Data z faktury / karty gwarancyjnej</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Koniec wsparcia producenta (EoS)</label>
+              <input type="date" name="support_end" id="invSupportEnd" class="form-control form-control-sm">
+              <div class="form-text">Kiedy producent kończy aktualizacje</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Osoba odpowiedzialna</label>
+              <input type="text" name="responsible_person" id="invResponsible" class="form-control form-control-sm"
+                     placeholder="np. Jan Kowalski / IT">
+            </div>
+            <div class="col-12">
+              <label class="form-label small">Notatki (projekt, firma, lokalizacja, historia...)</label>
+              <textarea name="asset_notes" id="invNotes" class="form-control form-control-sm" rows="2"
+                        placeholder="np. Rack 3 szafa 2, projekt Klimatyzacja, firma XYZ"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Anuluj</button>
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="bi bi-save me-1"></i>Zapisz inwentarz
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── Modal AI oceny per-urządzenie ─────────────────────────────────────────── #}
+{% if ai_assessment_enabled %}
+<div class="modal fade" id="devAiAssessModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title" id="devAiAssessTitle"><i class="bi bi-cpu me-2"></i>AI Ocena urządzenia</h6>
+        <div class="ms-auto me-3">
+          <button class="btn btn-sm btn-outline-secondary" id="devAiHistoryBtn" title="Historia ocen tego urządzenia">
+            <i class="bi bi-clock-history me-1"></i>Historia
+          </button>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-3">
+        <div class="text-center text-muted py-5" id="devAiLoading" style="display:none">
+          <div class="spinner-border mb-3" role="status" style="width:2.5rem;height:2.5rem"></div>
+          <div class="fw-bold">Analizuję urządzenie…</div>
+          <div class="small mt-1 text-muted">Może potrwać 10–30 sekund.</div>
+        </div>
+        <div id="devAiResult" style="display:none"></div>
+        <div id="devAiHistory" style="display:none"></div>
+        <div id="devAiError" class="alert alert-danger mt-2" style="display:none"></div>
+      </div>
+      <div class="modal-footer py-2 gap-2">
+        <button class="btn btn-outline-warning btn-sm" id="devAiRefreshBtn" style="display:none">
+          <i class="bi bi-arrow-clockwise me-1"></i>Nowa ocena
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<style>
+.vuln-pop-link:hover { background: rgba(0,0,0,.06); border-radius: 3px; }
+</style>
+<script>
+document.getElementById("setTypeModal").addEventListener("show.bs.modal", function(e) {
+  const btn = e.relatedTarget;
+  document.getElementById("setTypeForm").action = "/devices/" + btn.dataset.deviceId + "/set-type";
+  document.getElementById("setTypeDeviceLabel").textContent = "Urzadzenie: " + btn.dataset.deviceIp;
+  const sel = document.querySelector("#setTypeModal select[name=device_type]");
+  for (let opt of sel.options) { opt.selected = (opt.value === btn.dataset.deviceType); }
+});
+
+document.getElementById("trustModal").addEventListener("show.bs.modal", function(e) {
+  const btn = e.relatedTarget;
+  const isTrusted = btn.dataset.isTrusted === "1";
+  document.getElementById("trustForm").action = "/devices/" + btn.dataset.deviceId + "/trust";
+  document.getElementById("trustDeviceLabel").textContent = "Urządzenie: " + btn.dataset.deviceIp;
+  document.getElementById("trustYes").checked = isTrusted;
+  document.getElementById("trustNo").checked = !isTrusted;
+  document.getElementById("trustNote").value = btn.dataset.trustNote || "";
+  const cat = document.getElementById("trustCategory");
+  for (let opt of cat.options) { opt.selected = (opt.value === btn.dataset.trustCategory); }
+  document.getElementById("trustFields").style.display = isTrusted ? "" : "none";
+});
+document.querySelectorAll('input[name="trusted"]').forEach(radio => {
+  radio.addEventListener("change", function() {
+    document.getElementById("trustFields").style.display = this.value === "1" ? "" : "none";
+  });
+});
+
+// ── Delete Modal ─────────────────────────────────────────────────────────────
+document.getElementById("deleteModal").addEventListener("show.bs.modal", function(e) {
+  const btn = e.relatedTarget;
+  document.getElementById("deleteForm").action = "/devices/" + btn.dataset.deviceId + "/delete";
+  document.getElementById("deleteDeviceLabel").textContent = btn.dataset.deviceIp;
+});
+
+// ── Flag Modal ────────────────────────────────────────────────────────────────
+document.getElementById("flagModal").addEventListener("show.bs.modal", function(e) {
+  const btn = e.relatedTarget;
+  document.getElementById("flagForm").action = "/devices/" + btn.dataset.deviceId + "/flag";
+  document.getElementById("flagDeviceLabel").textContent = "Urządzenie: " + btn.dataset.deviceIp;
+  const currentColor = btn.dataset.flagColor || "";
+  document.querySelectorAll(".flag-radio").forEach(r => {
+    r.checked = (r.value === currentColor);
+  });
+  _updateFlagSelection();
+});
+function _updateFlagSelection() {
+  document.querySelectorAll(".flag-color-btn span").forEach(span => {
+    const radio = span.parentElement.querySelector(".flag-radio");
+    span.style.borderColor = radio.checked ? "#fff" : "transparent";
+    if (span.style.background === "transparent") {
+      span.style.borderColor = radio.checked ? "#fff" : "#6c757d";
+    }
+  });
+}
+document.querySelectorAll(".flag-radio").forEach(r => {
+  r.addEventListener("change", _updateFlagSelection);
+});
+
+// ── Monitor Modal ─────────────────────────────────────────────────────────────
+document.getElementById("monitorModal").addEventListener("show.bs.modal", function(e) {
+  const btn = e.relatedTarget;
+  const isMonitored = btn.dataset.isMonitored === "1";
+  document.getElementById("monitorForm").action = "/devices/" + btn.dataset.deviceId + "/monitor";
+  document.getElementById("monitorDeviceLabel").textContent = "Urządzenie: " + btn.dataset.deviceIp;
+  document.getElementById("monitorYes").checked = isMonitored;
+  document.getElementById("monitorNo").checked = !isMonitored;
+  document.getElementById("monitorNote").value = btn.dataset.monitorNote || "";
+  document.getElementById("monitorNoteField").style.display = isMonitored ? "" : "none";
+});
+document.querySelectorAll('input[name="monitored"]').forEach(radio => {
+  radio.addEventListener("change", function() {
+    document.getElementById("monitorNoteField").style.display = this.value === "1" ? "" : "none";
+  });
+});
+
+document.getElementById("ipTypeModal").addEventListener("show.bs.modal", function(e) {
+  const btn = e.relatedTarget;
+  document.getElementById("ipTypeForm").action = "/devices/" + btn.dataset.deviceId + "/set-ip-type";
+  document.getElementById("ipTypeDeviceLabel").textContent = "Urządzenie: " + btn.dataset.deviceIp;
+  const ipType = btn.dataset.ipType || "unknown";
+  document.getElementById("ipTypeStatic").checked = ipType === "static";
+  document.getElementById("ipTypeDhcp").checked = ipType === "dhcp";
+  document.getElementById("ipTypeUnknown").checked = ipType === "unknown";
+});
+
+// Bootstrap popovers — wszystkie oprocz vuln badge (osobna inicjalizacja ponizej)
+document.querySelectorAll('[data-bs-toggle="popover"]:not(.vuln-badge-pop)').forEach(el => {
+  new bootstrap.Popover(el, { sanitize: false });
+});
+
+// Vuln badge popovers: trigger=manual + hover z opoznieniem 400ms
+// Dzieki trigger=manual Bootstrap nie dodaje wlasnych handlerow mouseleave,
+// wiec popover nie znika natychmiast gdy mysz przesuwa sie do linku w srodku.
+document.querySelectorAll('.vuln-badge-pop').forEach(el => {
+  const pop = new bootstrap.Popover(el, { sanitize: false, trigger: 'manual', placement: 'auto' });
+  let _ht = null;
+  function _cancelHide() { clearTimeout(_ht); }
+  function _scheduleHide() { _ht = setTimeout(() => pop.hide(), 400); }
+
+  el.addEventListener('mouseenter', function() { _cancelHide(); pop.show(); });
+  el.addEventListener('mouseleave', _scheduleHide);
+
+  el.addEventListener('shown.bs.popover', function() {
+    const popEl = document.getElementById(el.getAttribute('aria-describedby'));
+    if (!popEl || popEl._tipListening) return;
+    popEl._tipListening = true;
+    popEl.addEventListener('mouseenter', _cancelHide);
+    popEl.addEventListener('mouseleave', _scheduleHide);
+    // Naprawa: gdy mysz weszla na popover ZANIM zostal pokazany (szybki przejazd z lewej →
+    // mouseenter na badge → mouseleave na badge → mysz na popoverze → shown.bs.popover)
+    // listener mouseenter nie zostal wywolany → schedulehide nie zostal anulowany.
+    // Sprawdz czy mysz jest JUZ na popoverze i anuluj ukrywanie.
+    if (popEl.matches(':hover')) _cancelHide();
+  });
+});
+
+// Dynamiczne "DOWN od X minut" — podstaw wartosc przed pokazaniem popovera
+function _fmtDuration(seconds) {
+  if (seconds < 60)   return Math.round(seconds) + "s";
+  if (seconds < 3600) return Math.round(seconds / 60) + " min";
+  if (seconds < 86400) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.round((seconds % 3600) / 60);
+    return h + "h " + (m > 0 ? m + "min" : "");
+  }
+  const d = Math.floor(seconds / 86400);
+  const h = Math.round((seconds % 86400) / 3600);
+  return d + "d " + (h > 0 ? h + "h" : "");
+}
+
+document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
+  el.addEventListener("show.bs.popover", function() {
+    // Znajdz span.down-since w tresci popovera (po jego renderowaniu)
+    setTimeout(() => {
+      const tip = document.querySelector('.popover-body .down-since[data-since]');
+      if (tip) {
+        const since = new Date(tip.dataset.since + "Z");
+        const secs  = (Date.now() - since.getTime()) / 1000;
+        tip.textContent = _fmtDuration(secs);
+      }
+    }, 0);
+  });
+});
+
+// ── IP Screenshot tooltip ─────────────────────────────────────────────────────
+(function() {
+  const DELAY_MS   = 200;  // czas hovera zanim zacznie ladowac (krotszy gdy cache)
+  const PRELOAD_GAP = 300; // ms miedzy preloadem kolejnych screenshotow
+
+  // Cache w pamieci: deviceId → { html, imgUrl } | "none" | "loading"
+  const _cache = new Map();
+
+  // Tooltip element (singleton)
+  const tip = document.createElement("div");
+  tip.id = "ip-screenshot-tip";
+  tip.style.cssText = [
+    "position:fixed","z-index:9999","display:none","pointer-events:none",
+    "background:#fff","border:1px solid #dee2e6","border-radius:8px",
+    "box-shadow:0 4px 20px rgba(0,0,0,.18)","padding:8px",
+    "max-width:380px","min-width:200px","text-align:center",
+  ].join(";");
+  document.body.appendChild(tip);
+
+  let hoverTimer = null;
+  let activeEl = null;
+
+  function positionTip(el) {
+    const r  = el.getBoundingClientRect();
+    const tw = tip.offsetWidth;
+    const th = tip.offsetHeight;
+    let left = r.left + r.width / 2 - tw / 2;
+    let top  = r.bottom + 8;
+    if (left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
+    if (left < 8) left = 8;
+    if (top + th > window.innerHeight - 8) top = r.top - th - 8;
+    tip.style.left = left + "px";
+    tip.style.top  = top  + "px";
+  }
+
+  function showTip(el, content, interactive) {
+    tip.innerHTML = content;
+    tip.style.pointerEvents = interactive ? "auto" : "none";
+    tip.style.display = "block";
+    // Po wstawieniu obrazka — poczekaj na jego zaladowanie, potem pozycjonuj
+    const img = tip.querySelector("img");
+    if (img && !img.complete) {
+      img.addEventListener("load", () => { if (activeEl === el) positionTip(el); }, {once: true});
+    }
+    positionTip(el);
+  }
+
+  function hideTip() {
+    clearTimeout(hoverTimer);
+    tip.style.display = "none";
+    activeEl = null;
+  }
+
+  function _buildHtml(ip, imgUrl, src, port, capturedAt, ageS) {
+    const isRtsp = src === "rtsp";
+    const openLink = isRtsp
+      ? `<span class="badge bg-danger" style="font-size:.65rem"><i class="bi bi-camera-video-fill me-1"></i>RTSP stream (:${port})</span>`
+      : `<a href="${src}://${ip}${port && port !== '80' && port !== '443' ? ':' + port : ''}" target="_blank" rel="noopener" style="pointer-events:auto">Otwórz ↗</a>`;
+    const ageLabel = capturedAt
+      ? (ageS < 60
+          ? `<span class="text-success" style="font-size:.65rem;margin-left:6px">📷 świeży</span>`
+          : `<span class="text-muted" style="font-size:.65rem;margin-left:6px">📷 ${capturedAt}</span>`)
+      : "";
+    return (
+      `<div class="text-muted small mb-1" style="font-size:.75rem">${ip}</div>` +
+      `<img src="${imgUrl}" style="max-width:360px;max-height:240px;border-radius:4px;display:block;">` +
+      `<div class="text-muted" style="font-size:.7rem;margin-top:4px">${openLink}${ageLabel}</div>`
+    );
+  }
+
+  // Pobierz screenshot i zapisz w cache. Zwraca Promise.
+  async function _fetchScreenshot(deviceId, ip) {
+    if (_cache.has(deviceId)) return; // juz jest lub w trakcie
+    _cache.set(deviceId, "loading");
+    try {
+      const resp = await fetch(`/devices/${deviceId}/screenshot`, {signal: AbortSignal.timeout(15000)});
+      if (resp.status === 204 || resp.status === 404 || resp.status === 503 || !resp.ok) {
+        _cache.set(deviceId, "none");
+        return;
+      }
+      const blob     = await resp.blob();
+      const imgUrl   = URL.createObjectURL(blob);
+      const src      = resp.headers.get("X-Screenshot-Source") || "http";
+      const port     = resp.headers.get("X-Screenshot-Port") || "";
+      const capturedAt = resp.headers.get("X-Screenshot-Captured-At") || "";
+      const ageS     = parseInt(resp.headers.get("X-Screenshot-Age") || "0", 10);
+      _cache.set(deviceId, { html: _buildHtml(ip, imgUrl, src, port, capturedAt, ageS), imgUrl });
+    } catch(e) {
+      _cache.delete(deviceId); // blad — pozwol sprobowac ponownie przy hoverze
+    }
+  }
+
+  async function showScreenshot(el) {
+    const deviceId = el.dataset.deviceId;
+    const ip       = el.dataset.ip;
+    const cached   = _cache.get(deviceId);
+
+    if (cached === "none") return;           // brak screenshota — nic nie pokazuj
+    if (cached && cached !== "loading") {    // mamy gotowy HTML — pokaz natychmiast
+      showTip(el, cached.html, true);
+      return;
+    }
+
+    // Nie ma cache lub w trakcie ladowania — pokaz spinner i czekaj
+    showTip(el,
+      `<div class="text-muted small mb-1" style="font-size:.75rem">${ip}</div>` +
+      `<div class="spinner-border spinner-border-sm text-secondary" role="status"></div>` +
+      `<div class="text-muted small mt-1" style="font-size:.75rem">Ładowanie…</div>`
+    );
+
+    await _fetchScreenshot(deviceId, ip);
+
+    if (activeEl !== el) return; // uzytkownik odjechal podczas ladowania
+    const result = _cache.get(deviceId);
+    if (result && result !== "loading" && result !== "none") {
+      showTip(el, result.html, true);
+    } else {
+      hideTip();
+    }
+  }
+
+  // Eventy hover
+  document.querySelectorAll(".ip-preview-trigger").forEach(el => {
+    el.addEventListener("mouseenter", function() {
+      activeEl = this;
+      const delay = _cache.has(this.dataset.deviceId) ? 80 : DELAY_MS;
+      hoverTimer = setTimeout(() => showScreenshot(this), delay);
+    });
+    el.addEventListener("mouseleave", function(e) {
+      if (e.relatedTarget === tip || tip.contains(e.relatedTarget)) return;
+      clearTimeout(hoverTimer);
+      setTimeout(() => { if (!tip.matches(":hover")) hideTip(); }, 150);
+    });
+  });
+
+  tip.addEventListener("mouseleave", hideTip);
+
+  // Preload screenshotow w tle — po 2s od zaladowania strony
+  window.addEventListener("load", function() {
+    const triggers = [...document.querySelectorAll(".ip-preview-trigger")];
+    let i = 0;
+    function next() {
+      if (i >= triggers.length) return;
+      const el = triggers[i++];
+      _fetchScreenshot(el.dataset.deviceId, el.dataset.ip).finally(
+        () => setTimeout(next, PRELOAD_GAP)
+      );
+    }
+    setTimeout(next, 2000);
+  });
+})();
+
+{% if inventory_enabled %}
+// ── Inventory modal ───────────────────────────────────────────────────────────
+(function() {
+  const modal = document.getElementById("inventoryModal");
+  if (!modal) return;
+  modal.addEventListener("show.bs.modal", function(e) {
+    const btn = e.relatedTarget;
+    if (!btn) return;
+    document.getElementById("inventoryForm").action =
+      "/devices/" + btn.dataset.deviceId + "/inventory";
+    document.getElementById("inventoryDeviceLabel").textContent =
+      "Urządzenie: " + btn.dataset.deviceIp;
+    document.getElementById("invSerial").value        = btn.dataset.serial || "";
+    document.getElementById("invAsset").value         = btn.dataset.asset || "";
+    document.getElementById("invPurchaseDate").value  = btn.dataset.purchaseDate || "";
+    document.getElementById("invPrice").value         = btn.dataset.purchasePrice || "";
+    const cur = document.getElementById("invCurrency");
+    const wantCur = btn.dataset.purchaseCurrency || "PLN";
+    for (let opt of cur.options) { opt.selected = (opt.value === wantCur); }
+    document.getElementById("invVendor").value        = btn.dataset.purchaseVendor || "";
+    document.getElementById("invInvoice").value       = btn.dataset.invoice || "";
+    document.getElementById("invWarrantyEnd").value   = btn.dataset.warrantyEnd || "";
+    document.getElementById("invSupportEnd").value    = btn.dataset.supportEnd || "";
+    document.getElementById("invResponsible").value   = btn.dataset.responsible || "";
+    document.getElementById("invNotes").value         = btn.dataset.notes || "";
+  });
+})();
+{% endif %}
+
+
+{% if ai_assessment_enabled %}
+
+// ── AI Ocena per-urządzenie ────────────────────────────────────────────────────
+(function() {
+  const modal     = document.getElementById("devAiAssessModal");
+  if (!modal) return;
+  const bsModal   = new bootstrap.Modal(modal);
+  const title     = document.getElementById("devAiAssessTitle");
+  const loading   = document.getElementById("devAiLoading");
+  const result    = document.getElementById("devAiResult");
+  const histDiv   = document.getElementById("devAiHistory");
+  const errDiv    = document.getElementById("devAiError");
+  const refreshBtn= document.getElementById("devAiRefreshBtn");
+  const histBtn   = document.getElementById("devAiHistoryBtn");
+
+  let currentDeviceId = null;
+  const toastEl  = document.getElementById("aiProgressToast");
+  const toastMsg = document.getElementById("aiProgressToastMsg");
+  const bsToast  = toastEl ? new bootstrap.Toast(toastEl, {autohide: false}) : null;
+
+  function _showToast(msg) { if (toastEl) { toastMsg.textContent = msg; toastEl.style.display = ""; bsToast && bsToast.show(); } }
+  function _hideToast()    { if (bsToast) bsToast.hide(); if (toastEl) toastEl.style.display = "none"; }
+
+  function _show(...els) { els.forEach(e => e && (e.style.display = "")); }
+  function _hide(...els) { els.forEach(e => e && (e.style.display = "none")); }
+  function _hideAll()    { _hide(loading, result, histDiv, errDiv); refreshBtn.style.display = "none"; }
+
+  const TIER_COLORS = {budget: "success", mid: "info", premium: "warning"};
+  const TIER_LABELS = {budget: "Budżet", mid: "Średni", premium: "Premium"};
+
+  const SEV_COLORS = {critical:"danger", high:"warning", medium:"info", low:"secondary", ok:"success"};
+  const RISK_LABELS = {critical:"Krytyczne", high:"Wysokie", medium:"Średnie", low:"Niskie", ok:"Bezpieczne"};
+
+  function renderDevResult(data, fromHistory) {
+    _hideAll();
+    if (data.error) { errDiv.textContent = data.error; _show(errDiv); return; }
+    if (data.raw && !data.hasOwnProperty("is_obsolete")) { try { data = JSON.parse(data.raw); } catch(e) {} }
+
+    const at = data.assessed_at || "";
+    const sec = data.security || {};
+    const riskLevel = sec.risk_level || "ok";
+    const riskColor = SEV_COLORS[riskLevel] || "secondary";
+    const findings  = Array.isArray(sec.findings) ? sec.findings : [];
+
+    // ── Nagłówek ────────────────────────────────────────────────────────────
+    let html = `<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+      ${at ? `<span class="badge bg-secondary"><i class="bi bi-clock me-1"></i>${at}</span>` : ""}
+      ${data.is_obsolete ? `<span class="badge bg-danger"><i class="bi bi-tools me-1"></i>Wymaga wymiany</span>` : `<span class="badge bg-success"><i class="bi bi-check-lg me-1"></i>Sprzęt aktualny</span>`}
+      <span class="badge bg-${riskColor}" title="Poziom ryzyka bezpieczeństwa"><i class="bi bi-shield me-1"></i>${RISK_LABELS[riskLevel] || riskLevel}</span>
+      ${fromHistory ? `<span class="badge bg-info text-dark">Historia</span>` : ""}
+    </div>`;
+
+    if (data.summary) {
+      html += `<div class="card border-primary mb-3">
+        <div class="card-body py-2 px-3">
+          <div class="small fw-bold text-primary mb-1"><i class="bi bi-stars me-1"></i>Podsumowanie AI</div>
+          <div class="small">${data.summary}</div>
+        </div>
+      </div>`;
+    }
+
+    // ── Zakładki Hardware / Bezpieczeństwo ───────────────────────────────────
+    html += `<ul class="nav nav-tabs mb-3" id="devAiTabs">
+      <li class="nav-item"><button class="nav-link active" data-ai-tab="hw"><i class="bi bi-cpu me-1"></i>Sprzęt</button></li>
+      <li class="nav-item"><button class="nav-link" data-ai-tab="sec"><i class="bi bi-shield-exclamation me-1"></i>Bezpieczeństwo${findings.length > 0 ? ` <span class="badge bg-${riskColor} ms-1">${findings.length}</span>` : ""}</button></li>
+    </ul>`;
+
+    // ── TAB: Sprzęt ──────────────────────────────────────────────────────────
+    html += `<div id="devAiTabHw">`;
+    if (data.reason) {
+      html += `<div class="alert ${data.is_obsolete ? 'alert-danger' : 'alert-success'} py-2 small mb-3">${data.reason}</div>`;
+    }
+    if (data.is_obsolete && Array.isArray(data.replacements) && data.replacements.length > 0) {
+      html += `<h6 class="mb-2 small fw-bold">Proponowane zamienniki:</h6><div class="row g-2">`;
+      for (const r of data.replacements) {
+        const tc = TIER_COLORS[r.tier] || "secondary";
+        html += `<div class="col-md-4">
+          <div class="border border-${tc} rounded p-2" style="font-size:.78rem">
+            <div class="fw-bold text-${tc} mb-1">${TIER_LABELS[r.tier] || r.tier}</div>
+            <div class="fw-semibold">${r.name || "—"}</div>
+            <div class="text-muted mt-1">Nowy: <strong>${r.price_new || "?"}</strong>${r.price_used ? ` · Używany: <strong>${r.price_used}</strong>` : ""}</div>
+            ${r.notes ? `<div class="text-muted mt-1" style="font-size:.7rem;line-height:1.3">${r.notes}</div>` : ""}
+          </div>
+        </div>`;
+      }
+      html += `</div>`;
+    } else if (!data.is_obsolete) {
+      html += `<div class="text-muted small"><i class="bi bi-check-circle-fill text-success me-1"></i>Sprzęt jest aktualny — wymiana nie jest wymagana.</div>`;
+    }
+    html += `</div>`;
+
+    // ── TAB: Bezpieczeństwo ──────────────────────────────────────────────────
+    html += `<div id="devAiTabSec" style="display:none">`;
+    if (sec.overall) {
+      html += `<div class="alert alert-${riskColor === 'ok' ? 'success' : riskColor} py-2 small mb-3">${sec.overall}</div>`;
+    }
+    if (findings.length === 0) {
+      html += `<div class="text-muted small text-center py-3"><i class="bi bi-shield-check me-1 text-success"></i>Brak znalezisk bezpieczeństwa.</div>`;
+    } else {
+      for (const f of findings) {
+        const sc = SEV_COLORS[f.severity] || "secondary";
+        html += `<div class="card border-${sc} mb-2">
+          <div class="card-header py-1 px-3 d-flex align-items-center gap-2" style="background:rgba(0,0,0,.05)">
+            <span class="badge bg-${sc}">${f.severity ? f.severity.toUpperCase() : "?"}</span>
+            ${f.port ? `<code>port ${f.port}</code>` : ""}
+            ${f.service ? `<span class="small text-muted">${f.service}</span>` : ""}
+          </div>
+          <div class="card-body py-2 px-3">
+            <div class="small mb-1">${f.finding || ""}</div>
+            ${f.recommendation ? `<div class="small text-muted"><i class="bi bi-arrow-right-circle me-1"></i>${f.recommendation}</div>` : ""}
+          </div>
+        </div>`;
+      }
+    }
+    html += `</div>`;
+
+    result.innerHTML = html;
+
+    // ── Obsługa zakładek ─────────────────────────────────────────────────────
+    result.querySelectorAll("[data-ai-tab]").forEach(btn => {
+      btn.addEventListener("click", function() {
+        result.querySelectorAll("[data-ai-tab]").forEach(b => b.classList.remove("active"));
+        this.classList.add("active");
+        result.querySelector("#devAiTabHw").style.display  = this.dataset.aiTab === "hw"  ? "" : "none";
+        result.querySelector("#devAiTabSec").style.display = this.dataset.aiTab === "sec" ? "" : "none";
+      });
+    });
+
+    _show(result, refreshBtn);
+  }
+
+  async function runDevAssess() {
+    _hideAll(); _show(loading);
+    _showToast("Claude analizuje urządzenie… (10–30 sek.)");
+    try {
+      const resp = await fetch(`/devices/${currentDeviceId}/ai-assess`, {method: "POST"});
+      renderDevResult(await resp.json(), false);
+    } catch(e) { errDiv.textContent = "Błąd: " + e; _show(errDiv); _hide(loading); }
+    finally { _hideToast(); }
+  }
+
+  async function showDevHistory() {
+    _hideAll(); _show(loading);
+    try {
+      const items = await (await fetch(`/devices/${currentDeviceId}/ai-assess/history`)).json();
+      _hide(loading);
+      if (!Array.isArray(items) || items.length === 0) {
+        histDiv.innerHTML = `<div class="text-muted text-center py-4"><i class="bi bi-clock-history me-2"></i>Brak historycznych ocen dla tego urządzenia.</div>`;
+        _show(histDiv, refreshBtn); return;
+      }
+      let html = `<h6 class="mb-3"><i class="bi bi-clock-history me-2"></i>Historia ocen (${items.length})</h6><div class="list-group">`;
+      for (const it of items) {
+        html += `<a href="#" class="list-group-item list-group-item-action py-2 px-3 dev-hist-item" data-entry-id="${it.id}">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <strong>${it.assessed_at}</strong>
+              ${it.is_obsolete ? `<span class="badge bg-danger ms-1">Do wymiany</span>` : `<span class="badge bg-success ms-1">OK</span>`}
+              ${it.risk_level && it.risk_level !== "ok" ? `<span class="badge bg-${SEV_COLORS[it.risk_level]||'secondary'} ms-1"><i class="bi bi-shield me-1"></i>${RISK_LABELS[it.risk_level]||it.risk_level}</span>` : ""}
+            </div>
+            <i class="bi bi-chevron-right text-muted"></i>
+          </div>
+          ${it.summary || it.reason ? `<div class="text-muted mt-1" style="font-size:.74rem">${(it.summary || it.reason).substring(0,120)}…</div>` : ""}
+        </a>`;
+      }
+      html += `</div>`;
+      histDiv.innerHTML = html;
+      histDiv.querySelectorAll(".dev-hist-item").forEach(a => {
+        a.addEventListener("click", async function(e) {
+          e.preventDefault(); _hideAll(); _show(loading);
+          try {
+            renderDevResult(await (await fetch(`/devices/${currentDeviceId}/ai-assess/history/${this.dataset.entryId}`)).json(), true);
+          } catch(err) { errDiv.textContent = "Błąd: " + err; _show(errDiv); _hide(loading); }
+        });
+      });
+      _show(histDiv, refreshBtn);
+    } catch(e) { _hide(loading); errDiv.textContent = "Błąd historii: " + e; _show(errDiv); }
+  }
+
+  document.querySelectorAll(".dev-ai-assess-btn").forEach(btn => {
+    btn.addEventListener("click", async function() {
+      currentDeviceId = this.dataset.deviceId;
+      const label = this.dataset.deviceLabel || this.dataset.deviceIp;
+      title.innerHTML = `<i class="bi bi-cpu me-2"></i>AI Ocena: <code>${label}</code>`;
+      _showToast(`Sprawdzam historię AI dla: ${label}`);
+      bsModal.show();
+      _hideAll(); _show(loading);
+      // Sprawdź czy jest ostatnia ocena dla tego urządzenia
+      try {
+        const items = await (await fetch(`/devices/${currentDeviceId}/ai-assess/history`)).json();
+        if (Array.isArray(items) && items.length > 0) {
+          _hideToast();
+          const newest = items[0];
+          renderDevResult(await (await fetch(`/devices/${currentDeviceId}/ai-assess/history/${newest.id}`)).json(), false);
+          return;
+        }
+      } catch(e) {}
+      // Brak historii — uruchom ocenę od razu (toast zostanie odświeżony przez runDevAssess)
+      await runDevAssess();
+    });
+  });
+
+  refreshBtn.addEventListener("click", runDevAssess);
+  histBtn.addEventListener("click", showDevHistory);
+})();
+{% endif %}
+
+{# ── Silnik filtrowania / sortowania ──────────────────────────────────────── #}
+(function () {
+  'use strict';
+  const STORAGE_KEY = 'devFilters_v2';
+  const tbody = document.querySelector('table.table tbody');
+  if (!tbody) return;
+
+  const SEV_ORDER = { critical: 4, high: 3, medium: 2, low: 1, '': 0 };
+
+  function ipToNum(ip) {
+    const p = (ip || '').split('.');
+    if (p.length !== 4) return 0;
+    return p.reduce((acc, x) => acc * 256 + (parseInt(x, 10) || 0), 0);
+  }
+
+  // ── state ──────────────────────────────────────────────────────────────────
+  // Filtr CIDR — nigdy nie zapisywany w localStorage, tylko z URL param lub dropdown
+  function _urlCidr() {
+    return new URLSearchParams(window.location.search).get('cidr') || '';
+  }
+  function ipToNum2(ip) {
+    return ip.split('.').reduce((acc, v) => (acc * 256 + (parseInt(v, 10) || 0)) >>> 0, 0);
+  }
+  function ipInCidr(ip, cidr) {
+    try {
+      const [net, prefix] = cidr.split('/');
+      const p = parseInt(prefix, 10);
+      const mask = p === 0 ? 0 : (0xFFFFFFFF << (32 - p)) >>> 0;
+      return (ipToNum2(ip) & mask) >>> 0 === (ipToNum2(net) & mask) >>> 0;
+    } catch { return false; }
+  }
+
+  const TOP_LOCAL_CIDR = {{ top_local_cidr | default("") | tojson }};
+
+  let state = {
+    search: '', toggles: {}, types: [], iptypes: [], flags: [],
+    minVuln: 0, minSev: '', sortCol: 'ip', sortDir: 1,
+    cidr: _urlCidr() || TOP_LOCAL_CIDR, snmpFilter: '',
+  };
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    delete saved.cidr;  // cidr nigdy nie pochodzi z localStorage
+    Object.assign(state, saved);
+  } catch (e) {}
+
+  // ── filter ─────────────────────────────────────────────────────────────────
+  function applyFilters() {
+    const rows = Array.from(tbody.querySelectorAll('tr[data-ip]'));
+    const q = (state.search || '').toLowerCase().trim();
+    let visible = 0;
+    for (const row of rows) {
+      const { ip = '', hostname = '', mac = '', vendor = '',
+              active, trusted, vulns = '0', severity = '',
+              iptype = '', flag = '', type = '', cred, ports = '-1', snmp = '0' } = row.dataset;
+
+      if (q && !ip.includes(q) && !hostname.includes(q) && !mac.includes(q) && !vendor.includes(q)) {
+        row.style.display = 'none'; continue;
+      }
+      if (state.toggles.inactive   && active   === '0') { row.style.display = 'none'; continue; }
+      if (state.toggles.trusted    && trusted  === '1') { row.style.display = 'none'; continue; }
+      if (state.toggles['no-vulns'] && parseInt(vulns) === 0) { row.style.display = 'none'; continue; }
+      if (state.toggles['no-cred'] && cred     === '1') { row.style.display = 'none'; continue; }
+      if (state.toggles.dhcp       && iptype   !== 'dhcp') { row.style.display = 'none'; continue; }
+      if (state.toggles['only-flag'] && !flag) { row.style.display = 'none'; continue; }
+      if (state.types.length    && !state.types.includes(type))   { row.style.display = 'none'; continue; }
+      if (state.iptypes.length  && !state.iptypes.includes(iptype)) { row.style.display = 'none'; continue; }
+      if (state.flags.length    && !state.flags.includes(flag))   { row.style.display = 'none'; continue; }
+      if (state.minVuln > 0     && parseInt(vulns) < state.minVuln) { row.style.display = 'none'; continue; }
+      if (state.minSev && SEV_ORDER[severity] < SEV_ORDER[state.minSev]) { row.style.display = 'none'; continue; }
+      if (state.cidr && !ipInCidr(ip, state.cidr)) { row.style.display = 'none'; continue; }
+      if (state.snmpFilter === 'ok'   && snmp !== '2') { row.style.display = 'none'; continue; }
+      if (state.snmpFilter === 'none' && snmp === '2') { row.style.display = 'none'; continue; }
+      row.style.display = '';
+      visible++;
+    }
+    const counter = document.getElementById('devCount');
+    if (counter) counter.textContent = visible === rows.length
+      ? rows.length + ' urządzeń'
+      : visible + ' / ' + rows.length;
+    saveState();
+    const visibleRows = rows.filter(r => r.style.display !== 'none');
+    updateAlerts(visibleRows);
+    updateBulkClearBar(visibleRows);
+  }
+
+  function updateBulkClearBar(visibleRows) {
+    const bar = document.getElementById('bulkClearBar');
+    if (!bar) return;
+    const ids = visibleRows.map(r => r.dataset.id).filter(Boolean);
+    bar.style.display = ids.length ? '' : 'none';
+    const countEl = document.getElementById('bulkClearCount');
+    if (countEl) countEl.textContent = ids.length;
+    const idsInput = document.getElementById('bulkClearDeviceIds');
+    if (idsInput) idsInput.value = ids.join(',');
+  }
+
+  // ── Uwagi — top porty i podatności tylko z widocznych wierszy ──────────────
+  function updateAlerts(visibleRows) {
+    const box = document.getElementById('devAlerts');
+    if (!box) return;
+    if (!visibleRows.length) { box.innerHTML = ''; return; }
+
+    // Top 3 po portach
+    const byPorts = visibleRows
+      .map(r => ({ id: r.id, label: r.dataset.hostname || r.dataset.ip, ip: r.dataset.ip, ports: parseInt(r.dataset.ports || '0', 10) }))
+      .filter(x => x.ports > 0)
+      .sort((a, b) => b.ports - a.ports)
+      .slice(0, 3);
+
+    // Top 3 po podatnościach
+    const byVulns = visibleRows
+      .map(r => ({ id: r.id, label: r.dataset.hostname || r.dataset.ip, ip: r.dataset.ip, vulns: parseInt(r.dataset.vulns || '0', 10), sev: r.dataset.severity || '' }))
+      .filter(x => x.vulns > 0)
+      .sort((a, b) => b.vulns - a.vulns)
+      .slice(0, 3);
+
+    if (!byPorts.length && !byVulns.length) { box.innerHTML = ''; return; }
+
+    const SEV_CLS = { critical: 'bg-danger', high: 'bg-warning text-dark', medium: 'bg-secondary', low: 'bg-secondary' };
+    let html = '<small class="text-muted me-1">Uwaga:</small>';
+
+    byPorts.forEach(x => {
+      const cls = x.ports >= 500 ? 'bg-danger' : x.ports >= 100 ? 'bg-danger bg-opacity-75' : x.ports >= 50 ? 'bg-warning text-dark' : 'bg-secondary';
+      html += `<a href="#${x.id}" class="badge text-decoration-none px-2 py-1 ${cls}" title="${x.ip} — ${x.ports} otwartych portów"><i class="bi bi-ethernet me-1"></i>${x.label} — ${x.ports} portów</a>`;
+    });
+    byVulns.forEach(x => {
+      const cls = SEV_CLS[x.sev] || 'bg-secondary';
+      html += `<a href="#${x.id}" class="badge text-decoration-none px-2 py-1 ${cls}" title="${x.ip} — ${x.vulns} podatności"><i class="bi bi-bug-fill me-1"></i>${x.label} — ${x.vulns} podatn.</a>`;
+    });
+
+    box.innerHTML = html;
+  }
+
+  // ── sort ───────────────────────────────────────────────────────────────────
+  function applySort() {
+    if (!state.sortCol) return;
+    const rows = Array.from(tbody.querySelectorAll('tr[data-ip]'));
+    const col = state.sortCol, dir = state.sortDir;
+    rows.sort((a, b) => {
+      let av = a.dataset[col] || '', bv = b.dataset[col] || '';
+      if (col === 'ip')     return (ipToNum(av) - ipToNum(bv)) * dir;
+      if (col === 'vulns' || col === 'ports' || col === 'active' || col === 'snmp')
+        return (parseInt(av || 0) - parseInt(bv || 0)) * dir;
+      if (col === 'severity')
+        return ((SEV_ORDER[av] || 0) - (SEV_ORDER[bv] || 0)) * dir;
+      return av.localeCompare(bv) * dir;
+    });
+    rows.forEach(r => tbody.appendChild(r));
+  }
+
+  function refresh() { applySort(); applyFilters(); }
+
+  function saveState() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  // ── sync UI ────────────────────────────────────────────────────────────────
+  function syncUI() {
+    const searchEl = document.getElementById('devSearch');
+    if (searchEl) searchEl.value = state.search;
+
+    document.querySelectorAll('.dev-filter-toggle').forEach(btn => {
+      const on = !!state.toggles[btn.dataset.filter];
+      btn.classList.toggle('btn-secondary',         on);
+      btn.classList.toggle('btn-outline-secondary', !on);
+    });
+    document.querySelectorAll('.dev-type-btn').forEach(btn => {
+      const on = state.types.includes(btn.dataset.type);
+      btn.classList.toggle('btn-secondary',         on);
+      btn.classList.toggle('btn-outline-secondary', !on);
+    });
+    document.querySelectorAll('.dev-iptype-btn').forEach(btn => {
+      btn.classList.toggle('active', state.iptypes.includes(btn.dataset.iptype));
+    });
+    document.querySelectorAll('.dev-flag-btn').forEach(btn => {
+      const on = state.flags.includes(btn.dataset.flag);
+      btn.style.outline      = on ? '3px solid white' : '';
+      btn.style.outlineOffset = on ? '2px' : '';
+    });
+    document.querySelectorAll('.dev-minvuln-btn').forEach(btn => {
+      const on = parseInt(btn.dataset.minvuln) === state.minVuln;
+      btn.classList.toggle('btn-warning',         on);
+      btn.classList.toggle('btn-outline-warning', !on);
+    });
+    document.querySelectorAll('.dev-sev-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.sev === state.minSev);
+    });
+    document.querySelectorAll('.dev-snmp-btn').forEach(btn => {
+      const on = btn.dataset.snmp === state.snmpFilter;
+      btn.classList.toggle('btn-success',         on && btn.dataset.snmp === 'ok');
+      btn.classList.toggle('btn-outline-success', !on && btn.dataset.snmp === 'ok');
+      btn.classList.toggle('btn-secondary',        on && btn.dataset.snmp !== 'ok');
+      btn.classList.toggle('btn-outline-secondary',!on && btn.dataset.snmp !== 'ok');
+    });
+    document.querySelectorAll('th.dev-sortable').forEach(th => {
+      const icon = th.querySelector('i.sort-icon');
+      if (!icon) return;
+      if (th.dataset.col === state.sortCol) {
+        icon.className = (state.sortDir === 1 ? 'bi bi-arrow-up' : 'bi bi-arrow-down') + ' sort-icon text-primary';
+      } else {
+        icon.className = 'bi bi-arrow-down-up text-muted sort-icon';
+      }
+      icon.style.fontSize = '.7rem';
+    });
+    const hasAdv = state.types.length || state.iptypes.length || state.flags.length || state.minVuln || state.minSev || state.snmpFilter;
+    if (hasAdv) {
+      const panel = document.getElementById('devAdvFilters');
+      if (panel && !panel.classList.contains('show'))
+        new bootstrap.Collapse(panel, { toggle: false }).show();
+    }
+
+    // Banner filtra sieci
+    const cidrBanner = document.getElementById('cidrFilterBanner');
+    const cidrLabel  = document.getElementById('cidrFilterLabel');
+    if (cidrBanner) {
+      if (state.cidr) {
+        cidrBanner.style.cssText = '';  // usuwa display:none!important
+        if (cidrLabel) cidrLabel.textContent = state.cidr;
+      } else {
+        cidrBanner.style.cssText = 'display:none!important';
+      }
+    }
+    // Dropdown sieci
+    const netSel = document.getElementById('devNetworkFilter');
+    if (netSel) netSel.value = state.cidr || '';
+  }
+
+  // ── event listeners ────────────────────────────────────────────────────────
+  const searchEl = document.getElementById('devSearch');
+  if (searchEl) {
+    let t;
+    searchEl.addEventListener('input', () => {
+      clearTimeout(t);
+      t = setTimeout(() => { state.search = searchEl.value; syncUI(); refresh(); }, 200);
+    });
+  }
+
+  document.querySelectorAll('.dev-filter-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const f = btn.dataset.filter;
+      state.toggles[f] = !state.toggles[f];
+      syncUI(); refresh();
+    });
+  });
+
+  document.querySelectorAll('.dev-type-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const t = btn.dataset.type, idx = state.types.indexOf(t);
+      idx >= 0 ? state.types.splice(idx, 1) : state.types.push(t);
+      syncUI(); refresh();
+    });
+  });
+
+  document.querySelectorAll('.dev-iptype-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const t = btn.dataset.iptype, idx = state.iptypes.indexOf(t);
+      idx >= 0 ? state.iptypes.splice(idx, 1) : state.iptypes.push(t);
+      syncUI(); refresh();
+    });
+  });
+
+  document.querySelectorAll('.dev-flag-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const f = btn.dataset.flag, idx = state.flags.indexOf(f);
+      idx >= 0 ? state.flags.splice(idx, 1) : state.flags.push(f);
+      syncUI(); refresh();
+    });
+  });
+
+  document.querySelectorAll('.dev-minvuln-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const v = parseInt(btn.dataset.minvuln);
+      state.minVuln = state.minVuln === v ? 0 : v;
+      syncUI(); refresh();
+    });
+  });
+
+  document.querySelectorAll('.dev-sev-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.minSev = state.minSev === btn.dataset.sev ? '' : btn.dataset.sev;
+      syncUI(); refresh();
+    });
+  });
+
+  document.querySelectorAll('.dev-snmp-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.snmpFilter = state.snmpFilter === btn.dataset.snmp ? '' : btn.dataset.snmp;
+      syncUI(); refresh();
+    });
+  });
+
+  document.querySelectorAll('th.dev-sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      if (state.sortCol === th.dataset.col) {
+        state.sortDir *= -1;
+      } else {
+        state.sortCol = th.dataset.col;
+        state.sortDir = (th.dataset.col === 'vulns' || th.dataset.col === 'ports' || th.dataset.col === 'snmp') ? -1 : 1;
+      }
+      syncUI(); refresh();
+    });
+  });
+
+  const resetBtn = document.getElementById('devFilterReset');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      state = { search: '', toggles: {}, types: [], iptypes: [], flags: [], minVuln: 0, minSev: '', sortCol: 'ip', sortDir: 1, cidr: '', snmpFilter: '' };
+      try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+      history.replaceState(null, '', window.location.pathname);
+      syncUI(); refresh();
+    });
+  }
+
+  const cidrClearBtn = document.getElementById('cidrFilterClear');
+  if (cidrClearBtn) {
+    cidrClearBtn.addEventListener('click', () => {
+      state.cidr = '';
+      history.replaceState(null, '', window.location.pathname);
+      syncUI(); refresh();
+    });
+  }
+
+  const netSelEl = document.getElementById('devNetworkFilter');
+  if (netSelEl) {
+    netSelEl.addEventListener('change', () => {
+      state.cidr = netSelEl.value;
+      if (state.cidr) {
+        history.replaceState(null, '', window.location.pathname + '?cidr=' + encodeURIComponent(state.cidr));
+      } else {
+        history.replaceState(null, '', window.location.pathname);
+      }
+      syncUI(); refresh();
+    });
+  }
+
+  // ── init ───────────────────────────────────────────────────────────────────
+  syncUI();
+  refresh();
+})();
+
+// ── Live status polling (bez pelnego reload) ────────────────────────────────
+(function() {
+  const POLL_INTERVAL_MS = 15000;  // co 15s
+  const staleEl   = document.getElementById('monitoring-stale-banner');
+  const staleText = document.getElementById('monitoring-age-text');
+
+  function applyStatus(item, uncertainMin) {
+    const row = document.getElementById('row-' + item.id);
+    if (!row) return;
+    const badge = row.querySelector('.status-badge');
+    if (!badge) return;
+
+    // Wyznacz nowy stan
+    let newClass, newText, newTitle;
+    const minsAgo = item.mins_ago;
+    if (item.is_active && (minsAgo === null || minsAgo >= uncertainMin)) {
+      // null = nigdy nie widziane — traktuj jak uncertain, nie UP
+      newClass = 'badge badge-uncertain status-badge';
+      newText  = '?';
+      newTitle = 'Status: NIEPEWNY';
+    } else if (item.is_active) {
+      newClass = 'badge badge-up status-badge';
+      newText  = 'UP';
+      newTitle = 'Status: UP';
+    } else {
+      newClass = 'badge badge-down status-badge';
+      newText  = 'DOWN';
+      newTitle = 'Status: DOWN';
+    }
+
+    // Formatuj last_seen z UTC ISO na czas lokalny przegladarki
+    let lastSeenLocal = null;
+    if (item.last_seen_iso) {
+      const d = new Date(item.last_seen_iso + 'Z');  // wymusz UTC
+      const pad = n => String(n).padStart(2, '0');
+      lastSeenLocal = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
+        + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
+
+    // Zawsze aktualizuj "Ostatni kontakt" w tresci popovera (niezaleznie od zmiany statusu)
+    if (lastSeenLocal) {
+      let content = badge.getAttribute('data-bs-content') || '';
+      const updated = content.replace(/<b>Ostatni kontakt:<\/b>[^<]*<br>/,
+        '<b>Ostatni kontakt:</b> ' + lastSeenLocal + '<br>');
+      if (updated !== content) {
+        badge.setAttribute('data-bs-content', updated);
+        const popInst = bootstrap.Popover.getInstance(badge);
+        if (popInst) { popInst.dispose(); new bootstrap.Popover(badge, { trigger: 'hover focus', html: true }); }
+      }
+    }
+
+    // Aktualizuj badge tylko jesli zmienil sie status
+    if (badge.className !== newClass || badge.textContent.trim() !== newText) {
+      const popInst = bootstrap.Popover.getInstance(badge);
+      if (popInst) popInst.dispose();
+      badge.className = newClass;
+      badge.textContent = newText;
+      badge.setAttribute('data-bs-title', newTitle);
+      new bootstrap.Popover(badge, { trigger: 'hover focus', html: true });
+    }
+
+    // Zaktualizuj data-active i data-lastseen na wierszu (uzywane przez filtry)
+    row.setAttribute('data-active', item.is_active ? '1' : '0');
+    if (item.last_seen_iso) row.setAttribute('data-lastseen', item.last_seen_iso);
+  }
+
+  function poll() {
+    fetch('/devices/live-status')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return;
+        const unc = data.uncertain_min || 7;
+        (data.devices || []).forEach(item => applyStatus(item, unc));
+        // Aktualizuj baner o przestarzalym monitoringu
+        if (staleEl) {
+          staleEl.style.display = data.monitoring_stale ? '' : 'none';
+          if (staleText && data.monitoring_stale) {
+            const m = data.monitoring_age_min || 0;
+            staleText.textContent = m >= 60
+              ? Math.floor(m/60) + 'h ' + (m%60) + 'min temu'
+              : m >= 2 ? m + ' min temu' : 'przed chwila';
+          }
+        }
+      })
+      .catch(() => {});  // ciche bledy (np. utrata polaczenia)
+  }
+
+  // Pierwsze pobranie natychmiast, potem co POLL_INTERVAL_MS
+  poll();
+  setInterval(poll, POLL_INTERVAL_MS);
+})();
+</script>
+{% endblock %}

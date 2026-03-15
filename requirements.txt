@@ -1,0 +1,59 @@
+# Core
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
+
+# Database
+sqlalchemy==2.0.36
+alembic==1.14.0
+psycopg2-binary==2.9.10
+
+# Collector / Discovery
+python-nmap==0.7.1
+netmiko==4.4.0
+ntc-templates==7.4.0
+pysnmp-lextudio==6.3.0
+requests==2.32.3
+httpx==0.28.1
+pymodbus==3.7.4
+
+# Scheduler
+apscheduler==3.10.4
+
+# System / Network detection
+psutil==6.1.1
+ping3==4.0.4
+
+# Security / Crypto
+cryptography==42.0.8
+
+# Windows / RDP credential testing
+impacket==0.12.0
+
+# MySQL credential testing
+pymysql>=1.1.0
+
+# Monitoring
+prometheus-client==0.21.1
+
+# Topology / Graph
+networkx==3.4.2
+
+# Reports
+reportlab==4.2.5
+
+# Web Admin UI
+flask==3.1.0
+
+# AI Agent
+anthropic>=0.40.0
+
+# Docker SDK (lab management z panelu webowego)
+docker>=7.0.0
+
+# Screenshot HTTP preview (hover na IP)
+playwright>=1.40.0
+
+# Dev
+python-dotenv==1.0.1

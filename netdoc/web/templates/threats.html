@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+{% block title %}Encyklopedia Zagrozen{% endblock %}
+
+{% block head %}
+<style>
+  .threat-card { transition: box-shadow .15s; }
+  .threat-card:hover { box-shadow: 0 0 0 2px var(--accent); }
+  .sev-badge-critical { background:#7a0000;color:#ff9d9d; }
+  .sev-badge-high     { background:#4a2500;color:#ff9944; }
+  .sev-badge-medium   { background:#3a3000;color:#e3b341; }
+  .sev-badge-low      { background:#1a3a1a;color:#56d364; }
+  .sev-badge-info     { background:#1a2a3a;color:#79c0ff; }
+  .cvss-pill { font-size:.75rem; font-weight:700; padding:2px 8px; border-radius:20px; }
+  .cvss-critical { background:#7a0000;color:#ff9d9d; }
+  .cvss-high     { background:#4a2500;color:#ff9944; }
+  .cvss-medium   { background:#3a3000;color:#e3b341; }
+  .cvss-low      { background:#1a3a1a;color:#56d364; }
+  .why-box { background:var(--bg3); border-left:3px solid var(--accent); padding:.75rem 1rem; border-radius:0 6px 6px 0; font-size:.92rem; line-height:1.6; }
+  .fix-box { background:var(--bg3); border-left:3px solid #238636; padding:.75rem 1rem; border-radius:0 6px 6px 0; font-size:.92rem; }
+  .impact-box { background:var(--bg3); border-left:3px solid #da3633; padding:.75rem 1rem; border-radius:0 6px 6px 0; font-size:.92rem; }
+  .threat-card-wrap.hidden { display:none; }
+  .filter-btn { opacity:.55; transition:opacity .15s; }
+  .filter-btn:hover { opacity:.85; }
+  .filter-btn.active { opacity:1; }
+  #searchInput { background:var(--bg2); color:var(--text); border-color:var(--border); }
+  #searchInput::placeholder { color:var(--text-muted,#888); }
+  #searchInput:focus { border-color:var(--accent); box-shadow:none; background:var(--bg2); color:var(--text); }
+  #netFilter { background:var(--bg2); color:var(--text); border-color:var(--border); max-width:280px; }
+  #netFilter option { background:var(--bg2); }
+  .active-badge { font-size:.7rem; padding:2px 7px; border-radius:10px; background:#1a3a1a; color:#56d364; vertical-align:middle; }
+  #noResults { display:none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center mb-3 gap-3">
+  <h4 class="mb-0"><i class="bi bi-book-half me-2 text-primary"></i>Encyklopedia Zagrozen</h4>
+  <span class="text-muted small">Opis podatnosci wykrywanych przez NetDoc</span>
+</div>
+
+<!-- Filtr tekstowy + filtr sieci -->
+<div class="row g-2 mb-3">
+  <div class="col-12 col-md-5">
+    <div class="input-group input-group-sm">
+      <span class="input-group-text" style="background:var(--bg3);border-color:var(--border);color:var(--text)">
+        <i class="bi bi-search"></i>
+      </span>
+      <input id="searchInput" type="text" class="form-control form-control-sm"
+             placeholder="Szukaj zagrozen... (nazwa, opis)" autocomplete="off">
+      <button id="searchClear" class="btn btn-outline-secondary btn-sm" type="button" style="display:none" title="Wyczysc">
+        <i class="bi bi-x"></i>
+      </button>
+    </div>
+  </div>
+  <div class="col-12 col-md-5">
+    <select id="netFilter" class="form-select form-select-sm">
+      <option value="">— Wszystkie sieci (caly katalog) —</option>
+      {% for net in networks %}
+        {% set cnt = active_by_net.get(net.cidr, []) | length %}
+        <option value="{{ net.cidr }}" data-active="{{ active_by_net.get(net.cidr, []) | join(',') }}">
+          {{ net.cidr }}{% if net.name %} — {{ net.name }}{% endif %}
+          {% if cnt %} ({{ cnt }} aktywnych){% endif %}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-12 col-md-2 d-flex align-items-center">
+    <span id="visibleCount" class="text-muted small"></span>
+  </div>
+</div>
+
+<!-- Filtry severity -->
+<div class="d-flex flex-wrap gap-2 mb-4">
+  <button class="btn btn-sm btn-outline-secondary filter-btn active" data-sev="all">Wszystkie ({{ catalog|length }})</button>
+  {% set critical_cnt = catalog | selectattr("severity","eq","critical") | list | length %}
+  {% set high_cnt    = catalog | selectattr("severity","eq","high")     | list | length %}
+  {% set medium_cnt  = catalog | selectattr("severity","eq","medium")   | list | length %}
+  {% set low_cnt     = catalog | selectattr("severity","eq","low")      | list | length %}
+  {% if critical_cnt %}<button class="btn btn-sm btn-outline-danger  filter-btn" data-sev="critical">KRYTYCZNA ({{ critical_cnt }})</button>{% endif %}
+  {% if high_cnt    %}<button class="btn btn-sm btn-outline-warning filter-btn" data-sev="high">WYSOKA ({{ high_cnt }})</button>{% endif %}
+  {% if medium_cnt  %}<button class="btn btn-sm btn-outline-secondary filter-btn" data-sev="medium">SREDNIA ({{ medium_cnt }})</button>{% endif %}
+  {% if low_cnt     %}<button class="btn btn-sm btn-outline-success  filter-btn" data-sev="low">NISKA ({{ low_cnt }})</button>{% endif %}
+</div>
+
+<div id="noResults" class="alert alert-secondary py-2">
+  <i class="bi bi-info-circle me-1"></i>Brak zagrozen spelniajacych kryteria filtrowania.
+</div>
+
+<div id="threat-list" class="row g-3">
+{% for v in catalog %}
+  {% set sev = v.severity %}
+  {% if sev == "critical" %}{% set cls = "danger"    %}{% set label = "KRYTYCZNA" %}
+  {% elif sev == "high"   %}{% set cls = "warning"   %}{% set label = "WYSOKA"    %}
+  {% elif sev == "medium" %}{% set cls = "secondary" %}{% set label = "SREDNIA"   %}
+  {% elif sev == "low"    %}{% set cls = "success"   %}{% set label = "NISKA"     %}
+  {% else                 %}{% set cls = "info"      %}{% set label = "INFO"      %}
+  {% endif %}
+  <div class="col-12 threat-card-wrap"
+       data-sev="{{ sev }}"
+       data-id="{{ v.id }}"
+       data-search="{{ v.title | lower }} {{ v.short | lower }}">
+    <div class="card threat-card" id="vuln-{{ v.id }}">
+      <div class="card-header d-flex align-items-center gap-2 py-2">
+        <i class="bi {{ v.icon }} fs-5 text-{{ cls }}"></i>
+        <span class="fw-semibold flex-grow-1">{{ v.title }}</span>
+        <span class="active-badge d-none" id="active-badge-{{ v.id }}" title="Wykryte na urzadzeniach w wybranej sieci">
+          <i class="bi bi-exclamation-circle me-1"></i>aktywne
+        </span>
+        <span class="badge sev-badge-{{ sev }} me-1">{{ label }}</span>
+        <span class="cvss-pill cvss-{{ sev }}">CVSS {{ v.cvss }}</span>
+        <button class="btn btn-sm btn-outline-secondary ms-2 py-0"
+                type="button" data-bs-toggle="collapse"
+                data-bs-target="#detail-{{ v.id }}"
+                aria-expanded="false">
+          <i class="bi bi-chevron-down"></i>
+        </button>
+      </div>
+      <div class="card-body py-2">
+        <p class="mb-2 text-muted small">{{ v.short }}</p>
+
+        {# Lista urządzeń z tym zagrożeniem — widoczna bez rozwijania #}
+        {% set devs = threat_devices.get(v.id, []) %}
+        {% if devs %}
+        <div class="mb-2">
+          <div class="small fw-semibold text-info mb-1">
+            <i class="bi bi-hdd-network me-1"></i>Wykryto na {{ devs|length }} urządz.:
+          </div>
+          <div class="d-flex flex-wrap gap-1">
+            {% for dev in devs %}
+              {% if dev.suppressed %}
+                <span class="badge bg-success font-monospace"
+                      title="Ryzyko zaakceptowane · {{ dev.ip }}{% if dev.evidence %} · {{ dev.evidence }}{% endif %}">
+                  <i class="bi bi-shield-check me-1"></i>{{ dev.hostname or dev.ip }}
+                </span>
+              {% else %}
+                <a href="/devices#row-{{ dev.id }}" class="text-decoration-none">
+                  <span class="badge {% if dev.is_active %}bg-danger{% else %}bg-secondary{% endif %} font-monospace"
+                        title="{% if dev.is_active %}Aktywne{% else %}Offline{% endif %} · {{ dev.ip }}{% if dev.evidence %} · {{ dev.evidence }}{% endif %}">
+                    {{ dev.hostname or dev.ip }}
+                  </span>
+                </a>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <div class="collapse" id="detail-{{ v.id }}">
+          <div class="mb-2">
+            <div class="small text-muted mb-1"><i class="bi bi-question-circle me-1"></i><strong>Dlaczego to jest niebezpieczne?</strong></div>
+            <div class="why-box">{{ v.why }}</div>
+          </div>
+          <div class="mb-2">
+            <div class="small text-muted mb-1"><i class="bi bi-exclamation-triangle me-1 text-danger"></i><strong>Skutki ataku</strong></div>
+            <div class="impact-box">{{ v.impact }}</div>
+          </div>
+          <div class="mb-1">
+            <div class="small text-muted mb-1"><i class="bi bi-shield-check me-1 text-success"></i><strong>Jak naprawic?</strong></div>
+            <div class="fix-box">{{ v.fix }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endfor %}
+</div>
+
+<div class="mt-4 text-muted small">
+  <i class="bi bi-info-circle me-1"></i>
+  CVSS (Common Vulnerability Scoring System) to miedzynarodowa skala ryzyka od 0.0 do 10.0.
+  <span class="text-danger">9.0-10.0</span> = krytyczne,
+  <span class="text-warning">7.0-8.9</span> = wysokie,
+  <span class="text-secondary">4.0-6.9</span> = srednie,
+  <span class="text-success">0.1-3.9</span> = niskie.
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var currentSev  = 'all';
+  var currentNet  = '';          // wybrany CIDR
+  var activeTypes = new Set();   // vuln id aktywne w wybranej sieci
+  var searchQ     = '';
+
+  var cards = Array.from(document.querySelectorAll('.threat-card-wrap'));
+  var countEl = document.getElementById('visibleCount');
+  var noResults = document.getElementById('noResults');
+  var searchInput = document.getElementById('searchInput');
+  var searchClear = document.getElementById('searchClear');
+
+  function applyFilters() {
+    var visible = 0;
+    cards.forEach(function(card) {
+      var sev  = card.dataset.sev;
+      var id   = card.dataset.id;
+      var srch = card.dataset.search || '';
+      var badge = document.getElementById('active-badge-' + id);
+
+      var sevOk  = (currentSev === 'all' || sev === currentSev);
+      var netOk  = (currentNet === '' || activeTypes.has(id));
+      var srchOk = (searchQ === '' || srch.indexOf(searchQ) !== -1);
+
+      // Znacznik "aktywne"
+      if (badge) {
+        if (currentNet !== '' && activeTypes.has(id)) {
+          badge.classList.remove('d-none');
+        } else {
+          badge.classList.add('d-none');
+        }
+      }
+
+      if (sevOk && netOk && srchOk) {
+        card.classList.remove('hidden');
+        visible++;
+      } else {
+        card.classList.add('hidden');
+      }
+    });
+    countEl.textContent = visible + ' / ' + cards.length + ' zagrozen';
+    noResults.style.display = (visible === 0) ? '' : 'none';
+  }
+
+  // Filtry severity
+  document.querySelectorAll('.filter-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+      this.classList.add('active');
+      currentSev = this.dataset.sev;
+      applyFilters();
+    });
+  });
+
+  // Filtr sieci
+  document.getElementById('netFilter').addEventListener('change', function() {
+    currentNet = this.value;
+    activeTypes = new Set();
+    if (currentNet) {
+      var raw = this.options[this.selectedIndex].dataset.active || '';
+      if (raw) {
+        raw.split(',').forEach(function(t) { if (t) activeTypes.add(t.trim()); });
+      }
+    }
+    applyFilters();
+  });
+
+  // Filtr tekstowy
+  searchInput.addEventListener('input', function() {
+    searchQ = this.value.toLowerCase().trim();
+    searchClear.style.display = searchQ ? '' : 'none';
+    applyFilters();
+  });
+  searchClear.addEventListener('click', function() {
+    searchInput.value = '';
+    searchQ = '';
+    this.style.display = 'none';
+    searchInput.focus();
+    applyFilters();
+  });
+
+  // Inicjalizacja licznika
+  applyFilters();
+
+  // Auto-scroll + rozwin karte po hash nawigacji (np. /threats#rtsp_noauth lub /threats#vuln-rtsp_noauth)
+  function scrollToThreat(hash) {
+    if (!hash) return;
+    // Obsluguje formaty: #rtsp_noauth oraz #vuln-rtsp_noauth
+    var id = hash.replace(/^#(vuln-)?/, '');
+    var detail = document.getElementById('detail-' + id);
+    var card = document.getElementById('vuln-' + id);
+    if (!card) return;
+    // Wyczysc filtry (severity + tekst) by karta byla widoczna
+    var needFilter = false;
+    if (currentSev !== 'all') {
+      currentSev = 'all';
+      document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+      var allBtn = document.querySelector('.filter-btn[data-sev="all"]');
+      if (allBtn) allBtn.classList.add('active');
+      needFilter = true;
+    }
+    if (searchQ) {
+      searchQ = '';
+      var si = document.getElementById('searchInput');
+      if (si) si.value = '';
+      var sc = document.getElementById('searchClear');
+      if (sc) sc.style.display = 'none';
+      needFilter = true;
+    }
+    if (needFilter) { applyFilters(); }
+    if (detail) { new bootstrap.Collapse(detail, { show: true }); }
+    setTimeout(function() {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Podswietl na 3 sekundy
+      card.style.transition = 'box-shadow 0.3s';
+      card.style.boxShadow = '0 0 0 3px var(--accent,#f0a500)';
+      setTimeout(function() { card.style.boxShadow = ''; }, 3000);
+    }, 250);
+  }
+
+  scrollToThreat(window.location.hash);
+  window.addEventListener('hashchange', function() { scrollToThreat(window.location.hash); });
+})();
+</script>
+{% endblock %}

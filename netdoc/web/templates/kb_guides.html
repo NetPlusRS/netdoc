@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Poradniki bezpieczeństwa — NetDoc{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center mb-3 gap-2 flex-wrap">
+  <h4 class="mb-0"><i class="bi bi-journal-richtext me-2 text-info"></i>Poradniki bezpieczeństwa</h4>
+  <span class="badge bg-secondary ms-1">{{ guides|length }} artykułów</span>
+</div>
+
+{% if not current %}
+{# ── Lista artykułów ───────────────────────────────────────────────────────── #}
+<div class="row g-3">
+  {% for g in guides %}
+  <div class="col-md-6 col-xl-4">
+    <a href="/kb/guides/{{ g.id }}" class="text-decoration-none">
+      <div class="card h-100 guide-card">
+        <div class="card-body">
+          <div class="d-flex align-items-center mb-2 gap-2">
+            <i class="bi {{ g.icon }} fs-4 text-info"></i>
+            <h6 class="mb-0 text-body">{{ g.title }}</h6>
+          </div>
+          <p class="text-muted small mb-2">{{ g.summary }}</p>
+          <div class="d-flex flex-wrap gap-1">
+            {% for tag in g.tags %}
+            <span class="badge bg-secondary fw-normal">{{ tag }}</span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </a>
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+{# ── Pojedynczy artykuł ────────────────────────────────────────────────────── #}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/kb/guides">Poradniki</a></li>
+    <li class="breadcrumb-item active">{{ current.title }}</li>
+  </ol>
+</nav>
+
+<div class="row">
+  {# Treść artykułu #}
+  <div class="col-lg-8">
+    <div class="card mb-4">
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-3 mb-3">
+          <i class="bi {{ current.icon }} fs-2 text-info"></i>
+          <div>
+            <h4 class="mb-1">{{ current.title }}</h4>
+            <div class="d-flex flex-wrap gap-1">
+              {% for tag in current.tags %}
+              <span class="badge bg-secondary fw-normal">{{ tag }}</span>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        <p class="lead text-muted">{{ current.summary }}</p>
+      </div>
+    </div>
+
+    {% for sec in current.sections %}
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title mb-3">{{ sec.title }}</h5>
+
+        {% if sec.content %}
+        <p>{{ sec.content }}</p>
+        {% endif %}
+
+        {% if sec.get('checklist') %}
+        <ul class="list-group list-group-flush">
+          {% for item, required, desc in sec.checklist %}
+          <li class="list-group-item px-0 d-flex align-items-start gap-2" style="background:transparent;border-color:var(--border)">
+            {% if required %}
+            <span class="badge bg-danger mt-1 flex-shrink-0">wymagane</span>
+            {% else %}
+            <span class="badge bg-secondary mt-1 flex-shrink-0">zalecane</span>
+            {% endif %}
+            <div>
+              <strong>{{ item }}</strong>
+              {% if desc %}<div class="text-muted small mt-1">{{ desc }}</div>{% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% if sec.get('bullets') %}
+        <ul class="mb-0">
+          {% for b in sec.bullets %}
+          <li class="mb-1">{{ b }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% if sec.get('warnings') %}
+        <div class="d-flex flex-column gap-2">
+          {% for w in sec.warnings %}
+          <div class="d-flex align-items-start gap-2">
+            <i class="bi bi-exclamation-triangle-fill text-warning flex-shrink-0 mt-1"></i>
+            <span>{{ w }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# Sidebar — inne artykuły #}
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-journal-richtext me-1"></i>Inne poradniki</div>
+      <div class="list-group list-group-flush">
+        {% for g in guides %}
+        {% if g.id != current.id %}
+        <a href="/kb/guides/{{ g.id }}" class="list-group-item list-group-item-action px-3 py-2" style="background:transparent;border-color:var(--border)">
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi {{ g.icon }} text-info"></i>
+            <span class="small">{{ g.title }}</span>
+          </div>
+        </a>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<style>
+.guide-card { transition: border-color .15s, box-shadow .15s; }
+.guide-card:hover { border-color: var(--accent) !important; box-shadow: 0 0 0 1px var(--accent); }
+</style>
+{% endblock %}

@@ -1,0 +1,49 @@
+# Prywatne notatki i koncepcje — nie na GitHub
+_private/
+
+# Srodowisko
+.env
+.env.local
+.env.*.local
+
+# Pro package — nie dołaczaj do Community repo
+netdoc_pro/
+
+# Logi i runtime
+logs/
+*.pid
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Build / dystrybucja
+dist/
+build/
+*.egg-info/
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Dane lokalne
+data/
+backups/
+scanner.pid
+coverage.json
+netdoc_fallback.db
+
+# OS
+.DS_Store
+Thumbs.db

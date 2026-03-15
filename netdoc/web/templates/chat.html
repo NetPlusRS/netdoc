@@ -1,0 +1,405 @@
+{% extends "base.html" %}
+{% block title %}Asystent AI{% endblock %}
+{% block head %}
+<style>
+  .chat-wrap{display:flex;flex-direction:column;height:calc(100vh - 180px);min-height:400px;}
+  .chat-messages{flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:.75rem;}
+  .msg{max-width:85%;padding:.65rem 1rem;border-radius:12px;line-height:1.55;word-break:break-word;}
+  .msg-user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px;white-space:pre-wrap;}
+  .msg-agent{align-self:flex-start;background:var(--bg3);border:1px solid var(--border);border-bottom-left-radius:4px;width:100%;max-width:100%;}
+  .msg-agent h1,.msg-agent h2,.msg-agent h3{font-size:1rem;margin:.4rem 0 .2rem;}
+  .msg-agent ul,.msg-agent ol{margin:.3rem 0 .3rem 1.2rem;padding:0;}
+  .msg-agent code{font-size:.82rem;background:var(--bg);padding:1px 4px;border-radius:3px;}
+  .msg-agent pre{background:var(--bg);margin:.4rem 0 0;padding:.5rem;font-size:.8rem;border-radius:6px;overflow-x:auto;}
+  .msg-agent table{width:100%;border-collapse:collapse;font-size:.85rem;margin:.4rem 0;}
+  .msg-agent th,.msg-agent td{border:1px solid var(--border);padding:.3rem .6rem;text-align:left;}
+  .msg-agent th{background:var(--bg2);}
+  .msg-agent tr:nth-child(even) td{background:var(--bg2);}
+  .msg-system{align-self:center;font-size:.8rem;color:var(--text-muted);font-style:italic;}
+  .msg-header{font-size:.78rem;color:var(--text-muted);margin-bottom:.25rem;}
+  .chat-input-wrap{border-top:1px solid var(--border);padding:.75rem 1rem;background:var(--bg2);}
+  .thinking{display:none;align-self:flex-start;color:var(--text-muted);font-size:.85rem;font-style:italic;padding:.4rem .6rem;}
+  .thinking.active{display:flex;align-items:center;gap:.4rem;}
+  .dot-anim{display:inline-flex;gap:3px;}
+  .dot-anim span{width:6px;height:6px;border-radius:50%;background:var(--text-muted);animation:dotpulse 1.2s ease-in-out infinite;}
+  .dot-anim span:nth-child(2){animation-delay:.2s;}
+  .dot-anim span:nth-child(3){animation-delay:.4s;}
+  @keyframes dotpulse{0%,80%,100%{opacity:.3}40%{opacity:1}}
+  .example-chips{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.6rem;}
+  .example-chip,.suggest-chip{cursor:pointer;padding:.25rem .7rem;border:1px solid var(--border);border-radius:20px;
+    font-size:.8rem;color:var(--text-muted);background:var(--bg3);transition:all .15s;}
+  .example-chip:hover,.suggest-chip:hover{border-color:var(--accent);color:var(--accent);}
+  .suggest-chips{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.4rem;}
+  #chat-input{resize:none;}
+  .msg-debug{margin-top:.4rem;font-size:.76rem;}
+  .msg-debug summary{cursor:pointer;color:var(--text-muted);user-select:none;list-style:none;display:flex;align-items:center;gap:.3rem;}
+  .msg-debug summary::before{content:"▶";font-size:.65rem;transition:transform .15s;}
+  details.msg-debug[open] summary::before{transform:rotate(90deg);}
+  .msg-debug summary:hover{color:var(--accent);}
+  .debug-body{margin-top:.35rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.5rem .7rem;max-height:320px;overflow-y:auto;}
+  .debug-tool{margin-bottom:.5rem;}
+  .debug-tool:last-child{margin-bottom:0;}
+  .debug-tool-name{font-weight:600;color:var(--accent);margin-bottom:.15rem;}
+  .debug-tool-input{color:var(--text-muted);margin-bottom:.15rem;}
+  .debug-tool-result{white-space:pre-wrap;color:var(--text);}
+  .quick-panel{border:1px solid var(--border);border-radius:8px;background:var(--bg2);margin-bottom:.75rem;}
+  .quick-panel-header{display:flex;align-items:center;justify-content:space-between;padding:.5rem .8rem;cursor:pointer;user-select:none;gap:.5rem;}
+  .quick-panel-header:hover{background:var(--bg3);border-radius:8px;}
+  .quick-panel-title{font-size:.82rem;font-weight:600;color:var(--text-muted);display:flex;align-items:center;gap:.4rem;}
+  .quick-panel-toggle{font-size:.72rem;color:var(--text-muted);transition:transform .2s;}
+  .quick-panel-toggle.open{transform:rotate(90deg);}
+  .quick-btns{display:flex;flex-wrap:wrap;gap:.4rem;padding:.5rem .8rem .7rem;}
+  .quick-btn{cursor:pointer;padding:.28rem .75rem;border:1px solid var(--border);border-radius:20px;
+    font-size:.78rem;color:var(--text-muted);background:var(--bg3);transition:all .15s;text-align:left;}
+  .quick-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--bg);}
+  @media print{
+    .chat-input-wrap,.quick-panel,.example-chips,#suggest-chips-wrap,
+    .msg-user,.thinking,.no-print,nav,.sidebar{display:none!important;}
+    .chat-wrap{height:auto!important;border:none!important;box-shadow:none!important;}
+    .chat-messages{overflow:visible!important;height:auto!important;}
+    .msg-agent{border:1px solid #ddd!important;margin-bottom:1rem;page-break-inside:avoid;}
+    .msg-debug{display:none!important;}
+    body{background:#fff!important;color:#000!important;}
+    h4.mb-0{margin-bottom:.5rem!important;}
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-robot me-2"></i>Asystent AI NetDoc</h4>
+  <div class="d-flex align-items-center gap-2">
+    <button class="btn btn-sm btn-outline-secondary no-print" onclick="exportPdf()" title="Eksportuj rozmowe do PDF">
+      <i class="bi bi-file-earmark-pdf me-1"></i>PDF
+    </button>
+    <button class="btn btn-sm btn-outline-secondary no-print" onclick="newChat()" title="Nowa rozmowa">
+      <i class="bi bi-plus-circle me-1"></i>Nowa rozmowa
+    </button>
+    <a href="/chat/history" class="btn btn-sm btn-outline-secondary no-print">
+      <i class="bi bi-clock-history me-1"></i>Historia
+    </a>
+    <a href="/chat/context" class="btn btn-sm btn-outline-secondary no-print" title="Opis systemu NetDoc">
+      <i class="bi bi-info-circle me-1"></i>O systemie
+    </a>
+    <span class="badge {% if disabled %}bg-danger{% else %}bg-success{% endif %} fs-6">
+      {% if disabled %}Wylaczony{% else %}Aktywny{% endif %}
+    </span>
+  </div>
+</div>
+
+{% if disabled %}
+<div class="card"><div class="card-body text-center py-5">
+  <i class="bi bi-robot fs-1 d-block mb-3 text-muted"></i>
+  <h5>Agent AI jest wylaczony</h5>
+  <p class="text-muted">Ustaw <code>AGENT_ENABLED=1</code> i <code>ANTHROPIC_API_KEY=sk-ant-...</code> w pliku <code>.env</code>, nastepnie zrestartuj kontener <code>netdoc-web</code>.</p>
+</div></div>
+{% else %}
+<div class="card chat-wrap">
+  <div class="chat-messages" id="chat-messages">
+    <div class="msg msg-agent" id="welcome-msg">
+      <strong>NetDoc AI</strong><br>
+      Czesc! Mam dostep do danych Twojej sieci w czasie rzeczywistym.
+      Moge analizowac urzadzenia, wykryte podatnosci, status polaczenia internetowego i wiele wiecej.
+      Zadaj mi pytanie po polsku.
+    </div>
+    <div class="thinking" id="thinking">
+      <i class="bi bi-cpu me-1"></i> Analizuje dane...
+      <span class="dot-anim"><span></span><span></span><span></span></span>
+    </div>
+  </div>
+  <div class="chat-input-wrap">
+    <div class="quick-panel" id="quick-panel">
+      <div class="quick-panel-header" onclick="toggleQuickPanel()">
+        <span class="quick-panel-title"><i class="bi bi-lightning-charge-fill text-warning"></i>Szybkie raporty</span>
+        <span class="quick-panel-toggle" id="quick-toggle">&#9658;</span>
+      </div>
+      <div class="quick-btns" id="quick-btns" style="display:none">
+        <span class="quick-btn">Kompleksowy raport bezpieczenstwa i zalecenia</span>
+        <span class="quick-btn">Pokaz wszystkie podatnosci krytyczne i wysokie</span>
+        <span class="quick-btn">Lista urzadzen DOWN — co jest niedostepne?</span>
+        <span class="quick-btn">Jakie hasla SSH/HTTP/RDP udalo sie wykryc?</span>
+        <span class="quick-btn">Status i wydajnosc polaczenia internetowego</span>
+        <span class="quick-btn">Lista urzadzen niezaufanych do weryfikacji</span>
+        <span class="quick-btn">Jakie urzadzenia maja otwarte niebezpieczne porty (Telnet, FTP)?</span>
+      </div>
+    </div>
+    <div class="example-chips" id="example-chips">
+      <span class="example-chip">Ile mam urzadzen w sieci?</span>
+      <span class="example-chip">Jakie sa krytyczne podatnosci?</span>
+      <span class="example-chip">Jaki jest status internetu?</span>
+      <span class="example-chip">Pokaz urzadzenia DOWN</span>
+      <span class="example-chip">Jakie mam IP publiczne i ISP?</span>
+      <span class="example-chip">Analizuj bezpieczenstwo sieci</span>
+    </div>
+    <div id="suggest-chips-wrap"></div>
+    <div class="d-flex gap-2">
+      <textarea class="form-control" id="chat-input" rows="2"
+        placeholder="Napisz pytanie o swojej sieci... (Enter = wyslij, Shift+Enter = nowa linia)"></textarea>
+      <button class="btn btn-primary px-4" id="send-btn" onclick="sendMessage()">
+        <i class="bi bi-send-fill"></i>
+      </button>
+    </div>
+    <div class="mt-1 text-muted small">
+      <i class="bi bi-info-circle me-1"></i>Agent ma dostep do biezacych danych z bazy NetDoc.
+    </div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+const STORAGE_KEY = "netdoc_chat_session";
+const SESSION_ID = (function(){
+  let s = sessionStorage.getItem("netdoc_chat_sid");
+  if (!s) { s = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)+Date.now()); sessionStorage.setItem("netdoc_chat_sid", s); }
+  return s;
+})();
+
+// Historia wiadomosci — ladowana z sessionStorage przy starcie
+let messages = [];
+
+function renderMd(t) {
+  if (window.marked) {
+    marked.setOptions({breaks: true, gfm: true});
+    return marked.parse(t);
+  }
+  return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>")
+    .replace(/`([^`]+)`/g,"<code>$1</code>").replace(/\n/g,"<br>");
+}
+
+function buildDebugPanel(toolDetails, userQuestion) {
+  if (!toolDetails || !toolDetails.length) return null;
+  const det = document.createElement("details");
+  det.className = "msg-debug";
+  const sum = document.createElement("summary");
+  sum.innerHTML = "<i class='bi bi-braces me-1'></i>Co wysłano do AI (" + toolDetails.length + " zapytań do bazy)";
+  det.appendChild(sum);
+  const body = document.createElement("div");
+  body.className = "debug-body";
+  // Pytanie uzytkownika
+  if (userQuestion) {
+    const qDiv = document.createElement("div");
+    qDiv.className = "debug-tool";
+    qDiv.innerHTML = "<div class='debug-tool-name'><i class='bi bi-person-fill me-1'></i>Pytanie użytkownika</div>" +
+      "<div class='debug-tool-result'>" + escHtml(userQuestion) + "</div>";
+    body.appendChild(qDiv);
+    const hr = document.createElement("hr");
+    hr.style.cssText = "margin:.4rem 0;border-color:var(--border);";
+    body.appendChild(hr);
+  }
+  toolDetails.forEach(function(td) {
+    const d = document.createElement("div");
+    d.className = "debug-tool";
+    const inputStr = td.input && Object.keys(td.input).length
+      ? Object.entries(td.input).map(([k,v]) => k + "=" + JSON.stringify(v)).join(", ")
+      : "brak parametrów";
+    d.innerHTML =
+      "<div class='debug-tool-name'><i class='bi bi-database me-1'></i>" + escHtml(td.tool) + "(" + escHtml(inputStr) + ")</div>" +
+      "<div class='debug-tool-result'>" + escHtml(td.result || "") + "</div>";
+    body.appendChild(d);
+  });
+  det.appendChild(body);
+  return det;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function addMsg(role, text, scrollToStart, toolDetails, userQuestion) {
+  const box = document.getElementById("chat-messages");
+  const thinking = document.getElementById("thinking");
+  // Ukryj example chips przy pierwszej wiadomosci
+  const chips = document.getElementById("example-chips");
+  if (chips) chips.style.display = "none";
+
+  const div = document.createElement("div");
+  div.className = "msg msg-" + (role === "assistant" ? "agent" : role === "user" ? "user" : "system");
+  if (role === "assistant") {
+    div.innerHTML = "<div class='msg-header'><strong>NetDoc AI</strong></div>" + renderMd(text);
+    const panel = buildDebugPanel(toolDetails, userQuestion);
+    if (panel) div.appendChild(panel);
+  } else if (role === "user") {
+    div.textContent = text;
+  } else {
+    div.textContent = text;
+  }
+  box.insertBefore(div, thinking);
+
+  // Przewin do poczatku NOWEJ wiadomosci agenta (nie na sam dol)
+  if (scrollToStart && role === "assistant") {
+    setTimeout(() => div.scrollIntoView({behavior:"smooth", block:"start"}), 50);
+  } else {
+    setTimeout(() => { box.scrollTop = box.scrollHeight; }, 50);
+  }
+  return div;
+}
+
+function saveToStorage() {
+  try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages)); } catch(e) {}
+}
+
+function loadFromStorage() {
+  try {
+    const saved = sessionStorage.getItem(STORAGE_KEY);
+    if (!saved) return;
+    const data = JSON.parse(saved);
+    if (!Array.isArray(data) || data.length === 0) return;
+    messages = data;
+    // Ukryj welcome + example chips
+    document.getElementById("welcome-msg").style.display = "none";
+    document.getElementById("example-chips").style.display = "none";
+    // Odtworz wiadomosci bez scrollowania (poza ostatnia)
+    const box = document.getElementById("chat-messages");
+    const thinking = document.getElementById("thinking");
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      const div = document.createElement("div");
+      div.className = "msg msg-" + (m.role === "assistant" ? "agent" : "user");
+      if (m.role === "assistant") {
+        div.innerHTML = "<div class='msg-header'><strong>NetDoc AI</strong></div>" + renderMd(m.content);
+        // Poprzednia wiadomosc uzytkownika jako kontekst panelu debug
+        const prevUser = i > 0 && messages[i-1].role === "user" ? messages[i-1].content : null;
+        const panel = buildDebugPanel(m._tool_details, prevUser);
+        if (panel) div.appendChild(panel);
+      } else {
+        div.textContent = m.content;
+      }
+      box.insertBefore(div, thinking);
+    }
+    // Przewin na dol po zaladowaniu historii
+    setTimeout(() => { box.scrollTop = box.scrollHeight; }, 100);
+    // Pokaz sugestie z ostatniej odpowiedzi agenta
+    const lastAgent = [...messages].reverse().find(m => m.role === "assistant");
+    if (lastAgent && lastAgent._suggestions) showSuggestions(lastAgent._suggestions);
+  } catch(e) {}
+}
+
+function showSuggestions(suggestions) {
+  const wrap = document.getElementById("suggest-chips-wrap");
+  wrap.innerHTML = "";
+  if (!suggestions || !suggestions.length) return;
+  const chips = document.createElement("div");
+  chips.className = "suggest-chips";
+  suggestions.forEach(s => {
+    const chip = document.createElement("span");
+    chip.className = "suggest-chip";
+    chip.textContent = s;
+    chip.addEventListener("click", function() {
+      document.getElementById("chat-input").value = s;
+      sendMessage();
+    });
+    chips.appendChild(chip);
+  });
+  wrap.appendChild(chips);
+}
+
+function setThinking(active) {
+  document.getElementById("thinking").classList.toggle("active", active);
+  document.getElementById("send-btn").disabled = active;
+  document.getElementById("chat-input").disabled = active;
+  if (active) document.getElementById("suggest-chips-wrap").innerHTML = "";
+}
+
+function newChat() {
+  if (messages.length > 0 && !confirm("Rozpoczac nowa rozmowe? Biezaca historia zostanie wyczyszczona.")) return;
+  messages = [];
+  sessionStorage.removeItem(STORAGE_KEY);
+  sessionStorage.removeItem("netdoc_chat_sid");
+  // Przeladuj strone
+  window.location.reload();
+}
+
+async function sendMessage() {
+  const inp = document.getElementById("chat-input");
+  const text = inp.value.trim();
+  if (!text) return;
+  inp.value = "";
+  inp.style.height = "auto";
+
+  addMsg("user", text, false);
+  messages.push({"role": "user", "content": text});
+  setThinking(true);
+
+  try {
+    const resp = await fetch("/chat/message", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({messages: messages, session_id: SESSION_ID}),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      addMsg("system", "Blad: " + (err.error || resp.status), false);
+      return;
+    }
+    const data = await resp.json();
+    const reply = data.reply || data.error || "Blad odpowiedzi";
+    const toolDetails = data.tool_details || [];
+    // Zapisz sugestie i detale narzedzi razem z wiadomoscia
+    messages.push({"role": "assistant", "content": reply,
+                   "_suggestions": data.suggestions || [], "_tool_details": toolDetails});
+    // Scroll do poczatku odpowiedzi agenta (nie na sam dol)
+    addMsg("assistant", reply, true, toolDetails, text);
+    showSuggestions(data.suggestions || []);
+    saveToStorage();
+  } catch(e) {
+    addMsg("system", "Blad komunikacji: " + e.message, false);
+  } finally {
+    setThinking(false);
+  }
+}
+
+// Auto-resize textarea
+document.getElementById("chat-input").addEventListener("input", function() {
+  this.style.height = "auto";
+  this.style.height = Math.min(this.scrollHeight, 120) + "px";
+});
+
+document.getElementById("chat-input").addEventListener("keydown", function(e) {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+document.querySelectorAll(".example-chip").forEach(c => {
+  c.addEventListener("click", function() {
+    document.getElementById("chat-input").value = this.textContent;
+    sendMessage();
+  });
+});
+
+// Zaladuj poprzednia rozmowe z sessionStorage
+window.addEventListener("load", loadFromStorage);
+
+// Panel szybkich raportow
+function toggleQuickPanel() {
+  const btns = document.getElementById("quick-btns");
+  const tog = document.getElementById("quick-toggle");
+  const open = btns.style.display !== "none";
+  btns.style.display = open ? "none" : "flex";
+  tog.classList.toggle("open", !open);
+  try { localStorage.setItem("netdoc_quick_open", open ? "0" : "1"); } catch(e) {}
+}
+
+document.querySelectorAll(".quick-btn").forEach(function(btn) {
+  btn.addEventListener("click", function() {
+    document.getElementById("chat-input").value = this.textContent.trim();
+    sendMessage();
+  });
+});
+
+// Przywroc stan panelu z localStorage
+(function(){
+  try {
+    if (localStorage.getItem("netdoc_quick_open") === "1") {
+      const btns = document.getElementById("quick-btns");
+      const tog = document.getElementById("quick-toggle");
+      if (btns) { btns.style.display = "flex"; tog.classList.add("open"); }
+    }
+  } catch(e) {}
+})();
+
+// Eksport do PDF przez drukowanie
+function exportPdf() {
+  if (messages.length === 0) { alert("Brak wiadomosci do eksportu."); return; }
+  window.print();
+}
+</script>
+{% endif %}
+{% endblock %}

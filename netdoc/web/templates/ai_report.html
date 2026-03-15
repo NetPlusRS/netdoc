@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Raport AI — ocena urządzeń sieciowych</title>
+  <style>
+    :root { --risk-critical: #dc3545; --risk-high: #e3b341; --risk-medium: #0dcaf0; --risk-low: #198754; --risk-ok: #198754; }
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; font-size: 13px; color: #212529; background: #fff; margin: 0; padding: 1rem; }
+    h1 { font-size: 1.4rem; margin-bottom: 0.2rem; }
+    .meta { color: #666; font-size: .85rem; margin-bottom: 1rem; }
+    .summary-bar { display: flex; gap: .8rem; flex-wrap: wrap; margin-bottom: 1.2rem; padding: .5rem; background: #f8f9fa; border-radius: 6px; border: 1px solid #dee2e6; }
+    .summary-pill { padding: .2rem .6rem; border-radius: 20px; font-size: .8rem; font-weight: bold; color: #fff; }
+    .pill-danger { background: #dc3545; }
+    .pill-warning { background: #e3b341; color: #000; }
+    .pill-success { background: #198754; }
+    .pill-secondary { background: #6c757d; }
+    .device-card { border: 1px solid #dee2e6; border-radius: 8px; margin-bottom: 1rem; overflow: hidden; page-break-inside: avoid; }
+    .device-header { display: flex; align-items: center; gap: .5rem; padding: .5rem .8rem; flex-wrap: wrap; }
+    .device-header h2 { font-size: 1rem; margin: 0; }
+    .badge { display: inline-block; padding: .2rem .5rem; border-radius: 4px; font-size: .75rem; font-weight: bold; color: #fff; }
+    .badge-danger  { background: #dc3545; }
+    .badge-warning { background: #e3b341; color: #000; }
+    .badge-info    { background: #0dcaf0; color: #000; }
+    .badge-success { background: #198754; }
+    .badge-secondary { background: #6c757d; }
+    .device-body { padding: .6rem .8rem; }
+    .section-title { font-weight: bold; margin: .6rem 0 .2rem; font-size: .9rem; color: #333; border-bottom: 1px solid #eee; padding-bottom: .2rem; }
+    .summary-text { color: #444; margin-bottom: .4rem; }
+    .reason-text { color: #555; font-style: italic; margin-bottom: .4rem; }
+    table.findings { width: 100%; border-collapse: collapse; font-size: .8rem; margin-top: .3rem; }
+    table.findings th { background: #f1f3f5; text-align: left; padding: .3rem .5rem; border: 1px solid #dee2e6; }
+    table.findings td { padding: .3rem .5rem; border: 1px solid #dee2e6; vertical-align: top; }
+    .sev-critical { color: #dc3545; font-weight: bold; }
+    .sev-high     { color: #e3b341; font-weight: bold; }
+    .sev-medium   { color: #0dcaf0; }
+    .sev-low      { color: #6c757d; }
+    table.replacements { width: 100%; border-collapse: collapse; font-size: .8rem; margin-top: .3rem; }
+    table.replacements th { background: #f1f3f5; text-align: left; padding: .3rem .5rem; border: 1px solid #dee2e6; }
+    table.replacements td { padding: .3rem .5rem; border: 1px solid #dee2e6; vertical-align: top; }
+    .tier-budget  { color: #198754; font-weight: bold; }
+    .tier-mid     { color: #0dcaf0; font-weight: bold; }
+    .tier-premium { color: #e3b341; font-weight: bold; }
+    .no-assess { color: #999; text-align: center; padding: 2rem; }
+    .print-btn { position: fixed; top: 1rem; right: 1rem; background: #0d6efd; color: #fff; border: none; border-radius: 6px; padding: .4rem .9rem; font-size: .85rem; cursor: pointer; z-index: 999; }
+    .print-btn:hover { background: #0b5ed7; }
+    @media print {
+      .print-btn { display: none; }
+      body { padding: 0; }
+      .device-card { border: 1px solid #999; }
+    }
+  </style>
+</head>
+<body>
+<button class="print-btn" onclick="window.print()">&#128438; Drukuj / PDF</button>
+
+<h1>&#129302; Raport AI — ocena urządzeń sieciowych</h1>
+<div class="meta">Wygenerowano: {{ generated_at }} &nbsp;|&nbsp; Urządzeń z oceną AI: {{ entries|length }}</div>
+
+{% if entries %}
+{# Pasek podsumowania #}
+{% set ns = namespace(obsolete=0, critical=0, high=0, medium=0, safe=0) %}
+{% for e in entries %}
+  {% if e.get("is_obsolete") %}{% set ns.obsolete = ns.obsolete + 1 %}{% endif %}
+  {% set _rl = e.get("security", {}).get("risk_level", "") %}
+  {% if _rl == "critical" %}{% set ns.critical = ns.critical + 1 %}
+  {% elif _rl == "high" %}{% set ns.high = ns.high + 1 %}
+  {% elif _rl == "medium" %}{% set ns.medium = ns.medium + 1 %}
+  {% else %}{% set ns.safe = ns.safe + 1 %}{% endif %}
+{% endfor %}
+<div class="summary-bar">
+  {% if ns.obsolete > 0 %}<span class="summary-pill pill-danger">&#9888; {{ ns.obsolete }} do wymiany</span>{% endif %}
+  {% if ns.critical > 0 %}<span class="summary-pill pill-danger">&#128683; {{ ns.critical }} krytyczne ryzyko</span>{% endif %}
+  {% if ns.high > 0 %}<span class="summary-pill pill-warning">&#9888; {{ ns.high }} wysokie ryzyko</span>{% endif %}
+  {% if ns.medium > 0 %}<span class="summary-pill pill-secondary">{{ ns.medium }} średnie ryzyko</span>{% endif %}
+  {% if ns.safe > 0 %}<span class="summary-pill pill-success">&#10003; {{ ns.safe }} bezpieczne</span>{% endif %}
+</div>
+
+{% for e in entries %}
+{% set sec = e.get("security", {}) %}
+{% set risk = sec.get("risk_level", "") %}
+{% set findings = sec.get("findings", []) %}
+{% set replacements = e.get("replacements", []) %}
+{% set is_obs = e.get("is_obsolete") %}
+
+{% if risk == "critical" %}{% set hdr_bg = "#3d0000" %}{% set hdr_col = "#fff" %}
+{% elif risk == "high" %}{% set hdr_bg = "#2d1b00" %}{% set hdr_col = "#fff" %}
+{% elif risk == "medium" %}{% set hdr_bg = "#001a20" %}{% set hdr_col = "#fff" %}
+{% elif risk in ("low", "ok") %}{% set hdr_bg = "#0d1f12" %}{% set hdr_col = "#fff" %}
+{% else %}{% set hdr_bg = "#f8f9fa" %}{% set hdr_col = "#212529" %}{% endif %}
+
+<div class="device-card">
+  <div class="device-header" style="background:{{ hdr_bg }};color:{{ hdr_col }}">
+    <h2>{{ e.device_label }}{% if e.device_label != e.device_ip %} <span style="font-weight:normal;font-size:.85rem">({{ e.device_ip }})</span>{% endif %}</h2>
+    <span style="font-size:.8rem;opacity:.8">{{ e.device_type }}</span>
+    <span style="margin-left:auto;font-size:.75rem;opacity:.7">{{ e.get("assessed_at","") }}</span>
+    {% if is_obs %}<span class="badge badge-danger">&#9888; Do wymiany</span>
+    {% else %}<span class="badge badge-success">&#10003; Aktualny</span>{% endif %}
+    {% if risk == "critical" %}<span class="badge badge-danger">Ryzyko: KRYTYCZNE</span>
+    {% elif risk == "high" %}<span class="badge badge-warning">Ryzyko: WYSOKIE</span>
+    {% elif risk == "medium" %}<span class="badge badge-info">Ryzyko: ŚREDNIE</span>
+    {% elif risk in ("low","ok") %}<span class="badge badge-success">Ryzyko: NISKIE</span>
+    {% else %}<span class="badge badge-secondary">Ryzyko: ?</span>{% endif %}
+  </div>
+  <div class="device-body">
+    {% if e.get("summary") %}
+    <div class="summary-text"><strong>Podsumowanie:</strong> {{ e.get("summary") }}</div>
+    {% endif %}
+    {% if is_obs and e.get("reason") %}
+    <div class="reason-text">{{ e.get("reason") }}</div>
+    {% endif %}
+
+    {% if sec.get("overall") %}
+    <div class="section-title">Ocena bezpiecze&#324;stwa</div>
+    <div style="color:#444;margin-bottom:.4rem">{{ sec.get("overall") }}</div>
+    {% endif %}
+
+    {% if findings %}
+    <div class="section-title">Znaleziska ({{ findings|length }})</div>
+    <table class="findings">
+      <thead><tr><th style="width:60px">Port</th><th style="width:80px">Usługa</th><th style="width:80px">Severity</th><th>Opis</th><th>Zalecenie</th></tr></thead>
+      <tbody>
+      {% for f in findings %}
+      <tr>
+        <td>{% if f.get("port") and f.get("port") != 0 %}{{ f.get("port") }}{% else %}—{% endif %}</td>
+        <td>{{ f.get("service","") }}</td>
+        <td class="sev-{{ f.get('severity','') }}">{{ f.get("severity","").upper() }}</td>
+        <td>{{ f.get("finding","") }}</td>
+        <td>{{ f.get("recommendation","") }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% if replacements %}
+    <div class="section-title">Proponowane zamienniki</div>
+    <table class="replacements">
+      <thead><tr><th style="width:70px">Tier</th><th style="width:200px">Model</th><th style="width:100px">Cena nowy</th><th style="width:100px">Cena używany</th><th>Uwagi</th></tr></thead>
+      <tbody>
+      {% for r in replacements %}
+      <tr>
+        <td class="tier-{{ r.get('tier','') }}">{{ r.get("tier","").upper() }}</td>
+        <td>{{ r.get("name","") }}</td>
+        <td>{{ r.get("price_new","—") }}</td>
+        <td>{{ r.get("price_used","—") }}</td>
+        <td>{{ r.get("notes","") }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+{% else %}
+<div class="no-assess">
+  <p>Brak ocen AI. Otwórz stronę urządzeń i użyj "Ocena AI" z menu akcji dla wybranych urządzeń.</p>
+</div>
+{% endif %}
+
+</body>
+</html>

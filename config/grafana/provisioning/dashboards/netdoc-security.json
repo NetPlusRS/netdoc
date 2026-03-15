@@ -1,0 +1,588 @@
+{
+  "uid": "netdoc-security",
+  "title": "NetDoc — Bezpieczenstwo",
+  "schemaVersion": 39,
+  "version": 3,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Podatnosci — podsumowanie",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Krytyczne",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "netdoc_pg"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(*) as value FROM vulnerabilities WHERE severity='critical' AND is_open=true AND suppressed=false",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "netdoc_pg"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Wysokie",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "netdoc_pg"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(*) as value FROM vulnerabilities WHERE severity='high'     AND is_open=true AND suppressed=false",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "netdoc_pg"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Srednie",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "netdoc_pg"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(*) as value FROM vulnerabilities WHERE severity='medium'   AND is_open=true AND suppressed=false",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "netdoc_pg"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "yellow",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Niskie",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "netdoc_pg"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(*) as value FROM vulnerabilities WHERE severity='low'      AND is_open=true AND suppressed=false",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "netdoc_pg"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Zaakceptowane",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "netdoc_pg"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(*) as value FROM vulnerabilities WHERE suppressed=true",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "netdoc_pg"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Unikalne hosty",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "netdoc_pg"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(DISTINCT device_id) as value FROM vulnerabilities WHERE is_open=true AND suppressed=false",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "netdoc_pg"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Wszystkie otwarte podatnosci",
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "netdoc_pg"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT\n         d.ip,\n         COALESCE(d.hostname,'—') AS hostname,\n         COALESCE(d.vendor,'—') AS vendor,\n         v.vuln_type::text AS typ,\n         v.severity::text AS severity,\n         v.title AS opis,\n         COALESCE(v.port::text,'—') AS port,\n         COALESCE(v.evidence,'') AS dowod,\n         TO_CHAR(v.first_seen,'YYYY-MM-DD HH24:MI') AS wykryto,\n         TO_CHAR(v.last_seen, 'YYYY-MM-DD HH24:MI') AS ostatnio\n       FROM vulnerabilities v\n       JOIN devices d ON d.id = v.device_id\n       WHERE v.is_open = true AND v.suppressed = false\n       ORDER BY\n         CASE v.severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2\n                         WHEN 'medium' THEN 3 ELSE 4 END,\n         v.last_seen DESC\n       LIMIT 200",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "netdoc_pg"
+          }
+        }
+      ],
+      "options": {
+        "sortBy": [],
+        "footer": {
+          "show": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "inspect": false
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "type": "row",
+      "title": "Zaakceptowane i zamkniete",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 19
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Zaakceptowane podatnosci (suppressed)",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "netdoc_pg"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT\n         d.ip, COALESCE(d.hostname,'—') AS hostname,\n         v.vuln_type::text AS typ, v.severity::text AS severity, v.title\n       FROM vulnerabilities v\n       JOIN devices d ON d.id = v.device_id\n       WHERE v.suppressed = true\n       ORDER BY d.ip",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "netdoc_pg"
+          }
+        }
+      ],
+      "options": {
+        "sortBy": [],
+        "footer": {
+          "show": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "inspect": false
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Rozwiazane (ostatnie 7 dni)",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "netdoc_pg"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT\n         d.ip, COALESCE(d.hostname,'—') AS hostname,\n         v.vuln_type::text AS typ, v.severity::text AS severity,\n         TO_CHAR(v.last_seen,'MM-DD HH24:MI') AS zamknieto\n       FROM vulnerabilities v\n       JOIN devices d ON d.id = v.device_id\n       WHERE v.is_open = false AND v.last_seen > NOW() - INTERVAL '7 days'\n       ORDER BY v.last_seen DESC",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "netdoc_pg"
+          }
+        }
+      ],
+      "options": {
+        "sortBy": [],
+        "footer": {
+          "show": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "inspect": false
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "Credentials — odkryte hasla",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Dzialajace credentials (potwierdzone)",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "netdoc_pg"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT\n         d.ip,\n         COALESCE(d.hostname,'—') AS hostname,\n         c.method::text AS metoda,\n         c.username,\n         CASE WHEN c.password_encrypted IS NOT NULL THEN '(zaszyfrowane)' ELSE '—' END AS haslo,\n         TO_CHAR(c.last_success_at,'YYYY-MM-DD HH24:MI') AS ostatni_sukces\n       FROM credentials c\n       JOIN devices d ON d.id = c.device_id\n       WHERE c.last_success_at IS NOT NULL\n       ORDER BY c.last_success_at DESC\n       LIMIT 100",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "netdoc_pg"
+          }
+        }
+      ],
+      "options": {
+        "sortBy": [],
+        "footer": {
+          "show": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "inspect": false
+          }
+        },
+        "overrides": []
+      }
+    }
+  ],
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Panel Admin",
+      "url": "http://localhost:5000",
+      "type": "link",
+      "targetBlank": true
+    },
+    {
+      "title": "Bezpieczenstwo",
+      "url": "http://localhost:5000/security",
+      "type": "link",
+      "targetBlank": true
+    },
+    {
+      "title": "Prometheus",
+      "url": "http://localhost:9090",
+      "type": "link",
+      "targetBlank": true
+    }
+  ],
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1
+}

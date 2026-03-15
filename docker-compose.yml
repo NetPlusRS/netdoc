@@ -1,0 +1,281 @@
+name: netdoc
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: netdoc-postgres
+    restart: unless-stopped
+    environment:
+      TZ: "${TZ:-UTC}"
+      POSTGRES_DB: netdoc
+      POSTGRES_USER: netdoc
+      POSTGRES_PASSWORD: netdoc
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "15432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netdoc"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: netdoc-prometheus
+    restart: unless-stopped
+    environment:
+      TZ: "${TZ:-UTC}"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+
+  loki:
+    image: grafana/loki:3.2.0
+    container_name: netdoc-loki
+    restart: unless-stopped
+    environment:
+      TZ: "${TZ:-UTC}"
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./config/loki/loki.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+
+  promtail:
+    image: grafana/promtail:3.2.0
+    container_name: netdoc-promtail
+    restart: unless-stopped
+    environment:
+      TZ: "${TZ:-UTC}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config/promtail/promtail.yml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: netdoc-grafana
+    restart: unless-stopped
+    environment:
+      TZ: "${TZ:-UTC}"
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: netdoc
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SERVER_ROOT_URL: "http://localhost:3000"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - prometheus
+      - loki
+
+  api:
+    build: .
+    container_name: netdoc-api
+    restart: unless-stopped
+    command: uvicorn netdoc.api.main:app --host 0.0.0.0 --port 8000 --workers 1
+    environment:
+      TZ: "${TZ:-UTC}"
+      DB_URL: postgresql+psycopg2://netdoc:netdoc@postgres:5432/netdoc
+      REQUIRE_POSTGRES: "1"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    ports:
+      - "8000:8000"
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build: .
+    container_name: netdoc-web
+    restart: unless-stopped
+    command: python -m flask --app netdoc.web.app run --host 0.0.0.0 --port 5000
+    environment:
+      TZ: "${TZ:-UTC}"
+      DB_URL: postgresql+psycopg2://netdoc:netdoc@postgres:5432/netdoc
+      REQUIRE_POSTGRES: "1"
+      NETDOC_API_URL: http://api:8000
+      FLASK_ENV: production
+      FLASK_SECRET_KEY: netdoc-change-in-production
+      TEMPLATES_AUTO_RELOAD: "true"
+      AGENT_ENABLED: "1"          # ustaw 0 aby wylaczyc chatbota
+      LAB_COMPOSE_FILE: /app/docker-compose.lab.yml
+    env_file:
+      - .env                       # ANTHROPIC_API_KEY pobierany z .env
+    volumes:
+      - ./netdoc:/app/netdoc:ro
+      - ./docker-compose.lab.yml:/app/docker-compose.lab.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/app/data
+      - ./logs:/app/logs
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+
+  ping-worker:
+    build: .
+    container_name: netdoc-ping
+    restart: unless-stopped
+    command: python run_ping.py
+    environment:
+      TZ: "${TZ:-UTC}"
+      DB_URL: postgresql+psycopg2://netdoc:netdoc@postgres:5432/netdoc
+      REQUIRE_POSTGRES: "1"
+      PING_INTERVAL: "18"
+      PING_WORKERS: "64"
+      PING_METRICS_PORT: "8001"
+    env_file:
+      - .env
+    ports:
+      - "8001:8001"
+    cap_add:
+      - NET_RAW       # ICMP ping
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  snmp-worker:
+    build: .
+    container_name: netdoc-snmp
+    restart: unless-stopped
+    command: python run_snmp_worker.py
+    environment:
+      TZ: "${TZ:-UTC}"
+      DB_URL: postgresql+psycopg2://netdoc:netdoc@postgres:5432/netdoc
+      REQUIRE_POSTGRES: "1"
+      SNMP_INTERVAL: "300"
+      SNMP_WORKERS: "10"
+      SNMP_METRICS_PORT: "8002"
+    env_file:
+      - .env
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+
+  community-worker:
+    build: .
+    container_name: netdoc-community
+    restart: unless-stopped
+    command: python run_community_worker.py
+    environment:
+      TZ: "${TZ:-UTC}"
+      DB_URL: postgresql+psycopg2://netdoc:netdoc@postgres:5432/netdoc
+      REQUIRE_POSTGRES: "1"
+      COMMUNITY_INTERVAL_S: "3600"
+      COMMUNITY_WORKERS: "5"
+      SNMP_TIMEOUT_S: "2"
+      COMMUNITY_METRICS_PORT: "8006"
+    env_file:
+      - .env
+    ports:
+      - "8006:8006"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+
+  cred-worker:
+    build: .
+    container_name: netdoc-cred
+    restart: unless-stopped
+    command: python run_cred_worker.py
+    environment:
+      TZ: "${TZ:-UTC}"
+      DB_URL: postgresql+psycopg2://netdoc:netdoc@postgres:5432/netdoc
+      REQUIRE_POSTGRES: "1"
+      CRED_INTERVAL_S: "60"
+      CRED_SSH_WORKERS: "16"
+      CRED_WEB_WORKERS: "16"
+      CRED_RETRY_DAYS: "1"
+      CRED_MAX_CREDS_PER_DEV: "9999"
+      CRED_METRICS_PORT: "8003"
+      CRED_VERBOSE: "1"
+      CRED_PAIRS_PER_CYCLE: "1"
+      CRED_MIN_DELAY_S: "2"
+      CRED_MAX_DELAY_S: "10"
+      CRED_DEVICE_TIMEOUT_S: "120"
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+    ports:
+      - "8003:8003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+
+  vuln-worker:
+    build: .
+    container_name: netdoc-vuln
+    restart: unless-stopped
+    command: python run_vuln_worker.py
+    environment:
+      TZ: "${TZ:-UTC}"
+      DB_URL: postgresql+psycopg2://netdoc:netdoc@postgres:5432/netdoc
+      REQUIRE_POSTGRES: "1"
+      VULN_INTERVAL_S: "120"
+      VULN_WORKERS: "16"
+      VULN_METRICS_PORT: "8004"
+    env_file:
+      - .env
+    ports:
+      - "8004:8004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  internet-worker:
+    build: .
+    container_name: netdoc-internet
+    restart: unless-stopped
+    command: python run_internet.py
+    environment:
+      TZ: "${TZ:-UTC}"
+      DB_URL: postgresql+psycopg2://netdoc:netdoc@postgres:5432/netdoc
+      REQUIRE_POSTGRES: "1"
+      INET_CHECK_INTERVAL_S: "120"   # DNS + HTTP co 2 min
+      INET_SPEED_INTERVAL_S: "1800"  # speed test co 30 min
+      INET_SPEED_BYTES: "5242880"    # 5 MB
+      INET_METRICS_PORT: "8005"
+    env_file:
+      - .env
+    ports:
+      - "8005:8005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Kontener ma domyslny dostep do internetu przez NAT — brak dodatkowej konfiguracji sieci
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  loki_data:
+  grafana_data:

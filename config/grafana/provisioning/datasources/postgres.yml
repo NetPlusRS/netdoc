@@ -1,0 +1,20 @@
+apiVersion: 1
+
+datasources:
+  - name: NetDoc PostgreSQL
+    type: postgres
+    uid: netdoc_pg
+    url: host.docker.internal:15432
+    user: netdoc
+    secureJsonData:
+      password: netdoc
+    jsonData:
+      database: netdoc
+      sslmode: disable
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+      postgresVersion: 1600
+      timescaledb: false
+    editable: true
+    isDefault: false

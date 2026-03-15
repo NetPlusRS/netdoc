@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Historia rozmow AI{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-clock-history me-2"></i>Historia rozmow z asystentem</h4>
+  <a href="/chat" class="btn btn-sm btn-primary"><i class="bi bi-robot me-1"></i>Nowa rozmowa</a>
+</div>
+
+{% if not sessions %}
+<div class="card"><div class="card-body text-center py-5">
+  <i class="bi bi-chat-square-dots fs-1 d-block mb-3 text-muted"></i>
+  <h5>Brak historii rozmow</h5>
+  <p class="text-muted">Zacznij rozmowe z asystentem NetDoc AI.</p>
+  <a href="/chat" class="btn btn-primary"><i class="bi bi-robot me-1"></i>Otworz asystenta</a>
+</div></div>
+{% else %}
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>Poczatek rozmowy</th>
+          <th>Ostatnia wiadomosc</th>
+          <th>Wiadomosci</th>
+          <th>Podglad pierwszego pytania</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for s in sessions %}
+        <tr>
+          <td class="text-nowrap">{{ s.started_at.strftime('%Y-%m-%d %H:%M') if s.started_at else '?' }}</td>
+          <td class="text-nowrap">{{ s.last_at.strftime('%Y-%m-%d %H:%M') if s.last_at else '?' }}</td>
+          <td>{{ s.msg_count }}</td>
+          <td class="text-muted small">{{ previews.get(s.session_id, '')[:100] }}{% if previews.get(s.session_id, '')|length > 100 %}...{% endif %}</td>
+          <td><a href="/chat/history/{{ s.session_id }}" class="btn btn-sm btn-outline-secondary">Pokaz</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,370 @@
+{% extends "base.html" %}
+{% block title %}Bezpieczenstwo{% endblock %}
+
+{% macro vuln_badge(vuln_type) %}
+  {%- set h = vuln_hints.get(vuln_type, {}) -%}
+  {%- if h -%}
+    {%- set _c = h.short ~ '<hr style=\"margin:4px 0\"><b>CVSS:</b> ' ~ h.cvss -%}
+    <a href="/threats#{{ vuln_type }}" class="badge bg-dark text-decoration-none"
+          data-bs-toggle="popover"
+          data-bs-placement="right" data-bs-html="true"
+          data-bs-title="{{ vuln_type }}"
+          data-bs-content="{{ _c }}">{{ vuln_type }}</a>
+  {%- else -%}
+    <span class="badge bg-dark">{{ vuln_type }}</span>
+  {%- endif -%}
+{% endmacro %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-shield-exclamation me-2"></i>Bezpieczenstwo</h5>
+  <span class="text-muted small">{{ now }}</span>
+</div>
+
+<div class="row g-2 mb-4">
+  {% set sev_map = [
+    ("critical","danger","bi-exclamation-octagon-fill","Krytyczne"),
+    ("high","warning","bi-exclamation-triangle-fill","Wysokie"),
+    ("medium","info","bi-exclamation-circle","Srednie"),
+    ("low","secondary","bi-info-circle","Niskie"),
+  ] %}
+  {% for key, cls, icon, label in sev_map %}
+  {% set cnt = summary.get(key, 0) %}
+  <div class="col-6 col-md-3">
+    <div class="card border-{{ cls }} h-100">
+      <div class="card-body py-2 px-3 d-flex align-items-center gap-2">
+        <i class="bi {{ icon }} text-{{ cls }} fs-4"></i>
+        <div>
+          <div class="fs-4 fw-bold">{{ cnt }}</div>
+          <div class="text-muted small">{{ label }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+  <div class="col-6 col-md-3">
+    <div class="card border-secondary h-100">
+      <div class="card-body py-2 px-3 d-flex align-items-center gap-2">
+        <i class="bi bi-shield-check text-secondary fs-4"></i>
+        <div>
+          <div class="fs-4 fw-bold">{{ suppressed_vulns|length }}</div>
+          <div class="text-muted small">Zaakceptowane</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-12 col-lg-8">
+    <div class="card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span><i class="bi bi-bug me-2"></i>Otwarte podatnosci ({{ open_vulns|length }})</span>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+          <input type="text" id="ipSearch" class="form-control form-control-sm" placeholder="Szukaj IP..." style="width:140px">
+          <div class="d-flex gap-1 flex-wrap">
+            <button class="btn btn-outline-secondary btn-sm py-0 px-2 vuln-filter active" data-sev="all">Wszystkie</button>
+            {% for key, cls, _, label in sev_map %}
+            <button class="btn btn-outline-{{ cls }} btn-sm py-0 px-2 vuln-filter" data-sev="{{ key }}">{{ label }}</button>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0" id="vulnTable">
+            <thead>
+              <tr>
+                <th class="sortable" data-col="0" style="cursor:pointer;user-select:none">IP <i class="bi bi-arrow-down-up text-muted small"></i></th>
+                <th class="sortable" data-col="1" style="cursor:pointer;user-select:none">Typ urz. <i class="bi bi-arrow-down-up text-muted small"></i></th>
+                <th>Typ wlam.</th>
+                <th class="sortable" data-col="3" style="cursor:pointer;user-select:none">Severity <i class="bi bi-arrow-down-up text-muted small"></i></th>
+                <th>Opis</th>
+                <th class="sortable" data-col="5" style="cursor:pointer;user-select:none">Port <i class="bi bi-arrow-down-up text-muted small"></i></th>
+                <th class="sortable" data-col="6" style="cursor:pointer;user-select:none">Wykryto <i class="bi bi-arrow-down-up text-muted small"></i></th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for v in open_vulns %}
+              {% set sev_cls = {"critical":"danger","high":"warning","medium":"info","low":"secondary"}.get(v.severity,"secondary") %}
+              <tr id="vuln-{{ v.id }}" data-sev="{{ v.severity }}"{% if not v.device_active %} class="opacity-50" title="Host nieaktywny (DOWN)"{% endif %}>
+                <td class="font-monospace small">
+                  {{ v.device_ip }}
+                  {% if not v.device_active %}<span class="badge bg-secondary ms-1" title="Host nieaktywny">DOWN</span>{% endif %}
+                </td>
+                <td class="small text-muted">{{ v.device_type or "?" }}</td>
+                <td class="small">{{ vuln_badge(v.vuln_type) }}</td>
+                <td><span class="badge bg-{{ sev_cls }}">{{ v.severity }}</span></td>
+                <td class="small">{{ v.title }}</td>
+                <td class="text-center small text-muted">{{ v.port or "—" }}</td>
+                <td class="small text-muted">
+                  {% if v.first_seen %}{{ v.first_seen.strftime("%m-%d %H:%M") }}{% else %}—{% endif %}
+                </td>
+                <td>
+                  <form method="post" action="/security/{{ v.id }}/close" class="d-inline"
+                        onsubmit="return confirm('Zamknac #{{ v.id }}?');">
+                    <button class="btn btn-outline-success btn-sm py-0" title="Naprawione">
+                      <i class="bi bi-check-lg"></i>
+                    </button>
+                  </form>
+                  <form method="post" action="/security/{{ v.id }}/suppress" class="d-inline"
+                        onsubmit="return confirm('Zaakceptowac ryzyko #{{ v.id }}? Skaner nie bedzie wznawiać tej podatnosci.');">
+                    <button class="btn btn-outline-warning btn-sm py-0" title="Akceptuj ryzyko">
+                      <i class="bi bi-shield-check"></i>
+                    </button>
+                  </form>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="8" class="text-center text-muted py-4">Brak otwartych podatnosci.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    {% if closed_vulns %}
+    <div class="card">
+      <div class="card-header">
+        <a class="text-muted small text-decoration-none" data-bs-toggle="collapse" href="#closedVulns">
+          <i class="bi bi-chevron-down me-1"></i>Zamkniete / naprawione ({{ closed_vulns|length }})
+        </a>
+      </div>
+      <div class="collapse" id="closedVulns">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>IP</th><th>Typ</th><th>Severity</th><th>Opis</th><th>Port</th></tr></thead>
+            <tbody>
+              {% for v in closed_vulns %}
+              {% set sev_cls = {"critical":"danger","high":"warning","medium":"info","low":"secondary"}.get(v.severity,"secondary") %}
+              <tr class="text-muted">
+                <td class="font-monospace small">{{ v.device_ip }}</td>
+                <td class="small"><span class="badge bg-secondary">{{ v.vuln_type }}</span></td>
+                <td><span class="badge bg-{{ sev_cls }} opacity-50">{{ v.severity }}</span></td>
+                <td class="small">{{ v.title }}</td>
+                <td class="small">{{ v.port or "—" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if suppressed_vulns %}
+    <div class="card border-secondary">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <a class="text-muted small text-decoration-none" data-bs-toggle="collapse" href="#suppressedVulns">
+          <i class="bi bi-chevron-down me-1"></i>Zaakceptowane ryzyko ({{ suppressed_vulns|length }})
+        </a>
+        <form method="post" action="/security/unsuppress-all"
+              onsubmit="return confirm('Cofnac akceptacje dla WSZYSTKICH wyciszonych podatnosci ({{ suppressed_vulns|length }})?');">
+          <button class="btn btn-outline-secondary btn-sm py-0" title="Cofnij akceptacje wszystkich">
+            <i class="bi bi-arrow-counterclockwise me-1"></i>Cofnij wszystkie
+          </button>
+        </form>
+      </div>
+      <div class="collapse" id="suppressedVulns">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0">
+            <thead>
+              <tr><th>IP</th><th>Typ</th><th>Severity</th><th>Opis</th><th>Port</th><th></th></tr>
+            </thead>
+            <tbody>
+              {% for v in suppressed_vulns %}
+              {% set sev_cls = {"critical":"danger","high":"warning","medium":"info","low":"secondary"}.get(v.severity,"secondary") %}
+              <tr class="text-muted">
+                <td class="font-monospace small">{{ v.device_ip }}</td>
+                <td class="small"><span class="badge bg-secondary">{{ v.vuln_type }}</span></td>
+                <td><span class="badge bg-{{ sev_cls }} opacity-50">{{ v.severity }}</span></td>
+                <td class="small">{{ v.title }}</td>
+                <td class="small">{{ v.port or "—" }}</td>
+                <td>
+                  <form method="post" action="/security/{{ v.id }}/unsuppress" class="d-inline"
+                        onsubmit="return confirm('Cofnac akceptacje #{{ v.id }}?');">
+                    <button class="btn btn-outline-info btn-sm py-0" title="Cofnij akceptacje ryzyka">
+                      <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="col-12 col-lg-4">
+    <div class="card mb-3">
+      <div class="card-header"><i class="bi bi-unlock-fill me-2 text-danger"></i>Zdobyte dostepy ({{ working_creds|length }})</div>
+      <div class="card-body p-0">
+        {% if working_creds %}
+        <table class="table table-sm mb-0">
+          <thead><tr><th>IP</th><th>Typ</th><th>Proto</th><th>User</th><th>Kiedy</th></tr></thead>
+          <tbody>
+            {% for c in working_creds %}
+            {% set meth_cls = {"ssh":"primary","api":"secondary","rdp":"danger","telnet":"warning","snmp":"info"}.get(c.method,"secondary") %}
+            <tr>
+              <td class="font-monospace small">{{ c.device_ip }}</td>
+              <td class="small text-muted">{{ c.device_type }}</td>
+              <td><span class="badge bg-{{ meth_cls }}">{{ c.method.value|upper }}</span></td>
+              <td class="font-monospace small">{{ c.username or "—" }}</td>
+              <td class="small text-muted">
+                {% if c.last_success_at %}{{ c.last_success_at.strftime("%m-%d %H:%M") }}{% else %}—{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="text-center text-muted py-4 small">Brak zdobytych dostepu.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><i class="bi bi-bar-chart me-2"></i>Typy podatnosci</div>
+      <div class="card-body p-2">
+        <table class="table table-sm small mb-0">
+          <thead><tr><th>Typ</th><th class="text-end">Liczba</th></tr></thead>
+          <tbody>
+            {% for vtype, cnt in vuln_type_counts %}
+            <tr>
+              <td>{{ vtype }}</td>
+              <td class="text-end"><span class="badge" style="background:var(--accent)">{{ cnt }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Popovers na badgach typow podatnosci — trigger manualny z "mostem" do linku w tresci
+document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
+  const pop = new bootstrap.Popover(el, { sanitize: false, trigger: 'manual' });
+  let hideTimer = null;
+
+  el.addEventListener('mouseenter', () => {
+    clearTimeout(hideTimer);
+    pop.show();
+  });
+  el.addEventListener('mouseleave', () => {
+    hideTimer = setTimeout(() => pop.hide(), 250);
+  });
+  // Gdy popover jest juz widoczny — zatrzymaj ukrywanie gdy mysz wejdzie na jego tresc
+  // _tipListening zapobiega duplikowaniu listenerow przy kolejnych pokazaniach
+  el.addEventListener('shown.bs.popover', () => {
+    const tip = document.getElementById(el.getAttribute('aria-describedby'));
+    if (!tip || tip._tipListening) return;
+    tip._tipListening = true;
+    tip.addEventListener('mouseenter', () => clearTimeout(hideTimer));
+    tip.addEventListener('mouseleave', () => {
+      hideTimer = setTimeout(() => pop.hide(), 250);
+    });
+  });
+});
+
+// ─── Severity filter ────────────────────────────────────────────────────────
+var _activeSev = "all";
+var _ipQuery   = "";
+
+function applyFilters() {
+  document.querySelectorAll("#vulnTable tbody tr[data-sev]").forEach(function(row) {
+    var sevOk = (_activeSev === "all" || row.dataset.sev === _activeSev);
+    var ipOk  = !_ipQuery || (row.querySelector("td")?.textContent || "").includes(_ipQuery);
+    row.style.display = (sevOk && ipOk) ? "" : "none";
+  });
+}
+
+document.querySelectorAll(".vuln-filter").forEach(function(btn) {
+  btn.addEventListener("click", function() {
+    document.querySelectorAll(".vuln-filter").forEach(b => b.classList.remove("active"));
+    this.classList.add("active");
+    _activeSev = this.dataset.sev;
+    applyFilters();
+  });
+});
+
+document.getElementById("ipSearch").addEventListener("input", function() {
+  _ipQuery = this.value.trim();
+  applyFilters();
+});
+
+// ─── Column sort ─────────────────────────────────────────────────────────────
+(function() {
+  var sortCol = -1, sortAsc = true;
+  var sevOrder = {critical:0, high:1, medium:2, low:3};
+
+  document.querySelectorAll("#vulnTable thead th.sortable").forEach(function(th) {
+    th.addEventListener("click", function() {
+      var col = parseInt(this.dataset.col);
+      if (sortCol === col) { sortAsc = !sortAsc; } else { sortCol = col; sortAsc = true; }
+
+      // Update header icons
+      document.querySelectorAll("#vulnTable thead th.sortable").forEach(function(h) {
+        var ico = h.querySelector("i");
+        if (ico) ico.className = "bi bi-arrow-down-up text-muted small";
+      });
+      var ico = this.querySelector("i");
+      if (ico) ico.className = "bi " + (sortAsc ? "bi-arrow-up" : "bi-arrow-down") + " text-primary small";
+
+      var tbody = document.querySelector("#vulnTable tbody");
+      var rows = Array.from(tbody.querySelectorAll("tr[data-sev]"));
+      rows.sort(function(a, b) {
+        var aText = (a.cells[col]?.textContent || "").trim();
+        var bText = (b.cells[col]?.textContent || "").trim();
+        var cmp;
+        if (col === 3) {
+          // severity order
+          cmp = (sevOrder[a.dataset.sev] ?? 99) - (sevOrder[b.dataset.sev] ?? 99);
+        } else if (col === 5) {
+          // port numeric
+          cmp = (parseInt(aText) || 0) - (parseInt(bText) || 0);
+        } else {
+          cmp = aText.localeCompare(bText, "pl");
+        }
+        return sortAsc ? cmp : -cmp;
+      });
+      rows.forEach(function(r) { tbody.appendChild(r); });
+    });
+  });
+})();
+
+// ── Scroll do konkretnego zagrożenia po kliknięciu linku z /devices ──────────
+(function() {
+  function highlightTarget() {
+    var hash = location.hash;
+    if (!hash || !hash.startsWith('#vuln-')) return;
+    var el = document.querySelector(hash);
+    if (!el) return;
+    // Przewiń do wiersza
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Podświetl na żółto przez 3 sekundy
+    el.style.transition = 'background-color 0.3s';
+    el.style.backgroundColor = '#4a3800';
+    setTimeout(function() {
+      el.style.backgroundColor = '';
+    }, 3000);
+  }
+  // Uruchom po załadowaniu DOM (DOMContentLoaded może być już za późno jeśli skrypt na dole)
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', highlightTarget);
+  } else {
+    highlightTarget();
+  }
+  // Reaguj też na kliknięcia linków z #vuln-X na tej samej stronie
+  window.addEventListener('hashchange', highlightTarget);
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Opis systemu NetDoc{% endblock %}
+{% block head %}
+<style>
+  .ctx-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:1.5rem;}
+  .ctx-card h2{font-size:1.05rem;color:var(--accent);margin:1.2rem 0 .4rem;border-bottom:1px solid var(--border);padding-bottom:.3rem;}
+  .ctx-card h2:first-child{margin-top:0;}
+  .ctx-card ul,.ctx-card ol{margin:.3rem 0 .5rem 1.3rem;padding:0;}
+  .ctx-card li{margin-bottom:.2rem;line-height:1.55;}
+  .ctx-card p{margin:.3rem 0 .5rem;line-height:1.6;}
+  .ctx-card code{background:var(--bg);padding:1px 5px;border-radius:3px;font-size:.85rem;}
+  .ctx-card pre{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.8rem;font-size:.82rem;overflow-x:auto;}
+  .ctx-meta{font-size:.8rem;color:var(--text-muted);margin-bottom:1.2rem;}
+  @media print{nav,.no-print{display:none!important;} .ctx-card{border:none;} body{background:#fff;color:#000;}}
+</style>
+{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-info-circle me-2"></i>Opis systemu NetDoc</h4>
+  <div class="d-flex gap-2">
+    <button class="btn btn-sm btn-outline-secondary no-print" onclick="window.print()" title="Drukuj / Zapisz PDF">
+      <i class="bi bi-file-earmark-pdf me-1"></i>PDF
+    </button>
+    <a href="/chat" class="btn btn-sm btn-primary no-print"><i class="bi bi-robot me-1"></i>Czat AI</a>
+  </div>
+</div>
+
+<div class="ctx-card">
+  <p class="ctx-meta">
+    <i class="bi bi-file-text me-1"></i>
+    Zrodlo: <code>netdoc/web/ai_context.md</code> &mdash;
+    plik uzywany jako wiedza statyczna przez asystenta AI NetDoc.
+    Aktualizowany automatycznie przy kazdej wiekszej zmianie systemu.
+  </p>
+  <div id="ctx-content">{{ context_text | safe }}</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+(function(){
+  const raw = document.getElementById("ctx-content").textContent;
+  if (window.marked) {
+    marked.setOptions({breaks: true, gfm: true});
+    document.getElementById("ctx-content").innerHTML = marked.parse(raw);
+  }
+})();
+</script>
+{% endblock %}

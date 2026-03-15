@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Rozmowa{% endblock %}
+{% block head %}
+<style>
+  .msg{max-width:82%;padding:.6rem 1rem;border-radius:12px;line-height:1.5;word-break:break-word;}
+  .msg-user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px;}
+  .msg-agent{align-self:flex-start;background:var(--bg3);border:1px solid var(--border);border-bottom-left-radius:4px;width:100%;max-width:100%;}
+  .msg-agent h1,.msg-agent h2,.msg-agent h3{font-size:1rem;margin:.4rem 0 .2rem;}
+  .msg-agent ul,.msg-agent ol{margin:.3rem 0 .3rem 1.2rem;padding:0;}
+  .msg-agent code{font-size:.82rem;background:var(--bg);padding:1px 4px;border-radius:3px;}
+  .msg-agent pre{background:var(--bg);margin:.4rem 0 0;padding:.5rem;font-size:.8rem;border-radius:6px;overflow-x:auto;}
+  .msg-agent table{width:100%;border-collapse:collapse;font-size:.85rem;margin:.4rem 0;}
+  .msg-agent th,.msg-agent td{border:1px solid var(--border);padding:.3rem .6rem;text-align:left;}
+  .msg-agent th{background:var(--bg2);}
+  .msg-agent tr:nth-child(even) td{background:var(--bg2);}
+  .msg-ts{font-size:.7rem;color:var(--text-muted);margin-top:.2rem;}
+  .msg-debug{margin-top:.4rem;font-size:.76rem;}
+  .msg-debug summary{cursor:pointer;color:var(--text-muted);user-select:none;list-style:none;display:flex;align-items:center;gap:.3rem;}
+  .msg-debug summary::before{content:"▶";font-size:.65rem;transition:transform .15s;}
+  details.msg-debug[open] summary::before{transform:rotate(90deg);}
+  .msg-debug summary:hover{color:var(--accent);}
+  .debug-body{margin-top:.35rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.5rem .7rem;max-height:320px;overflow-y:auto;}
+  .debug-tool{margin-bottom:.5rem;}
+  .debug-tool:last-child{margin-bottom:0;}
+  .debug-tool-name{font-weight:600;color:var(--accent);margin-bottom:.15rem;}
+  .debug-tool-result{white-space:pre-wrap;color:var(--text);}
+</style>
+{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-chat-square-text me-2"></i>Rozmowa</h4>
+  <div class="d-flex gap-2">
+    <a href="/chat/history" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Lista</a>
+    <a href="/chat" class="btn btn-sm btn-primary"><i class="bi bi-robot me-1"></i>Nowa</a>
+  </div>
+</div>
+<p class="text-muted small mb-3">Sesja: <code>{{ session_id }}</code></p>
+
+{% if not msgs %}
+<div class="alert alert-info">Brak wiadomosci dla tej sesji.</div>
+{% else %}
+<div class="d-flex flex-column gap-3">
+  {% for m in msgs %}
+  <div>
+    <div class="d-flex {% if m.role == 'user' %}justify-content-end{% endif %}">
+      <div class="msg msg-{{ 'user' if m.role == 'user' else 'agent' }}">
+        {% if m.role == 'assistant' %}<strong>NetDoc AI</strong><br>{% endif %}
+        <span id="msg-{{ loop.index }}">{{ m.content }}</span>
+        {% if m.tools_used %}
+        <details class="msg-debug">
+          <summary><i class="bi bi-braces me-1"></i>Co wysłano do AI
+            ({{ m.tools_used | length }} zapytań do bazy)</summary>
+          <div class="debug-body">
+            {% for td in m.tools_used %}
+              {% if td is mapping %}
+                <div class="debug-tool">
+                  <div class="debug-tool-name">
+                    <i class="bi bi-database me-1"></i>{{ td.tool }}({% if td.input %}{% for k,v in td.input.items() %}{{ k }}={{ v | tojson }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}brak parametrów{% endif %})
+                  </div>
+                  <div class="debug-tool-result">{{ td.result }}</div>
+                </div>
+              {% else %}
+                <div class="debug-tool"><div class="debug-tool-name">{{ td }}</div></div>
+              {% endif %}
+              {% if not loop.last %}<hr style="margin:.3rem 0;border-color:var(--border);">{% endif %}
+            {% endfor %}
+          </div>
+        </details>
+        {% endif %}
+      </div>
+    </div>
+    <div class="msg-ts text-{{ 'end' if m.role == 'user' else 'start' }}">
+      {{ m.created_at.strftime('%Y-%m-%d %H:%M:%S') if m.created_at else '' }}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+document.querySelectorAll('[id^="msg-"]').forEach(el => {
+  const parent = el.closest('.msg-agent');
+  if (parent && window.marked) {
+    el.innerHTML = marked.parse(el.textContent || '');
+  }
+});
+</script>
+{% endblock %}

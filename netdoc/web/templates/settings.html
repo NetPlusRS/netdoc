@@ -1,0 +1,1093 @@
+{% extends "base.html" %}
+{% block title %}Ustawienia{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-gear me-2"></i>Ustawienia systemu</h5>
+  <a href="{{ grafana_url }}/d/netdoc-main" target="_blank" class="btn btn-outline-warning btn-sm">
+    <i class="bi bi-bar-chart-fill me-1"></i>Pokaz w Grafanie
+  </a>
+</div>
+
+{# ── Ustawienia workerów ─────────────────────────────────────────────────── #}
+<div class="card mb-4">
+  <div class="card-header"><i class="bi bi-sliders2 me-2"></i>Ustawienia workerów</div>
+  <div class="card-body">
+    <form method="post" action="/settings/workers">
+      <div class="row g-3">
+
+        {# Credential Worker #}
+        <div class="col-12"><h6 class="text-muted border-bottom pb-1 mb-0">Credential Worker — testowanie haseł SSH/Web/RDP/FTP</h6></div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Interwał [s]</label>
+          <input type="number" name="cred_interval_s" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('cred_interval_s', 60) }}" min="10">
+          <div class="form-text">Przerwa między cyklami testowania. Domyślnie 60s.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Równoległe urządzenia</label>
+          <input type="number" name="cred_ssh_workers" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('cred_ssh_workers', 16) }}" min="1" max="64">
+          <div class="form-text">Ile IP testowanych jednocześnie (SSH/RDP). Więcej = szybciej, ale może blokować.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Par haseł per cykl / IP</label>
+          <input type="number" name="cred_pairs_per_cycle" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('cred_pairs_per_cycle', 1) }}" min="1" max="50">
+          <div class="form-text">Ile haseł próbować per urządzenie per cykl. 1 = powolne, mało inwazyjne.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Timeout urządzenia [s]</label>
+          <input type="number" name="cred_device_timeout_s" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('cred_device_timeout_s', 600) }}" min="30" max="3600">
+          <div class="form-text">Maksymalny czas testowania jednego IP. Domyślnie 120s.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Równoległe IP — Web/HTTP
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Ile adresów IP testowanych jednocześnie przez moduł Web/HTTP (panele logowania urządzeń). Niezależne od SSH workers."></i>
+          </label>
+          <input type="number" name="cred_web_workers" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('cred_web_workers', 16) }}" min="1" max="100">
+          <div class="form-text">Domyślnie 16. Web/HTTP bywa szybszy — możesz zwiększyć do 32–64.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Ponów rotację po [dniach]</label>
+          <input type="number" name="cred_retry_days" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('cred_retry_days', 1) }}" min="0">
+          <div class="form-text">Co ile dni ponowić pełną rotację haseł per urządzenie. 0 = tylko raz.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">
+            Max par na urządzenie
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Limit haseł testowanych per urządzenie per cykl. Domyślnie 9999 (bez limitu). Przy dużej bazie haseł ogranicz do 100-200 aby skrócić czas cyklu."></i>
+          </label>
+          <input type="number" name="cred_max_creds_per_dev" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('cred_max_creds_per_dev', 9999) }}" min="1">
+          <div class="form-text">9999 = bez limitu. Zmniejsz jeśli baza haseł jest bardzo duża.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Minimalny odstęp między IP [s]
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Minimalny losowy czas oczekiwania przed testem kolejnego IP. Zapobiega jednoczesnym próbom logowania do wielu urządzeń — zmniejsza ryzyko blokady konta w Active Directory."></i>
+          </label>
+          <input type="number" name="cred_min_delay_s" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('cred_min_delay_s', 2) }}" min="0" max="60">
+          <div class="form-text">Domyślnie 2s. 0 = bez opóźnienia (ryzyko AD lockout).</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Maksymalny odstęp między IP [s]
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Maksymalny losowy czas oczekiwania przed testem kolejnego IP. Losowa przerwa między min a max sprawia, że testy wyglądają mniej jak skan — unika triggerowania IDS/firewalla."></i>
+          </label>
+          <input type="number" name="cred_max_delay_s" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('cred_max_delay_s', 10) }}" min="1" max="120">
+          <div class="form-text">Domyślnie 10s. Przy min=max cykl jest przewidywalny.</div>
+        </div>
+
+        {# Ping Worker #}
+        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">Ping Worker — ciągłe monitorowanie dostępności</h6></div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Interwał [s]</label>
+          <input type="number" name="ping_interval_s" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('ping_interval_s', 18) }}" min="1">
+          <div class="form-text">Przerwa między rundami pingowania. Domyślnie 18s.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Wątki równoległe</label>
+          <input type="number" name="ping_workers" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('ping_workers', 64) }}" min="1" max="256">
+          <div class="form-text">Ile urządzeń pingowanych jednocześnie. Max 256.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Nieaktywny po [min]</label>
+          <input type="number" name="ping_inactive_after_min" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('ping_inactive_after_min', 5) }}" min="1">
+          <div class="form-text">Po ilu minutach ciszy ping → status DOWN. Domyślnie 5 min.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Timeout TCP per port [s]
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Maksymalny czas oczekiwania na połączenie TCP z jednym portem (fallback gdy ICMP blokowany). Niższa wartość = szybszy cykl, ale więcej fałszywych DOWN dla urządzeń z powolnym TCP. Akceptuje ułamki dziesiętne np. 1.5."></i>
+          </label>
+          <input type="number" name="ping_tcp_timeout" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('ping_tcp_timeout', 1.5) }}" min="0.1" max="10" step="0.1">
+          <div class="form-text">Domyślnie 1.5s. Zwiększ do 3–5s jeśli urządzenia są w odległej sieci VPN.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Próg DOWN [liczba porażek]
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Ile kolejnych nieudanych cykli ping musi nastąpić zanim urządzenie zostanie oznaczone jako DOWN. Chroni przed fałszywymi alertami przy chwilowym przeciążeniu sieci. Wartość 1 = natychmiastowe DOWN po pierwszym braku odpowiedzi."></i>
+          </label>
+          <input type="number" name="ping_fail_threshold" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('ping_fail_threshold', 3) }}" min="1" max="10">
+          <div class="form-text">Domyślnie 3. Zwiększ do 5–10 w niestabilnych sieciach.</div>
+        </div>
+
+        {# SNMP Worker #}
+        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">SNMP Worker — automatyczne wzbogacanie danych</h6></div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Interwał [s]</label>
+          <input type="number" name="snmp_interval_s" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('snmp_interval_s', 300) }}" min="10">
+          <div class="form-text">Co ile sekund odpytywać urządzenia po SNMP. Domyślnie 300s (5 min).</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Wątki równoległe</label>
+          <input type="number" name="snmp_workers" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('snmp_workers', 10) }}" min="1" max="100">
+          <div class="form-text">Urządzenia odpytywane równolegle. Domyślnie 10.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Timeout SNMP GET [s]
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Maksymalny czas oczekiwania na odpowiedź SNMP GET od jednego urządzenia. SNMP używa UDP — brak odpowiedzi = urządzenie zablokowane lub nieaktywny port 161. Zwiększ jeśli urządzenia są za WAN z dużym opóźnieniem."></i>
+          </label>
+          <input type="number" name="snmp_timeout_s" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('snmp_timeout_s', 2) }}" min="1" max="30">
+          <div class="form-text">Domyślnie 2s. Nie przekraczaj 10s — zbyt długi timeout blokuje wątek.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Opóźnienie między community [s]
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Czas oczekiwania między kolejnymi próbami community string dla jednego urządzenia. Community sprawdzane są sekwencyjnie (jedno po drugim). Większa wartość = mniejsze obciążenie sieci i urządzeń, ale dłuższy czas autodiscovery przy dużej bazie community."></i>
+          </label>
+          <input type="number" name="snmp_community_delay_s" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('snmp_community_delay_s', 3) }}" min="0" max="60">
+          <div class="form-text">Domyślnie 3s. 0 = bez opóźnienia (szybsze, ale agresywniejsze).</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Logowanie prób community
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Gdy włączone, każda próba community string (sukces i porażka) jest zapisywana w logach skanera. Przydatne do diagnostyki SNMP. Przy dużej bazie community może generować dużo wpisów — wyłącz w środowiskach produkcyjnych jeśli logi są za duże."></i>
+          </label>
+          <select name="snmp_debug" class="form-select form-select-sm">
+            <option value="1" {% if worker_cfg.get('snmp_debug', 1)|int == 1 %}selected{% endif %}>Włączone (domyślnie)</option>
+            <option value="0" {% if worker_cfg.get('snmp_debug', 1)|int == 0 %}selected{% endif %}>Wyłączone</option>
+          </select>
+          <div class="form-text">Logi: każda próba community → IP, community, wynik (OK/FAIL).</div>
+        </div>
+
+        {# Community Worker #}
+        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">Community Worker — autodiscovery community SNMP</h6></div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Interwał [s]
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Co ile sekund uruchamiać pełny cykl szukania community. Dotyczy tylko urządzeń bez znalezionej community lub z przeterminowanym snmp_ok_at. Domyślnie 3600s (1h)."></i>
+          </label>
+          <input type="number" name="community_interval_s" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('community_interval_s', 3600) }}" min="60">
+          <div class="form-text">Domyślnie 3600s (1h). Min 60s.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Wątki równoległe (urządzenia)
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Ile urządzeń sprawdzać jednocześnie. Każde urządzenie testuje community sekwencyjnie z opóźnieniem — zbyt duża wartość przy dużej bazie community może generować duże obciążenie sieci. Domyślnie 5."></i>
+          </label>
+          <input type="number" name="community_workers" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('community_workers', 5) }}" min="1" max="50">
+          <div class="form-text">Domyślnie 5. Zależy od rozmiaru sieci i bazy community.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Ponowne sprawdzenie po [dni]
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Po ilu dniach od ostatniego udanego pollu SNMP urządzenie zostanie ponownie sprawdzone przez community-worker. Przydatne gdy community mogło się zmienić. Domyślnie 7 dni."></i>
+          </label>
+          <input type="number" name="community_recheck_days" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('community_recheck_days', 7) }}" min="1" max="365">
+          <div class="form-text">Domyślnie 7 dni. Opóźnienie community ustawiane wyżej w sekcji SNMP.</div>
+        </div>
+
+        {# Vuln Worker #}
+        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">Vulnerability Worker — skanowanie podatności</h6></div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Interwał [s]</label>
+          <input type="number" name="vuln_interval_s" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('vuln_interval_s', 120) }}" min="10">
+          <div class="form-text">Przerwa między cyklami skanowania luk. Domyślnie 120s (2 min).</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Wątki równoległe</label>
+          <input type="number" name="vuln_workers" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('vuln_workers', 16) }}" min="1" max="64">
+          <div class="form-text">Równoległe sprawdzenia TCP. Więcej = szybciej, ale więcej połączeń.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Timeout TCP [s]
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Czas oczekiwania na połączenie TCP podczas sprawdzania otwartości portu (np. Redis, Telnet, MySQL). Wyższy timeout = więcej fałszywych pozytywów rozliczanych wolniej. Akceptuje ułamki dziesiętne np. 3.0."></i>
+          </label>
+          <input type="number" name="vuln_tcp_timeout" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('vuln_tcp_timeout', 3.0) }}" min="0.5" max="30" step="0.5">
+          <div class="form-text">Domyślnie 3.0s. Zmniejsz do 1–2s w szybkiej sieci lokalnej.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Timeout HTTP [s]
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Czas oczekiwania na odpowiedź HTTP przy sprawdzaniu podatności webowych (panel logowania, Docker API bez auth, InfluxDB itp.). Wyższy = wykrywa wolne urządzenia, ale spowalnia cykl."></i>
+          </label>
+          <input type="number" name="vuln_http_timeout" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('vuln_http_timeout', 5.0) }}" min="0.5" max="60" step="0.5">
+          <div class="form-text">Domyślnie 5.0s. Zwiększ do 10–15s jeśli urządzenia mają wolny panel WWW.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">Zamknij podatność po N skanach bez wykrycia</label>
+          <input type="number" name="vuln_close_after" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('vuln_close_after', 3) }}" min="1" max="20">
+          <div class="form-text">
+            Ile razy z rzędu skan musi <em>nie wykryć</em> podatności, żeby ją zamknąć.
+            <strong>Domyślnie 3</strong> — chroni przed fałszywym zamykaniem spowodowanym
+            chwilowym timeoutem TCP lub restartem usługi.
+            Wartość 1 = stare zachowanie (jeden skan = zamknięcie).
+          </div>
+        </div>
+
+        {# Intensywnosc skanowania #}
+        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">Intensywność skanowania — ochrona wrażliwych urządzeń</h6></div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">
+            Pomijaj drukarki w skan. podatności
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="TCP connect do portów drukarki (9100 JetDirect, 515 LPD) może spowodować wydrukowanie losowych znaków. Zalecane: włączone."></i>
+          </label>
+          <select name="vuln_skip_printers" class="form-select form-select-sm">
+            <option value="1" {% if worker_cfg.get('vuln_skip_printers', 1) == 1 %}selected{% endif %}>Tak — pomijaj drukarki (zalecane)</option>
+            <option value="0" {% if worker_cfg.get('vuln_skip_printers', 1) == 0 %}selected{% endif %}>Nie — skanuj drukarki (ryzyko drukowania)</option>
+          </select>
+          <div class="form-text">Domyślnie: Tak. Włącz tylko jeśli chcesz testować drukarki sieci.</div>
+        </div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">
+            Ogranicz skan AP / kamer / IoT
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Access pointy i kamery nie uruchamiają baz danych. Ogranicza skan do sprawdzeń sieciowych — mniej połączeń, mniejsze ryzyko destabilizacji AP."></i>
+          </label>
+          <select name="vuln_limit_ap_iot" class="form-select form-select-sm">
+            <option value="1" {% if worker_cfg.get('vuln_limit_ap_iot', 1) == 1 %}selected{% endif %}>Tak — tylko porty sieciowe (zalecane)</option>
+            <option value="0" {% if worker_cfg.get('vuln_limit_ap_iot', 1) == 0 %}selected{% endif %}>Nie — pełny skan (więcej połączeń TCP)</option>
+          </select>
+          <div class="form-text">Domyślnie: Tak. Pomija Redis, MySQL, Elasticsearch itp. dla AP/kamer/IoT.</div>
+        </div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">
+            nmap min-rate [pkt/s]
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Minimalna prędkość skanowania portów przez nmap (--min-rate). Niższa wartość = mniej agresywne skanowanie. Zakres: 50–5000."></i>
+          </label>
+          <input type="number" name="nmap_min_rate" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('nmap_min_rate', 100) }}" min="50" max="5000">
+          <div class="form-text">Domyślnie: 100. Zwiększ do 200–300 dla szybszego skanu w stabilnej sieci.</div>
+        </div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">
+            nmap version-intensity (0–9)
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Głębokość wykrywania wersji usług (--version-intensity). 0 = tylko najbardziej prawdopodobne proby (bezpieczne dla drukarek). 9 = pełne proby wszystkich protokołów."></i>
+          </label>
+          <input type="number" name="nmap_version_intensity" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('nmap_version_intensity', 9) }}" min="0" max="9">
+          <div class="form-text">Domyślnie: 9 (pełne proby). Porty drukarek (9100, 515, 631) są zawsze wykluczone z probowania -sV. Zmniejsz do 1–3 jeśli urządzenia sieciowe reagują wolno.</div>
+        </div>
+
+        {# Skanowanie partiami i rownolegle #}
+        <div class="col-12 mt-2">
+          <h6 class="text-muted border-bottom pb-1 mb-0">
+            Skanowanie partiami i równoległość
+            <i class="bi bi-info-circle text-muted ms-1" style="cursor:help"
+               title="Opcje ograniczające obciążenie skanowanych urządzeń. Szczególnie przydatne przy starych access pointach, switchach i routerach z wolnym CPU, które mogą się zawieszać przy intensywnym skanowaniu."></i>
+          </h6>
+        </div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">
+            Urządzeń jednocześnie (0 = bez limitu)
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Maksymalna liczba hostów skanowanych równolegle. 0 = wszystkie naraz (dotychczasowe zachowanie). 1 = jeden po drugim (bezpieczne dla starych AP/switchy). Np. 4 = cztery równolegle."></i>
+          </label>
+          <input type="number" name="scan_concurrency" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('scan_concurrency', 0) }}" min="0" max="64">
+          <div class="form-text">Domyślnie: 0 (bez limitu). Ustaw 1–4 aby chronić wolne urządzenia sieciowe.</div>
+        </div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">
+            Portów w jednej partii (0 = wyłączone)
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Dzieli zakres portów na partie z pauzą między nimi — dotyczy zarówno quick scan jak i pełnego skanu 1–65535. 0 = bez podziału (jeden nmap call). Zalecane: 2000–10000 dla pełnych skanów, mniejsze wartości dla ochrony wolnych AP/switchy."></i>
+          </label>
+          <input type="number" name="scan_batch_size" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('scan_batch_size', 5000) }}" min="0" max="65535">
+          <div class="form-text">Domyślnie: 5000. Dotyczy quick i full scan. 0 = wyłączone. Quick scan (~45 portów) zawsze mieści się w 1 partii.</div>
+        </div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">
+            Pauza między partiami [s]
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Czas oczekiwania między kolejnymi partiami portów jednego hosta. Daje urządzeniu czas na obsłużenie pakietów WiFi / zarządzania między kolejnymi pakietami nmap."></i>
+          </label>
+          <input type="number" name="scan_batch_pause_s" class="form-control form-control-sm"
+                 value="{{ worker_cfg.get('scan_batch_pause_s', 3.0) }}" min="0" max="60" step="0.5">
+          <div class="form-text">Domyślnie: 3.0s. Aktywne tylko gdy partionowanie włączone (partia > 0).</div>
+        </div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">
+            Wznawiaj od miejsca przerwania
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Jeśli skanowanie zostanie przerwane (restart, błąd), kolejne uruchomienie kontynuuje od ostatniej ukończonej partii. Stan zapisywany w pliku scan_progress.json w katalogu projektu."></i>
+          </label>
+          <select name="scan_resume_enabled" class="form-select form-select-sm">
+            <option value="1" {% if worker_cfg.get('scan_resume_enabled', 1) == 1 %}selected{% endif %}>Tak — wznów od miejsca przerwania</option>
+            <option value="0" {% if worker_cfg.get('scan_resume_enabled', 1) == 0 %}selected{% endif %}>Nie — zawsze od początku</option>
+          </select>
+          <div class="form-text">Aktywne tylko gdy partionowanie jest włączone.</div>
+        </div>
+
+        {# Odkrywanie sieci #}
+        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">Odkrywanie sieci — zakresy skanowania</h6></div>
+
+        <div class="col-12 col-md-6">
+          <label class="form-label small mb-1">
+            Dodatkowe zakresy CIDR (nadpisują .env)
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Lista zakresów sieci do skanowania, oddzielona przecinkami. Jeśli ustawiona, ZASTĘPUJE wartość NETWORK_RANGES z pliku .env. Puste pole = używaj .env i auto-wykrywania. Przykład: 10.8.0.0/24,192.168.100.0/24"></i>
+          </label>
+          <input type="text" name="network_ranges" class="form-control form-control-sm font-monospace"
+                 value="{{ worker_cfg.get('network_ranges', '') }}"
+                 placeholder="np. 10.8.0.0/24,192.168.100.0/24 (puste = .env + auto-detect)">
+          <div class="form-text">
+            Puste = używaj <code>NETWORK_RANGES</code> z <code>.env</code> i auto-wykrywania.
+            Wpisz zakresy oddzielone przecinkami aby przełączyć skanowanie na VPN lub inną sieć.
+          </div>
+        </div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">
+            Skanuj sieci VPN
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Czy auto-wykrywanie ma uwzględniać interfejsy VPN (OpenVPN tun0/tun1, WireGuard wg0, Cisco AnyConnect itp.). UWAGA: włączenie może spowodować skanowanie sieci klienta po drugiej stronie tunelu VPN!"></i>
+          </label>
+          <select name="scan_vpn_networks" class="form-select form-select-sm">
+            <option value="0" {% if not worker_cfg.get('scan_vpn_networks', 0) %}selected{% endif %}>Nie — pomijaj VPN (domyślne, bezpieczne)</option>
+            <option value="1" {% if worker_cfg.get('scan_vpn_networks', 0) == 1 %}selected{% endif %}>Tak — skanuj przez VPN</option>
+          </select>
+          <div class="form-text text-warning">⚠ Ryzyko: może skanować sieć za tunelem VPN.</div>
+        </div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">
+            Skanuj sieci wirtualne
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Czy auto-wykrywanie ma uwzględniać sieci Docker, Hyper-V, VMware, WSL2. Domyślnie wyłączone — te sieci to mosty wirtualne, nie urządzenia fizyczne."></i>
+          </label>
+          <select name="scan_virtual_networks" class="form-select form-select-sm">
+            <option value="0" {% if not worker_cfg.get('scan_virtual_networks', 0) %}selected{% endif %}>Nie — pomijaj Docker/VMware/Hyper-V (zalecane)</option>
+            <option value="1" {% if worker_cfg.get('scan_virtual_networks', 0) == 1 %}selected{% endif %}>Tak — skanuj sieci wirtualne</option>
+          </select>
+          <div class="form-text">Domyślnie: Nie. Włącz aby skanować kontenery Docker w sieci hosta.</div>
+        </div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">
+            Ignoruj MAC wirtualne (LAA)
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Locally Administered Address — MAC z ustawionym bitem LAA (np. 26:12:AC:...) to adresy wirtualne lub randomizowane: Docker bridge, Hyper-V, WireGuard VPN, Windows 11 MAC randomization. Nie reprezentują fizycznych urządzeń sieciowych. Domyślnie włączone — takie wpisy są pomijane w tablicy ARP."></i>
+          </label>
+          <select name="ignore_laa_macs" class="form-select form-select-sm">
+            <option value="1" {% if worker_cfg.get('ignore_laa_macs', 1) != 0 %}selected{% endif %}>Tak — pomijaj MAC wirtualne/randomizowane (zalecane)</option>
+            <option value="0" {% if worker_cfg.get('ignore_laa_macs', 1) == 0 %}selected{% endif %}>Nie — uwzględniaj wszystkie MAC z ARP</option>
+          </select>
+          <div class="form-text">Domyślnie: Tak. Wyłącz tylko gdy chcesz wykrywać urządzenia z MAC randomization.</div>
+        </div>
+
+        {# Lab monitoring #}
+        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">Siec laboratoryjna — watchdog</h6></div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-1">
+            Watchdog pilnuje lab
+            <i class="bi bi-info-circle text-muted" style="cursor:help"
+               title="Jesli wlaczone: (1) watchdog automatycznie uruchamia kontenery lab gdy sa zatrzymane, (2) wszystkie urzadzenia z site_id='lab' sa ZAWSZE monitorowane — nawet jesli uzytkownik nie przestawil flagi is_monitored recznie. Urzadzenia lab dostawaja automatyczny alert gdy staja sie niedostepne."></i>
+          </label>
+          <select name="lab_monitoring_enabled" class="form-select form-select-sm">
+            <option value="0" {% if worker_cfg.get('lab_monitoring_enabled', 0) == 0 %}selected{% endif %}>Nie — lab nie jest monitorowany</option>
+            <option value="1" {% if worker_cfg.get('lab_monitoring_enabled', 0) == 1 %}selected{% endif %}>Tak — auto-restart kontenerow + monitorowanie urzadzen lab</option>
+          </select>
+          <div class="form-text">Domyslnie: Nie. Wlacz gdy aktywnie uzywasz sieci lab. Wszystkie urzadzenia lab (site_id=lab) beda automatycznie monitorowane przy kazdym cyklu skanowania.</div>
+        </div>
+
+        <div class="col-12 mt-1">
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="bi bi-check2-circle me-1"></i>Zapisz ustawienia workerów
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ── Siec laboratoryjna ──────────────────────────────────────────────────── #}
+<div class="card mb-4" id="lab">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-boxes me-2"></i>Siec laboratoryjna (symulowane urzadzenia)</span>
+    {% set running_cnt = lab_containers | selectattr("status","eq","running") | list | length %}
+    <span class="badge {% if running_cnt > 0 %}bg-success{% else %}bg-secondary{% endif %}">
+      {{ running_cnt }}/{{ lab_containers | length }} aktywnych
+    </span>
+  </div>
+  <div class="card-body">
+    <div class="table-responsive mb-3">
+      <table class="table table-sm mb-0">
+        <thead><tr>
+          <th class="small">Kontener</th>
+          <th class="small">Opis</th>
+          <th class="small">IP</th>
+          <th class="small">Status</th>
+        </tr></thead>
+        <tbody>
+          {% for ct in lab_containers %}
+          <tr>
+            <td class="font-monospace small">{{ ct.name }}</td>
+            <td class="small">{{ ct.label }}</td>
+            <td class="font-monospace small text-muted">{{ ct.ip }}</td>
+            <td>
+              {% if ct.status == "running" %}
+                <span class="badge bg-success">running</span>
+              {% elif ct.status == "exited" %}
+                <span class="badge bg-warning text-dark">stopped</span>
+              {% elif ct.status == "absent" %}
+                <span class="badge bg-secondary">nie utworzony</span>
+              {% else %}
+                <span class="badge bg-danger">{{ ct.status }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+      <button id="btnLabStart" type="button" class="btn btn-success btn-sm"
+        onclick="labAction('start')"
+        {% if running_cnt == lab_containers | length %}disabled{% endif %}>
+        <i class="bi bi-play-fill me-1"></i>Uruchom Lab
+      </button>
+      <button id="btnLabStop" type="button" class="btn btn-danger btn-sm"
+        onclick="labAction('stop')"
+        {% if running_cnt == 0 %}disabled{% endif %}>
+        <i class="bi bi-stop-fill me-1"></i>Zatrzymaj Lab
+      </button>
+      <button type="button" class="btn btn-outline-secondary btn-sm"
+        onclick="location.reload()">
+        <i class="bi bi-arrow-clockwise me-1"></i>Odśwież
+      </button>
+      <span class="text-muted small ms-2">
+        Pierwsze uruchomienie: <code>docker compose -f docker-compose.lab.yml up -d --build</code>
+      </span>
+    </div>
+    <div id="labResult" class="mt-2" style="display:none"></div>
+    {% set any_absent = lab_containers | selectattr("status","eq","absent") | list | length > 0 %}
+    {% if any_absent %}
+    <div class="alert alert-info mt-3 mb-0 small">
+      <i class="bi bi-info-circle me-1"></i>
+      Obrazy kontenerow nie istnieja. Uruchom raz z terminala:
+      <code>docker compose -f docker-compose.lab.yml up -d --build</code><br>
+      Jezeli obrazy zostaly juz zbudowane (np. po docker nuke bez rebuild),
+      kliknij <strong>Uruchom Lab</strong> — zostana stworzone automatycznie.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Zarządzanie kontenerami Docker ──────────────────────────────────────── #}
+<div class="card mb-4" id="docker-services">
+  <div class="card-header d-flex align-items-center gap-2">
+    <i class="bi bi-boxes fs-5"></i>
+    <strong>Zarządzanie kontenerami Docker</strong>
+  </div>
+  <div class="card-body">
+    <p class="small text-muted mb-3">
+      <strong>Restart</strong> — wystarczy po zmianach kodu Python (kod montowany jako wolumin, brak przebudowy obrazu).<br>
+      <strong>Przebuduj obraz</strong> — potrzebne gdy zmieniły się <code>requirements.txt</code> lub <code>Dockerfile</code>.
+    </p>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-3">
+        <thead class="table-light">
+          <tr>
+            <th style="width:2rem"><input type="checkbox" id="dsSelectAll" class="form-check-input" checked title="Zaznacz wszystkie"></th>
+            <th>Kontener</th>
+            <th>Klucz</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set _ds = [
+            ("api",      "netdoc-api",       "API (FastAPI :8000)"),
+            ("web",      "netdoc-web",       "Web UI (Flask :5000) — restart odłącza stronę na chwilę"),
+            ("ping",     "netdoc-ping",      "Ping worker (:8001)"),
+            ("snmp",     "netdoc-snmp",      "SNMP worker (:8002)"),
+            ("cred",     "netdoc-cred",      "Cred worker (:8003)"),
+            ("vuln",     "netdoc-vuln",      "Vuln worker (:8004)"),
+            ("internet", "netdoc-internet",  "Internet worker"),
+            ("grafana",  "netdoc-grafana",   "Grafana (:3000) — tylko restart"),
+            ("prometheus","netdoc-prometheus","Prometheus (:9090) — tylko restart"),
+            ("loki",     "netdoc-loki",      "Loki — tylko restart"),
+          ] %}
+          {% for key, cname, label in _ds %}
+          <tr>
+            <td><input type="checkbox" class="form-check-input ds-check" value="{{ key }}" checked></td>
+            <td><code>{{ cname }}</code></td>
+            <td class="text-muted small">{{ label }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <button type="button" class="btn btn-primary btn-sm" onclick="dsAction('restart')">
+        <i class="bi bi-arrow-clockwise me-1"></i>Restart wybranych
+      </button>
+      <button type="button" class="btn btn-warning btn-sm" onclick="dsAction('rebuild')">
+        <i class="bi bi-hammer me-1"></i>Przebuduj obraz + restart
+      </button>
+    </div>
+  </div>
+</div>
+
+{# Modal — Docker services output #}
+<div class="modal fade" id="dsModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="dsModalTitle"><i class="bi bi-arrow-clockwise me-2"></i>Operacja Docker</h5>
+      </div>
+      <div class="modal-body">
+        <pre id="dsOutput"
+             class="p-2 rounded small"
+             style="max-height:340px;overflow-y:auto;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;white-space:pre-wrap;min-height:60px"></pre>
+      </div>
+      <div class="modal-footer" id="dsModalFooter">
+        <span class="text-muted small"><span class="spinner-border spinner-border-sm me-1"></span>Trwa operacja…</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Strefa niebezpieczna — Reset Docker ─────────────────────────────────── #}
+<div class="card mb-4 border-danger" id="docker-nuke">
+  <div class="card-header d-flex align-items-center gap-2" style="background:#67000d;color:#fff">
+    <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+    <strong>Strefa niebezpieczna — Pełny reset Docker</strong>
+  </div>
+  <div class="card-body">
+    <p class="mb-2 small text-muted">
+      Odpowiednik konsoli:
+      <code>docker compose down -v &amp;&amp; docker system prune -af --volumes</code>
+    </p>
+    <div class="alert alert-warning small mb-3">
+      <strong>Co ta operacja robi:</strong>
+      <ul class="mb-0 mt-1">
+        <li>Zatrzymuje i usuwa <strong>wszystkie kontenery netdoc</strong> (API, Web, Postgres, workersy, Grafana, Loki…)</li>
+        <li>Usuwa <strong>wszystkie wolumeny Docker</strong> — dane PostgreSQL, Grafana, Prometheus i Loki zostaną <strong>bezpowrotnie utracone</strong></li>
+        <li>Usuwa sieć <code>netdoc_default</code> i wszystkie orphany</li>
+        <li>Czyści <strong>wszystkie obrazy Docker</strong> na systemie oraz build cache</li>
+        <li class="text-danger fw-bold">Po zakończeniu strona WWW przestanie odpowiadać</li>
+        <li>Aby ponownie uruchomić środowisko: <code>docker compose up -d --build</code></li>
+      </ul>
+    </div>
+    <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#dockerNukeModal">
+      <i class="bi bi-trash3-fill me-2"></i>Resetuj Docker
+    </button>
+  </div>
+</div>
+
+{# Modal — potwierdzenie + live output #}
+<div class="modal fade" id="dockerNukeModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content border-danger">
+      <div class="modal-header" style="background:#67000d;color:#fff">
+        <h5 class="modal-title">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>Potwierdź pełny reset Docker
+        </h5>
+      </div>
+      <div class="modal-body">
+        <div id="nukeWarning">
+          <div class="alert alert-danger">
+            <strong>⚠ Operacja nieodwracalna!</strong><br>
+            Wszystkie dane bazy danych, historyczne wykresy Grafana/Prometheus/Loki
+            i wszystkie obrazy Docker zostaną usunięte.<br>
+            <strong>Strona przestanie działać natychmiast po zakończeniu.</strong>
+          </div>
+          <p class="mb-1">Upewnij się, że rozumiesz skutki operacji:</p>
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="nukeCheck1">
+            <label class="form-check-label" for="nukeCheck1">
+              Rozumiem, że wszystkie dane z bazy i monitoringu zostaną usunięte
+            </label>
+          </div>
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="nukeCheck2">
+            <label class="form-check-label" for="nukeCheck2">
+              Rozumiem, że strona WWW przestanie działać i będę musiał ją uruchomić ręcznie
+            </label>
+          </div>
+          <div class="alert alert-info small mb-0">
+            Po resecie uruchom ponownie:<br>
+            <code>docker compose up -d --build</code>
+          </div>
+        </div>
+        <pre id="nukeOutput"
+             class="p-2 rounded small mt-3"
+             style="display:none;max-height:320px;overflow-y:auto;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;white-space:pre-wrap"></pre>
+      </div>
+      <div class="modal-footer" id="nukeModalFooter">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal" id="nukeCancelBtn">Anuluj</button>
+        <button type="button" class="btn btn-danger btn-sm" id="nukeConfirmBtn" disabled onclick="startDockerNuke()">
+          <i class="bi bi-trash3-fill me-1"></i>Tak, resetuj wszystko
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Opisy parametrów konfiguracyjnych (config category) #}
+{% set _cfg_desc = {
+  "full_scan_max_age_days": ("Pełny skan portów — co ile dni",
+    "Co ile dni powtarzać pełny skan TCP 1-65535 dla każdego urządzenia. "
+    "0 = wyłącz automatyczny pełny skan. Zalecane: 7–30 dni. "
+    "Duże wartości = rzadszy skan, mniejsze obciążenie sieci."),
+  "full_scan_enabled": ("Pełny skan portów — włączony/wyłączony",
+    "1 = automatyczny skan 1-65535 jest aktywny (zgodnie z full_scan_max_age_days). "
+    "0 = pełny skan jest wyłączony całkowicie — wykonywany jest tylko skan discovery (30 portów). "
+    "Wyłącz gdy sieć jest duża i nie chcesz obciążać urządzeń rozszerzonym skanem."),
+  "inventory_enabled": ("Moduł inwentaryzacji (Środki Trwałe)",
+    "1 = włączony (widoczny w menu i przyciski Akcje → Inwentarz). "
+    "0 = wyłączony — menu Inwentarz i formularz ST znikają z UI. "
+    "Przydatne gdy nie używasz funkcji śledzenia zakupów/gwarancji."),
+  "cred_snmp_enabled": ("Testowanie SNMP community strings",
+    "1 = skaner automatycznie próbuje odkryć działające community stringi SNMP (public, private, itp.) "
+    "dla każdego urządzenia z otwartym portem UDP 161. "
+    "0 = wyłączone — skaner nie próbuje SNMP autodiscovery (istniejące zapisane community nadal działają)."),
+  "cred_ssh_enabled": ("Testowanie haseł SSH/Telnet",
+    "1 = cred-worker testuje logowanie SSH i Telnet ze słownikiem domyślnych haseł. "
+    "0 = wyłączone — cred-worker pomija SSH/Telnet. "
+    "Wyłącz jeśli nie chcesz aktywnego testowania logowania lub masz własne zarządzanie hasłami."),
+  "cred_ftp_enabled": ("Testowanie haseł FTP",
+    "1 = cred-worker testuje logowanie FTP (port 21) oraz dostęp anonimowy. "
+    "0 = wyłączone — FTP nie jest testowany. "
+    "Wyłącz jeśli FTP nie jest używany w sieci."),
+  "cred_web_enabled": ("Testowanie haseł Web/HTTP",
+    "1 = cred-worker testuje logowanie przez panele webowe urządzeń (HTTP/HTTPS Basic Auth, formularze logowania). "
+    "0 = wyłączone — Web/HTTP nie jest testowany."),
+  "cred_rdp_enabled": ("Testowanie haseł RDP/SMB",
+    "1 = cred-worker testuje logowanie RDP (port 3389) i SMB (port 445) na urządzeniach Windows. "
+    "0 = wyłączone — RDP/SMB nie jest testowany."),
+  "cred_mssql_enabled": ("Testowanie haseł MSSQL (SQL Server)",
+    "1 = cred-worker testuje logowanie do Microsoft SQL Server (port 1433) ze słownikiem domyślnych haseł. "
+    "0 = wyłączone. Wyłącz jeśli nie masz serwerów SQL lub nie chcesz testowania baz danych."),
+  "cred_mysql_enabled": ("Testowanie haseł MySQL/MariaDB",
+    "1 = cred-worker testuje logowanie do MySQL i MariaDB (port 3306). "
+    "0 = wyłączone. Wyłącz jeśli nie masz serwerów MySQL w sieci."),
+  "cred_postgres_enabled": ("Testowanie haseł PostgreSQL",
+    "1 = cred-worker testuje logowanie do PostgreSQL (port 5432). "
+    "0 = wyłączone. Wyłącz jeśli nie masz serwerów PostgreSQL lub chcesz wykluczyć kontener netdoc-postgres z testowania."),
+  "screenshot_ttl_hours": ("Czas ważności zrzutu ekranu [h]",
+    "Co ile godzin odświeżać podgląd strony WWW urządzenia (screenshot). "
+    "Domyślnie: 12h. Niższe wartości = częstsze odświeżenie, wyższe = mniejsze obciążenie. "
+    "Minimalna wartość: 1. Zrzuty są przechowywane w bazie danych PostgreSQL."),
+  "ai_assessment_enabled": ("Ocena urządzenia przez AI (Claude)",
+    "1 = przycisk 'AI Ocena' widoczny w menu każdego urządzenia — pozwala zapytać Claude "
+    "o konkretne urządzenie: stan techniczny, ryzyko, propozycje zamienników w 3 przedziałach cenowych. "
+    "0 = wyłączone — przycisk znika, endpoint /devices/<id>/ai-assess zwraca 403. "
+    "Każde kliknięcie = 1 zapytanie do API (koszt tokenów). Wynik jest cachowany per urządzenie."),
+} %}
+
+{# Klucze konfiguracyjne z widgetem select (0/1) #}
+{% set _toggle_keys = ["full_scan_enabled", "inventory_enabled",
+                       "cred_snmp_enabled", "cred_ssh_enabled",
+                       "cred_ftp_enabled", "cred_web_enabled", "cred_rdp_enabled",
+                       "cred_mssql_enabled", "cred_mysql_enabled", "cred_postgres_enabled",
+                       "ai_assessment_enabled"] %}
+
+<p class="text-muted small">Sekcja <strong>config</strong> jest edytowalna. Pozostałe ustawienia są read-only (zmień w <code>.env</code> i zrestartuj serwis).</p>
+
+{% for category, rows in grouped.items() %}
+<div class="card mb-3">
+  <div class="card-header text-capitalize"><i class="bi bi-sliders me-2"></i>{{ category }}</div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0">
+      <tbody>
+        {% for r in rows %}
+        {% set _desc = _cfg_desc.get(r.key) %}
+        <tr>
+          <td class="text-muted small font-monospace ps-3" style="width:30%">
+            {{ r.key }}
+            {% if _desc %}
+            <div class="text-info" style="font-size:.7rem;font-family:inherit">{{ _desc[0] }}</div>
+            {% endif %}
+          </td>
+          <td class="small" style="width:30%">
+            {% if category == "config" %}
+            <form method="post" action="/settings/config/{{ r.key }}" class="d-flex gap-2 align-items-center">
+              {% if r.key in _toggle_keys %}
+              <select name="value" class="form-select form-select-sm" style="max-width:130px">
+                <option value="1" {% if r.value != "0" %}selected{% endif %}>Włączony (1)</option>
+                <option value="0" {% if r.value == "0" %}selected{% endif %}>Wyłączony (0)</option>
+              </select>
+              {% else %}
+              <input type="number" name="value" value="{{ r.value or '' }}"
+                     class="form-control form-control-sm" style="max-width:120px" min="0">
+              {% endif %}
+              <button class="btn btn-outline-secondary btn-sm py-0" type="submit" title="Zapisz wartość">
+                <i class="bi bi-check2"></i>
+              </button>
+            </form>
+            {% else %}
+            <span class="font-monospace">{{ r.value or "—" }}</span>
+            {% endif %}
+          </td>
+          <td class="text-muted" style="font-size:.73rem;width:40%">
+            {% if _desc %}{{ _desc[1] }}{% endif %}
+            {% if r.updated_at %}
+            <br><span style="font-size:.68rem">Zmieniono: {{ r.updated_at.strftime("%Y-%m-%d %H:%M") }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-secondary">Brak danych. Uruchom serwis NetDoc API.</div>
+{% endfor %}
+
+{# ── Konfiguracja powiadomien Telegram ──────────────────────────────────── #}
+<div class="card mb-4">
+  <div class="card-header"><i class="bi bi-telegram me-2"></i>Powiadomienia Telegram</div>
+  <div class="card-body">
+    {% if telegram_config %}
+    <div class="alert alert-success py-2 mb-3">
+      <i class="bi bi-check-circle-fill me-1"></i>
+      Telegram skonfigurowany — chat_id: <code>{{ telegram_config.chat_id }}</code>
+    </div>
+    {% else %}
+    <div class="alert alert-secondary py-2 mb-3">
+      <i class="bi bi-info-circle me-1"></i>
+      Telegram nie skonfigurowany — alerty monitorowania nie będą wysyłane.
+    </div>
+    {% endif %}
+
+    {# Opisy alertów #}
+    <div class="mb-3">
+      <p class="small text-muted mb-2"><strong>Jakie alerty trafiają na Telegram:</strong></p>
+      <div class="row g-2 small">
+        <div class="col-md-6">
+          <div class="d-flex gap-2 align-items-start mb-1">
+            <span class="badge bg-danger mt-1" style="min-width:24px">⬇</span>
+            <span><strong>Urządzenie niedostępne</strong> — ping-worker wykryje że monitorowane urządzenie przestało odpowiadać (po ok. 5 min ciszy). Alert zawiera IP, hostname i czas niedostępności.</span>
+          </div>
+          <div class="d-flex gap-2 align-items-start mb-1">
+            <span class="badge bg-success mt-1" style="min-width:24px">⬆</span>
+            <span><strong>Urządzenie dostępne ponownie</strong> — wysyłany gdy urządzenie wróci do sieci po przerwie.</span>
+          </div>
+          <div class="d-flex gap-2 align-items-start mb-1">
+            <span class="badge bg-warning text-dark mt-1" style="min-width:24px">🔓</span>
+            <span><strong>Nowe domyślne hasło</strong> — cred-worker odkrył że urządzenie loguje się na domyślnych danych (admin/admin, root/root itp.).</span>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="d-flex gap-2 align-items-start mb-1">
+            <span class="badge bg-danger mt-1" style="min-width:24px">🛡</span>
+            <span><strong>Nowa podatność</strong> — vuln-worker wykrył otwartą lukę: Telnet, FTP bez hasła, Redis bez auth, IPMI, VNC bez hasła i inne (ponad 25 typów).</span>
+          </div>
+          <div class="d-flex gap-2 align-items-start mb-1">
+            <span class="badge bg-info mt-1" style="min-width:24px">📡</span>
+            <span><strong>Nowe nieznane urządzenie</strong> — skaner wykrył nowe IP w sieci, które jeszcze nie było w bazie.</span>
+          </div>
+          <div class="d-flex gap-2 align-items-start">
+            <span class="badge bg-secondary mt-1" style="min-width:24px">🧪</span>
+            <span><strong>Testowy</strong> — możesz wysłać testową wiadomość przyciskiem poniżej, aby sprawdzić połączenie.</span>
+          </div>
+        </div>
+      </div>
+      <p class="text-muted mt-2 mb-0" style="font-size:.75rem">
+        <i class="bi bi-info-circle me-1"></i>
+        Alerty DOWN/UP wysyłane są tylko dla urządzeń z włączoną flagą <strong>monitoruj</strong>
+        (Urządzenia → Akcje → Monitoruj). Alerty podatności — dla wszystkich aktywnych urządzeń.
+      </p>
+    </div>
+
+    <form method="post" action="/settings/telegram">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label small">Bot Token</label>
+          <input type="text" name="bot_token" class="form-control form-control-sm"
+                 placeholder="np. 1234567890:AABBccDDeeFFggHHiiJJ..."
+                 value="{{ telegram_config.bot_token if telegram_config else '' }}">
+          <div class="form-text">Token z <code>@BotFather</code></div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small">Chat ID</label>
+          <input type="text" name="chat_id" class="form-control form-control-sm"
+                 placeholder="np. -1001234567890"
+                 value="{{ telegram_config.chat_id if telegram_config else '' }}">
+          <div class="form-text">Twoje ID lub ID grupy. Uzyskaj przez <code>@userinfobot</code></div>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <div class="form-check ms-1 mb-2">
+            <input class="form-check-input" type="checkbox" name="is_active" id="telegramActive"
+                   value="1" {% if telegram_active %}checked{% endif %}>
+            <label class="form-check-label small" for="telegramActive">Aktywny</label>
+          </div>
+        </div>
+      </div>
+      <div class="mt-3 d-flex gap-2">
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="bi bi-save me-1"></i>Zapisz konfigurację
+        </button>
+        {% if telegram_config %}
+        <a href="/settings/telegram/test" class="btn btn-outline-info btn-sm">
+          <i class="bi bi-send me-1"></i>Wyślij testowy alert
+        </a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Lab start/stop (AJAX — status pokazywany inline obok przyciskow) ──────────
+function labAction(action) {
+  const btnStart = document.getElementById("btnLabStart");
+  const btnStop  = document.getElementById("btnLabStop");
+  const result   = document.getElementById("labResult");
+  if (btnStart) btnStart.disabled = true;
+  if (btnStop)  btnStop.disabled  = true;
+  result.style.display = "none";
+
+  fetch("/settings/lab/" + action, {method: "POST", headers: {"X-Requested-With": "XMLHttpRequest"}})
+    .then(r => {
+      if (!r.ok) {
+        return r.text().then(txt => { throw new Error(`HTTP ${r.status}: ${txt.slice(0, 200)}`); });
+      }
+      return r.json();
+    })
+    .then(data => {
+      result.style.display = "";
+      result.innerHTML = `<div class="alert ${data.ok ? "alert-success" : "alert-warning"} alert-sm py-2 mb-0 small">
+        <i class="bi bi-${data.ok ? "check-circle" : "exclamation-triangle"} me-1"></i>${data.message}
+        ${data.ok ? '<button class="btn btn-sm btn-outline-secondary ms-2" onclick="location.reload()"><i class="bi bi-arrow-clockwise"></i> Odśwież</button>' : ""}
+      </div>`;
+      if (data.ok) {
+        setTimeout(() => location.reload(), 2000);
+      } else {
+        if (btnStart) btnStart.disabled = false;
+        if (btnStop)  btnStop.disabled  = false;
+      }
+    })
+    .catch(err => {
+      result.style.display = "";
+      result.innerHTML = `<div class="alert alert-danger alert-sm py-2 mb-0 small">Błąd połączenia: ${err}</div>`;
+      if (btnStart) btnStart.disabled = false;
+      if (btnStop)  btnStop.disabled  = false;
+    });
+}
+
+// ── Checkboxy potwierdzenia resetu Docker ─────────────────────────────────────
+(function () {
+  const ch1 = document.getElementById("nukeCheck1");
+  const ch2 = document.getElementById("nukeCheck2");
+  const btn = document.getElementById("nukeConfirmBtn");
+  if (!ch1 || !ch2 || !btn) return;
+  function _update() { btn.disabled = !(ch1.checked && ch2.checked); }
+  ch1.addEventListener("change", _update);
+  ch2.addEventListener("change", _update);
+})();
+
+// ── SSE stream resetu Docker ──────────────────────────────────────────────────
+function startDockerNuke() {
+  const btn       = document.getElementById("nukeConfirmBtn");
+  const cancelBtn = document.getElementById("nukeCancelBtn");
+  const warning   = document.getElementById("nukeWarning");
+  const output    = document.getElementById("nukeOutput");
+  const footer    = document.getElementById("nukeModalFooter");
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Trwa reset…';
+  cancelBtn.disabled = true;
+  warning.style.display = "none";
+  output.style.display  = "block";
+  output.textContent    = "";
+
+  const es = new EventSource("/settings/docker/nuke-stream");
+
+  es.onmessage = function (e) {
+    output.textContent += e.data + "\n";
+    output.scrollTop = output.scrollHeight;
+
+    if (e.data === "DONE") {
+      es.close();
+      footer.innerHTML =
+        '<div class="alert alert-success mb-0 small w-100">' +
+        '<i class="bi bi-check-circle-fill me-2"></i>' +
+        '<strong>Reset zakończony.</strong> Strona wkrótce przestanie odpowiadać.<br>' +
+        'Uruchom ponownie: <code>docker compose up -d --build</code>' +
+        '</div>';
+    } else if (e.data === "ERROR") {
+      es.close();
+      footer.innerHTML =
+        '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>';
+    }
+  };
+
+  es.onerror = function () {
+    output.textContent += "\n[Połączenie zerwane — kontener web zatrzymany]\n";
+    output.textContent += "Uruchom ponownie: docker compose up -d --build\n";
+    es.close();
+    footer.innerHTML =
+      '<div class="text-muted small w-100 text-center">' +
+      '<code>docker compose up -d --build</code>' +
+      '</div>';
+  };
+}
+
+// ── Docker Services — restart / rebuild ──────────────────────────────────────
+(function () {
+  const selAll = document.getElementById("dsSelectAll");
+  if (!selAll) return;
+  selAll.addEventListener("change", function () {
+    document.querySelectorAll(".ds-check").forEach(cb => cb.checked = selAll.checked);
+  });
+})();
+
+function dsAction(mode) {
+  const checks = Array.from(document.querySelectorAll(".ds-check:checked")).map(cb => cb.value);
+  if (!checks.length) { alert("Zaznacz co najmniej jeden kontener."); return; }
+
+  const modal  = new bootstrap.Modal(document.getElementById("dsModal"));
+  const title  = document.getElementById("dsModalTitle");
+  const output = document.getElementById("dsOutput");
+  const footer = document.getElementById("dsModalFooter");
+
+  title.innerHTML = mode === "rebuild"
+    ? '<i class="bi bi-hammer me-2"></i>Przebuduj obraz + restart'
+    : '<i class="bi bi-arrow-clockwise me-2"></i>Restart kontenerów';
+  output.textContent = "";
+  footer.innerHTML = '<span class="text-muted small"><span class="spinner-border spinner-border-sm me-1"></span>Trwa operacja…</span>';
+  modal.show();
+
+  const url = `/settings/docker/${mode === "rebuild" ? "rebuild" : "restart"}-stream?services=${checks.join(",")}`;
+  const es = new EventSource(url);
+
+  es.onmessage = function (e) {
+    output.textContent += e.data + "\n";
+    output.scrollTop = output.scrollHeight;
+
+    if (e.data === "DONE") {
+      es.close();
+      const webIncluded = checks.includes("web");
+      if (webIncluded) {
+        footer.innerHTML =
+          '<div class="alert alert-info mb-0 small w-100">' +
+          '<i class="bi bi-arrow-clockwise me-2"></i>' +
+          '<strong>Kontener web jest restartowany.</strong> Strona odświeży się za chwilę…' +
+          '</div>';
+        setTimeout(() => location.reload(), 5000);
+      } else {
+        footer.innerHTML =
+          '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>' +
+          '<span class="text-success small ms-2"><i class="bi bi-check-circle-fill me-1"></i>Gotowe</span>';
+      }
+    } else if (e.data === "ERROR") {
+      es.close();
+      footer.innerHTML =
+        '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>';
+    }
+  };
+
+  es.onerror = function () {
+    if (checks.includes("web")) {
+      output.textContent += "\n[Połączenie zerwane — kontener web się restartuje]\n";
+      footer.innerHTML = '<div class="text-muted small w-100 text-center">Odświeżam stronę…</div>';
+      setTimeout(() => location.reload(), 4000);
+    } else {
+      output.textContent += "\n[Połączenie zerwane]\n";
+      footer.innerHTML = '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>';
+    }
+    es.close();
+  };
+}
+</script>
+
+{# ── Backup & Restore bazy danych ─────────────────────────────────────────── #}
+<div class="card mt-4" id="dbBackup">
+  <div class="card-header"><i class="bi bi-database-down me-2 text-info"></i>Backup &amp; Restore bazy danych</div>
+  <div class="card-body">
+
+    {# Alerty flash dotyczące backup/restore #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+        <div class="alert alert-{{ 'danger' if cat == 'danger' else ('warning' if cat == 'warning' else 'success') }} alert-dismissible fade show py-2 small" role="alert">
+          {{ msg }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endwith %}
+
+    <div class="row g-4">
+
+      {# Eksport #}
+      <div class="col-12 col-md-6">
+        <h6 class="text-muted border-bottom pb-1 mb-3"><i class="bi bi-download me-2"></i>Eksport (zrzut bazy)</h6>
+        <p class="small text-muted mb-3">
+          Tworzy pełny zrzut PostgreSQL (<code>pg_dump</code>) spakowany do <code>.sql.gz</code>.
+          Plik zawiera schemat i wszystkie dane — możesz go zaimportować na innym komputerze.
+        </p>
+        <a href="/settings/db/backup" class="btn btn-outline-info btn-sm">
+          <i class="bi bi-cloud-download me-1"></i>Pobierz backup (.sql.gz)
+        </a>
+      </div>
+
+      {# Import #}
+      <div class="col-12 col-md-6">
+        <h6 class="text-muted border-bottom pb-1 mb-3"><i class="bi bi-upload me-2"></i>Import (przywróć backup)</h6>
+        <div class="alert alert-warning py-2 small mb-3">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>
+          <strong>Uwaga:</strong> Importowanie nadpisze istniejące dane. Wykonaj wcześniej export!
+        </div>
+        <form method="post" action="/settings/db/restore" enctype="multipart/form-data">
+          <div class="mb-2">
+            <label class="form-label small mb-1">Plik backupu (<code>.sql</code> lub <code>.sql.gz</code>)</label>
+            <input type="file" name="backup_file" class="form-control form-control-sm"
+                   accept=".sql,.sql.gz,.gz" required>
+          </div>
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" name="confirm_restore" value="1" id="confirmRestore" required>
+            <label class="form-check-label small text-warning" for="confirmRestore">
+              Rozumiem, że import nadpisze aktualne dane bazy
+            </label>
+          </div>
+          <button type="submit" class="btn btn-warning btn-sm">
+            <i class="bi bi-cloud-upload me-1"></i>Przywróć backup
+          </button>
+        </form>
+      </div>
+
+    </div>{# /row #}
+  </div>
+</div>
+
+{% endblock %}
