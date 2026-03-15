@@ -554,33 +554,57 @@ if (-not $pythonPath) {
         Write-Info "Windows Defender  -  ochrona w czasie rzeczywistym wylaczona  -  pomijam."
     } elseif (-not $isAdmin) {
         Write-Warn "Brak uprawnien administratora  -  nie mozna dodac wyjatku Defender."
-        Write-Info "Jesli Defender zablokuje impacket podczas instalacji, dodaj recznie:"
+        Write-Info "Jesli Defender zablokuje impacket, dodaj recznie wykluczenia folderow:"
         Write-Info "  Zabezpieczenia Windows -> Ochrona przed wirusami i zagrozeniami"
         Write-Info "  -> Ustawienia ochrony -> Wykluczenia -> Dodaj wykluczenie -> Folder"
-        if ($sitePkg) { Write-Info "  Folder: $sitePkg" }
+        if ($sitePkg) { Write-Info "  $sitePkg" }
+        Write-Info "  $env:TEMP  (pip rozpakowuje tu pakiety przed instalacja)"
+        Write-Info "  $ProjectDir"
+        Write-Info "Lub uruchom ponownie instalator: Prawy klik -> Uruchom jako administrator"
     } else {
-        # Dodaj wykluczenie dla katalogu pakietow Pythona
+        # Lista sciezek do wykluczenia:
+        # 1. site-packages  -  docelowy katalog instalacji pip
+        # 2. TEMP biezacego uzytkownika  -  pip rozpakowuje tu przed instalacja
+        # 3. TEMP sesji (moze roznic sie od LOCALAPPDATA\Temp przy uruchomieniu jako admin)
+        # 4. pip cache  -  wheel cache w LOCALAPPDATA\pip
+        # 5. Katalog projektu  -  run_scanner.py importuje impacket bezposrednio
+        $excludePaths = [System.Collections.Generic.List[string]]::new()
+
         if ($sitePkg -and (Test-Path $sitePkg)) {
-            Add-MpPreference -ExclusionPath $sitePkg -ErrorAction SilentlyContinue
-            if ($?) {
-                Write-OK "Wyjatek Defender dodany: $sitePkg"
-                $defenderConfigured = $true
-            } else {
-                Write-Warn "Nie udalo sie dodac wyjatku dla: $sitePkg"
-            }
+            $excludePaths.Add($sitePkg)
         } else {
-            Write-Info "Nie mozna ustalic katalogu site-packages  -  pomijam wyjatek."
+            Write-Info "Nie mozna ustalic katalogu site-packages."
         }
 
-        # Dodaj tez katalog projektu (skaner importuje impacket bezposrednio)
-        Add-MpPreference -ExclusionPath $ProjectDir -ErrorAction SilentlyContinue
-        if ($?) {
-            Write-OK "Wyjatek Defender dodany: $ProjectDir"
+        # Temp: [System.IO.Path]::GetTempPath() zwraca temp aktualnej sesji
+        $tempPath = [System.IO.Path]::GetTempPath().TrimEnd('\')
+        if ($tempPath) { $excludePaths.Add($tempPath) }
+
+        # Temp z env (moze byc inny niz GetTempPath gdy uruchomiony jako admin)
+        if ($env:TEMP -and $env:TEMP -ne $tempPath) {
+            $excludePaths.Add($env:TEMP)
+        }
+
+        # pip wheel cache
+        $pipCache = Join-Path $env:LOCALAPPDATA "pip\Cache"
+        if (Test-Path $pipCache) { $excludePaths.Add($pipCache) }
+
+        # Katalog projektu
+        $excludePaths.Add($ProjectDir)
+
+        foreach ($path in $excludePaths) {
+            Add-MpPreference -ExclusionPath $path -ErrorAction SilentlyContinue
+            if ($?) {
+                Write-OK "Wyjatek Defender: $path"
+                $defenderConfigured = $true
+            } else {
+                Write-Warn "Nie udalo sie dodac wyjatku: $path"
+            }
         }
 
         if ($defenderConfigured) {
             Write-Info "Impacket (testy credentials RDP/SMB) nie bedzie blokowany przez Defender."
-            Write-Info "Wykluczenie dotyczy tylko tych folderow  -  reszta systemu jest chroniona."
+            Write-Info "Wykluczenia dotycza tylko powyzszych folderow  -  reszta systemu chroniona."
         }
     }
 }
