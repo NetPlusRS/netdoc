@@ -552,6 +552,55 @@ if (-not (Test-Path $reqFile)) {
     }
 }
 
+# ── Wykryj i oczyscic poprzednia instalacje NetDoc ────────────────────────────
+
+Write-Step "Sprawdzam czy istnieja poprzednie instalacje NetDoc..."
+
+Set-Location $ProjectDir
+
+$oldContainers = @(docker ps -a --filter "name=netdoc" --format "{{.Names}}" 2>&1 |
+                   Where-Object { $_ -ne "" })
+$oldVolumes    = @(docker volume ls --filter "name=netdoc" --format "{{.Name}}" 2>&1 |
+                   Where-Object { $_ -ne "" })
+
+if ($oldContainers.Count -gt 0 -or $oldVolumes.Count -gt 0) {
+    Write-Warn "Znaleziono poprzednia instalacje NetDoc:"
+    if ($oldContainers.Count -gt 0) {
+        Write-Info "  Kontenery ($($oldContainers.Count)):"
+        foreach ($c in $oldContainers) { Write-Info "    - $c" }
+    }
+    if ($oldVolumes.Count -gt 0) {
+        Write-Info "  Voluminy ($($oldVolumes.Count)):"
+        foreach ($v in $oldVolumes) { Write-Info "    - $v" }
+    }
+
+    Write-Host ""
+    Write-Host "  Masz dwie opcje:" -ForegroundColor White
+    Write-Host "   [T]  Usun stare kontenery i dane (czysta instalacja)" -ForegroundColor Yellow
+    Write-Host "        UWAGA: usunie baze danych, metryki i konfiguracje!" -ForegroundColor DarkGray
+    Write-Host "   [N]  Zachowaj dane (aktualizacja / restart)" -ForegroundColor Cyan
+    Write-Host "        Stare kontenery zostana zastapione nowymi obrazami," -ForegroundColor DarkGray
+    Write-Host "        ale dane w bazie i konfiguracja zostana zachowane." -ForegroundColor DarkGray
+    Write-Host ""
+
+    $cleanUp = Read-Host "  Usunac stare dane i wykonac czysta instalacje? [T/N]"
+
+    if ($cleanUp -eq "T" -or $cleanUp -eq "t") {
+        Write-Info "Usuwam stare kontenery i voluminy..."
+        docker compose down --volumes --remove-orphans 2>&1 | Out-Host
+        if ($LASTEXITCODE -eq 0) {
+            Write-OK "Stare kontenery i dane usuniete  -  czysta instalacja."
+        } else {
+            Write-Warn "Czyszczenie zakonczone z ostrzezeniem (kod: $LASTEXITCODE)."
+            Write-Info "Kontynuuje  -  docker compose up nadpisze stare kontenery."
+        }
+    } else {
+        Write-OK "Dane zachowane  -  instaluje nowe obrazy (aktualizacja)."
+    }
+} else {
+    Write-OK "Brak poprzedniej instalacji  -  czysta instalacja."
+}
+
 # ── docker compose up ─────────────────────────────────────────────────────────
 
 Write-Step "Uruchamiam kontenery Docker (docker compose up -d --build)..."
@@ -566,7 +615,6 @@ Write-Info "     Docker Desktop na Windows obsluguje to domyslnie  -  jesli ping
 Write-Info "     sprawdz ustawienia izolacji Windows Defender Firewall dla Dockera."
 Write-Host ""
 
-Set-Location $ProjectDir
 docker compose up -d --build 2>&1 | Out-Host
 
 if ($LASTEXITCODE -ne 0) {
