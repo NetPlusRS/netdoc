@@ -10,7 +10,8 @@ _private/
 netdoc_pro/
 
 # Logi i runtime
-logs/
+logs/*
+!logs/.gitkeep
 *.pid
 *.log
 
@@ -37,9 +38,19 @@ build/
 *.swo
 *~
 
-# Dane lokalne
-data/
+# Dane lokalne — runtime (nie wersjonuj)
+data/*
 backups/
+
+# Zachowaj statyczne bazy danych wymagane przez skaner
+# (fingerprints bannerow, producenci MAC/OUI, OID SNMP)
+# Bez tych plikow skaner nie zadziala po git clone!
+!data/fingerprints/
+!data/fingerprints/**
+!data/oui/
+!data/oui/**
+!data/oid/
+!data/oid/**
 scanner.pid
 coverage.json
 netdoc_fallback.db

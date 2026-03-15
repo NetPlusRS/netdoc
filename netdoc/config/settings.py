@@ -35,8 +35,10 @@ class Settings(BaseSettings):
     unifi_password: str = Field(default="")
 
     # Discovery
-    # Puste = auto-wykrywanie z lokalnych interfejsow (zalecane)
-    network_ranges: List[str] = Field(default=[])
+    # Puste = auto-wykrywanie z lokalnych interfejsow (zalecane — nie trzeba ustawiac)
+    # Format CSV: "192.168.1.0/24" lub "192.168.1.0/24,10.0.0.0/8"
+    # Typ str zamiast List[str] — pydantic-settings v2 nie probuje JSON-decode plain stringa
+    network_ranges: str = Field(default="")
     scan_interval_minutes: int = Field(default=60)
     # Skanowanie przez VPN - domyslnie wylaczone (ryzyko skanowania sieci klienta)
     scan_vpn_networks: bool = Field(default=False)

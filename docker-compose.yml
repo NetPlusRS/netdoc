@@ -1,5 +1,16 @@
 name: netdoc
 
+# UWAGA DLA NOWYCH INSTALACJI:
+# 1. Skopiuj konfiguracje:   copy .env.example .env   (Windows cmd)
+#                            cp .env.example .env     (Linux/macOS)
+# 2. Stworz katalogi:        mkdir data logs          (oba systemy)
+# 3. Uruchom Docker Desktop i upewnij sie ze dziala:  docker info
+# 4. Windows: w Docker Desktop -> Settings -> Advanced ->
+#    wlacz "Allow the default Docker socket to be used"
+#    (wymagane przez serwisy web i promtail)
+# 5. Pierwsze uruchomienie:  docker compose up -d --build
+#    (moze trwac 10-20 min — pobieranie obrazow + budowanie)
+
 services:
 
   postgres:
@@ -93,7 +104,8 @@ services:
       DB_URL: postgresql+psycopg2://netdoc:netdoc@postgres:5432/netdoc
       REQUIRE_POSTGRES: "1"
     env_file:
-      - .env
+      - path: .env
+        required: false   # dziala bez .env — uzyj do nadpisania domyslnych wartosci
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -122,7 +134,8 @@ services:
       AGENT_ENABLED: "1"          # ustaw 0 aby wylaczyc chatbota
       LAB_COMPOSE_FILE: /app/docker-compose.lab.yml
     env_file:
-      - .env                       # ANTHROPIC_API_KEY pobierany z .env
+      - path: .env
+        required: false   # dziala bez .env — uzyj do nadpisania domyslnych wartosci                       # ANTHROPIC_API_KEY pobierany z .env
     volumes:
       - ./netdoc:/app/netdoc:ro
       - ./docker-compose.lab.yml:/app/docker-compose.lab.yml:ro
@@ -149,7 +162,8 @@ services:
       PING_WORKERS: "64"
       PING_METRICS_PORT: "8001"
     env_file:
-      - .env
+      - path: .env
+        required: false   # dziala bez .env — uzyj do nadpisania domyslnych wartosci
     ports:
       - "8001:8001"
     cap_add:
@@ -171,7 +185,8 @@ services:
       SNMP_WORKERS: "10"
       SNMP_METRICS_PORT: "8002"
     env_file:
-      - .env
+      - path: .env
+        required: false   # dziala bez .env — uzyj do nadpisania domyslnych wartosci
     ports:
       - "8002:8002"
     depends_on:
@@ -193,7 +208,8 @@ services:
       SNMP_TIMEOUT_S: "2"
       COMMUNITY_METRICS_PORT: "8006"
     env_file:
-      - .env
+      - path: .env
+        required: false   # dziala bez .env — uzyj do nadpisania domyslnych wartosci
     ports:
       - "8006:8006"
     depends_on:
@@ -222,7 +238,8 @@ services:
       CRED_MAX_DELAY_S: "10"
       CRED_DEVICE_TIMEOUT_S: "120"
     env_file:
-      - .env
+      - path: .env
+        required: false   # dziala bez .env — uzyj do nadpisania domyslnych wartosci
     volumes:
       - ./logs:/app/logs
     ports:
@@ -245,7 +262,8 @@ services:
       VULN_WORKERS: "16"
       VULN_METRICS_PORT: "8004"
     env_file:
-      - .env
+      - path: .env
+        required: false   # dziala bez .env — uzyj do nadpisania domyslnych wartosci
     ports:
       - "8004:8004"
     depends_on:
@@ -266,7 +284,8 @@ services:
       INET_SPEED_BYTES: "5242880"    # 5 MB
       INET_METRICS_PORT: "8005"
     env_file:
-      - .env
+      - path: .env
+        required: false   # dziala bez .env — uzyj do nadpisania domyslnych wartosci
     ports:
       - "8005:8005"
     depends_on:

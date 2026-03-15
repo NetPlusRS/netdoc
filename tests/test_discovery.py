@@ -1078,7 +1078,10 @@ _PASSIVE_SCAN_MOCKS = {
     "netdoc.collector.discovery.ssdp_scan": {},
     "netdoc.collector.discovery.nbns_scan": {},
     "netdoc.collector.discovery.mdns_scan": {},
+    "netdoc.collector.discovery.wsd_scan": {},
+    "netdoc.collector.discovery.apipa_from_arp": {},
     "netdoc.collector.discovery.reverse_dns_lookup": {},
+
 }
 
 

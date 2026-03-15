@@ -122,6 +122,23 @@
   </div>
   {% endfor %}
 
+  {# ── Baner beta — zamykalny, nie wraca po zamknięciu (localStorage) ── #}
+  <div id="betaBanner" class="alert alert-warning alert-dismissible mb-3" role="alert"
+       style="border-left:4px solid #d29922;background:rgba(210,153,34,.1);display:none">
+    <div class="d-flex gap-2 align-items-start">
+      <i class="bi bi-exclamation-triangle-fill text-warning mt-1 flex-shrink-0"></i>
+      <div>
+        <strong>Wersja Beta — nie uruchamiaj bez przygotowania w sieci produkcyjnej.</strong>
+        Skanowanie może powodować niechciane wydruki na drukarkach (port 9100),
+        restarty lub zawieszenie starszych urządzeń IoT i przełączników,
+        a full scan (1–65535) generuje duży ruch i może wyzwolić systemy IDS/IPS.
+        Zacznij od sieci testowej lub użyj
+        <a href="/settings#lab" class="alert-link">Demo Lab</a>.
+      </div>
+    </div>
+    <button type="button" class="btn-close" onclick="dismissBetaBanner()" aria-label="Zamknij"></button>
+  </div>
+
   {% block content %}{% endblock %}
 </div>
 
@@ -204,5 +221,18 @@
   });
 </script>
 {% block scripts %}{% endblock %}
+<script>
+(function() {
+  var banner = document.getElementById('betaBanner');
+  if (banner && !localStorage.getItem('netdoc_beta_dismissed')) {
+    banner.style.display = 'block';
+  }
+})();
+function dismissBetaBanner() {
+  localStorage.setItem('netdoc_beta_dismissed', '1');
+  var b = document.getElementById('betaBanner');
+  if (b) b.remove();
+}
+</script>
 </body>
 </html>

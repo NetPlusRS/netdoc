@@ -5193,3 +5193,54 @@ class TestDbBackupRestore:
         assert r.status_code == 200
         data = r.get_json()
         assert data["netdoc-web"] == "running"
+
+
+# ── Testy: baner beta (ostrzeżenie o skanowaniu) ─────────────────────────────
+
+class TestBetaBanner:
+    """Baner ostrzegajacy o skutkach skanowania — zamykalny przez localStorage."""
+
+    def test_banner_present_in_base_template(self):
+        """base.html zawiera element betaBanner."""
+        import pathlib
+        tmpl = pathlib.Path("netdoc/web/templates/base.html").read_text(encoding="utf-8")
+        assert "betaBanner" in tmpl
+
+    def test_banner_has_dismiss_function(self):
+        """base.html zawiera funkcje dismissBetaBanner() zapisujaca flage w localStorage."""
+        import pathlib
+        tmpl = pathlib.Path("netdoc/web/templates/base.html").read_text(encoding="utf-8")
+        assert "dismissBetaBanner" in tmpl
+        assert "netdoc_beta_dismissed" in tmpl
+        assert "localStorage.setItem" in tmpl
+
+    def test_banner_hidden_by_default_via_js(self):
+        """Baner ma display:none — pokazywany przez JS tylko gdy brak flagi w localStorage."""
+        import pathlib
+        tmpl = pathlib.Path("netdoc/web/templates/base.html").read_text(encoding="utf-8")
+        assert 'id="betaBanner"' in tmpl
+        assert "display:none" in tmpl or "display: none" in tmpl
+
+    def test_banner_warns_about_printers(self):
+        """Baner zawiera ostrzezenie o drukarkach (port 9100)."""
+        import pathlib
+        tmpl = pathlib.Path("netdoc/web/templates/base.html").read_text(encoding="utf-8")
+        assert "9100" in tmpl or "drukark" in tmpl.lower()
+
+    def test_banner_warns_about_ids(self):
+        """Baner zawiera ostrzezenie o IDS/IPS."""
+        import pathlib
+        tmpl = pathlib.Path("netdoc/web/templates/base.html").read_text(encoding="utf-8")
+        assert "IDS" in tmpl
+
+    def test_banner_has_close_button(self):
+        """Baner ma przycisk zamkniecia wywolujacy dismissBetaBanner."""
+        import pathlib
+        tmpl = pathlib.Path("netdoc/web/templates/base.html").read_text(encoding="utf-8")
+        assert "dismissBetaBanner" in tmpl
+
+    def test_index_returns_200_with_banner(self, client):
+        """Strona glowna zwraca 200 — baner nie psuje renderowania."""
+        r = client.get("/")
+        assert r.status_code == 200
+        assert b"betaBanner" in r.data
