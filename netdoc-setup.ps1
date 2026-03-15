@@ -524,6 +524,67 @@ LOG_LEVEL=INFO
     Write-OK ".env utworzony z domyslnymi wartosciami."
 }
 
+# ── Windows Defender  -  wyjatki dla bibliotek security ──────────────────────
+#
+# Biblioteka impacket (testowanie credentials RDP/SMB/NTLM) jest czesto
+# blednie blokowana przez antywirus jako "hack tool"  -  jest to znany
+# false positive dla narzedzi bezpieczenstwa sieciowego.
+# Dodajemy wykluczenie dla katalogu pakietow Pythona PRZED pip install,
+# aby Defender nie kwarantannowal biblioteki podczas pobierania.
+
+Write-Step "Konfiguruje wyjatki Windows Defender (impacket false positive)..."
+
+if (-not $pythonPath) {
+    Write-Info "Python niedostepny  -  pomijam konfiguracje Defender."
+} else {
+    $defenderConfigured = $false
+
+    # Pobierz katalog site-packages Pythona
+    $sitePkg = try {
+        (& $PythonExeResolved -c "import site; print(site.getsitepackages()[0])" 2>&1) |
+        Select-Object -First 1
+    } catch { $null }
+
+    # Sprawdz czy Defender jest aktywny
+    $defStatus = Get-MpComputerStatus -ErrorAction SilentlyContinue
+
+    if ($null -eq $defStatus) {
+        Write-Info "Windows Defender niedostepny lub zastapiony innym AV  -  pomijam."
+    } elseif (-not $defStatus.RealTimeProtectionEnabled) {
+        Write-Info "Windows Defender  -  ochrona w czasie rzeczywistym wylaczona  -  pomijam."
+    } elseif (-not $isAdmin) {
+        Write-Warn "Brak uprawnien administratora  -  nie mozna dodac wyjatku Defender."
+        Write-Info "Jesli Defender zablokuje impacket podczas instalacji, dodaj recznie:"
+        Write-Info "  Zabezpieczenia Windows -> Ochrona przed wirusami i zagrozeniami"
+        Write-Info "  -> Ustawienia ochrony -> Wykluczenia -> Dodaj wykluczenie -> Folder"
+        if ($sitePkg) { Write-Info "  Folder: $sitePkg" }
+    } else {
+        # Dodaj wykluczenie dla katalogu pakietow Pythona
+        if ($sitePkg -and (Test-Path $sitePkg)) {
+            Add-MpPreference -ExclusionPath $sitePkg -ErrorAction SilentlyContinue
+            if ($?) {
+                Write-OK "Wyjatek Defender dodany: $sitePkg"
+                $defenderConfigured = $true
+            } else {
+                Write-Warn "Nie udalo sie dodac wyjatku dla: $sitePkg"
+            }
+        } else {
+            Write-Info "Nie mozna ustalic katalogu site-packages  -  pomijam wyjatek."
+        }
+
+        # Dodaj tez katalog projektu (skaner importuje impacket bezposrednio)
+        Add-MpPreference -ExclusionPath $ProjectDir -ErrorAction SilentlyContinue
+        if ($?) {
+            Write-OK "Wyjatek Defender dodany: $ProjectDir"
+        }
+
+        if ($defenderConfigured) {
+            Write-Info "Impacket (testy credentials RDP/SMB) nie bedzie blokowany przez Defender."
+            Write-Info "Wykluczenie dotyczy tylko tych folderow  -  reszta systemu jest chroniona."
+        }
+    }
+}
+
 # ── Python requirements (host-side) ───────────────────────────────────────────
 
 Write-Step "Instaluje zaleznosci Python (dla skanera na hoscie)..."
@@ -544,8 +605,9 @@ if (-not (Test-Path $reqFile)) {
     } else {
         Write-Warn "pip install zakonczyl sie z bledem (kod: $LASTEXITCODE)."
         Write-Info "Sprawdz komunikaty powyzej. Typowe przyczyny:"
+        Write-Info "  - Defender zablokował impacket  -  sprawdz Kwarantanne Defendera"
         Write-Info "  - Brak nmap.exe w PATH (wymagany przez python-nmap)"
-        Write-Info "  - Brak Visual C++ Build Tools (wymagane przez niektorepakiety)"
+        Write-Info "  - Brak Visual C++ Build Tools (wymagane przez niektore pakiety)"
         Write-Info "  - Brak dostepu do internetu (pip.pypa.io)"
         Write-Info "Mozesz sprobowac recznie: $PythonExeResolved -m pip install -r requirements.txt"
         Write-Info "Kontenery Docker zostana uruchomione niezaleznie od tego bledu."
