@@ -1,4 +1,4 @@
-# netdoc-setup.ps1
+﻿# netdoc-setup.ps1
 # Pierwszy setup NetDoc na Windows.
 # Sprawdza i instaluje wymagane oprogramowanie (WSL2, Docker Desktop, git, Python),
 # konfiguruje srodowisko i uruchamia system.
@@ -17,7 +17,7 @@ $ProjectDir = $PSScriptRoot
 $LogTimestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $LogFile      = Join-Path $ProjectDir "netdoc-setup-debug-$LogTimestamp.log"
 
-# Start-Transcript rejestruje WSZYSTKO — kazde polecenie, wyjscie, bledy
+# Start-Transcript rejestruje WSZYSTKO  -  kazde polecenie, wyjscie, bledy
 Start-Transcript -Path $LogFile -Append | Out-Null
 
 function Write-LogSection([string]$title) {
@@ -75,7 +75,7 @@ function Write-Header {
     Clear-Host
     Write-Host ""
     Write-Host "  ================================================" -ForegroundColor Cyan
-    Write-Host "   NetDoc — Instalator Windows" -ForegroundColor Cyan
+    Write-Host "   NetDoc  -  Instalator Windows" -ForegroundColor Cyan
     Write-Host "  ================================================" -ForegroundColor Cyan
     Write-Host ""
 }
@@ -143,11 +143,11 @@ Write-Info "Windows Build: $build"
 
 if ($build -lt 19041) {
     Write-Fail "Wymagany Windows 10 v2004 (Build 19041) lub nowszy."
-    Write-Info "Twoja wersja ($build) jest zbyt stara — zaktualizuj system."
+    Write-Info "Twoja wersja ($build) jest zbyt stara  -  zaktualizuj system."
     Show-Pause "Nacisnij Enter aby zamknac..."
     exit 1
 } else {
-    Write-OK "Windows $($winver.Major).$($winver.Minor) Build $build — OK"
+    Write-OK "Windows $($winver.Major).$($winver.Minor) Build $build  -  OK"
 }
 
 # ── winget ───────────────────────────────────────────────────────────────────
@@ -162,7 +162,7 @@ if ($wingetPath) {
     Write-Warn "winget nie jest dostepny."
     Write-Info "Zainstaluj 'App Installer' z Microsoft Store:"
     Write-Info "  https://apps.microsoft.com/detail/9NBLGGH4NNS1"
-    Write-Info "  LUB zaktualizuj Windows — winget jest domyslnie od Windows 10 21H1"
+    Write-Info "  LUB zaktualizuj Windows  -  winget jest domyslnie od Windows 10 21H1"
     Show-Pause "Nacisnij Enter po zainstalowaniu winget..."
     $wingetPath = Get-Command winget -ErrorAction SilentlyContinue
     if (-not $wingetPath) {
@@ -189,7 +189,7 @@ function Install-WithWinget {
         }
     }
 
-    Write-Warn "$Label nie znaleziony — instaluje przez winget..."
+    Write-Warn "$Label nie znaleziony  -  instaluje przez winget..."
     Write-Info "  winget install -e --id $Id --accept-package-agreements --accept-source-agreements"
     winget install -e --id $Id --accept-package-agreements --accept-source-agreements 2>&1 | Out-Host
 
@@ -209,7 +209,7 @@ Write-Step "Sprawdzam git..."
 
 $gitOk = Install-WithWinget -Id "Git.Git" -Label "git" -CommandCheck "git"
 if (-not $gitOk) {
-    # Moze byc zainstalowany ale nie w PATH — sprawdz typowe lokalizacje
+    # Moze byc zainstalowany ale nie w PATH  -  sprawdz typowe lokalizacje
     $gitPaths = @(
         "C:\Program Files\Git\cmd\git.exe",
         "C:\Program Files (x86)\Git\cmd\git.exe"
@@ -230,28 +230,32 @@ if (-not $gitOk) {
 
 # ── Python ───────────────────────────────────────────────────────────────────
 
-Write-Step "Sprawdzam Python 3.11+ (wymagany przez NetDoc)..."
+Write-Step "Sprawdzam Python 3.9+ (wymagany przez NetDoc)..."
 
-# Minimalna wersja wymagana przez NetDoc (zgodna z obrazem Docker python:3.11-slim)
+# Minimalna wersja wymagana przez host-side skaner NetDoc
+# Docker kontenery uzywaja python:3.11-slim wewnatrz  -  host moze byc 3.9+
 $MIN_PY_MAJOR = 3
-$MIN_PY_MINOR = 11
+$MIN_PY_MINOR = 9
 
 function Get-PythonMinorVersion([string]$cmd) {
     try {
-        $out = (& $cmd --version 2>&1) | Select-Object -First 1   # "Python 3.11.9"
+        $out = (& $cmd --version 2>&1) | Select-Object -First 1   # "Python 3.10.12"
         if ($out -match "Python (\d+)\.(\d+)") {
-            return [int]$Matches[1] * 100 + [int]$Matches[2]   # np. 311
+            return [int]$Matches[1] * 100 + [int]$Matches[2]   # np. 310
         }
     } catch {}
     return 0
 }
 
-$MIN_PY_CODE = $MIN_PY_MAJOR * 100 + $MIN_PY_MINOR   # 311
+$MIN_PY_CODE = $MIN_PY_MAJOR * 100 + $MIN_PY_MINOR   # 309
 
 $pythonCmd  = $null
 $pythonPath = $null
 
-foreach ($cmd in @("python", "python3", "py")) {
+# Sprawdz takze 'py -3' (Windows Launcher  -  zawsze zwraca najnowszego Pythona 3.x)
+$candidateCmds = @("python", "python3", "py")
+
+foreach ($cmd in $candidateCmds) {
     $c = Get-Command $cmd -ErrorAction SilentlyContinue
     if (-not $c) { continue }
 
@@ -264,19 +268,31 @@ foreach ($cmd in @("python", "python3", "py")) {
         $pythonPath = $c.Source
         break
     } elseif ($verCode -gt 0) {
-        Write-Warn "$verStr — za stary (wymagany Python $MIN_PY_MAJOR.$MIN_PY_MINOR+)"
+        Write-Info "$verStr  -  za stary (wymagany Python $MIN_PY_MAJOR.$MIN_PY_MINOR+), szukam nowszego..."
     }
 }
 
 if (-not $pythonCmd) {
-    Write-Warn "Python $MIN_PY_MAJOR.$MIN_PY_MINOR+ nie znaleziony — instaluje Python 3.12..."
+    Write-Warn "Python $MIN_PY_MAJOR.$MIN_PY_MINOR+ nie znaleziony  -  instaluje Python 3.12..."
     Install-WithWinget -Id "Python.Python.3.12" -Label "Python 3.12" | Out-Null
 
-    # Odswierz PATH po instalacji
+    # Odswierz PATH po instalacji (winget modyfikuje PATH w rejestrze, nie w biezacej sesji)
     $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" +
                 [System.Environment]::GetEnvironmentVariable("PATH", "User")
 
-    foreach ($cmd in @("python", "python3", "py")) {
+    # Dodaj typowe lokalizacje Python 3.12 jesli jeszcze nie sa w PATH
+    foreach ($pyPath in @(
+        "$env:LOCALAPPDATA\Programs\Python\Python312",
+        "$env:LOCALAPPDATA\Programs\Python\Python312\Scripts",
+        "C:\Python312",
+        "C:\Python312\Scripts"
+    )) {
+        if ((Test-Path $pyPath) -and ($env:PATH -notlike "*$pyPath*")) {
+            $env:PATH += ";$pyPath"
+        }
+    }
+
+    foreach ($cmd in $candidateCmds) {
         $c = Get-Command $cmd -ErrorAction SilentlyContinue
         if (-not $c) { continue }
 
@@ -292,14 +308,16 @@ if (-not $pythonCmd) {
     }
 
     if (-not $pythonCmd) {
-        Write-Warn "Python nie jest dostepny w PATH — moze byc wymagany restart terminala."
-        Write-Info "Po restarcie uruchom ponownie ten skrypt."
+        Write-Warn "Python nie jest dostepny w PATH  -  moze byc wymagany restart terminala."
+        Write-Warn "Skaner hosta (run_scanner.py) nie bedzie dzialal bez Pythona."
+        Write-Info "Kontenery Docker zostana uruchomione i beda dzialac normalnie."
+        Write-Info "Po restarcie terminala uruchom: python -m pip install -r requirements.txt"
         $pythonCmd  = "python"
         $pythonPath = $null
     }
 }
 
-# Zapamietaj sciezke do Pythona — potrzebna dla install_autostart.ps1
+# Zapamietaj sciezke do Pythona  -  potrzebna dla install_autostart.ps1
 $PythonExeResolved = if ($pythonPath) { $pythonPath } else { "python" }
 
 # ── WSL2 ─────────────────────────────────────────────────────────────────────
@@ -337,7 +355,7 @@ if (-not $wslOk) {
             } else {
                 Write-Warn "WSL zainstalowany ale brak dystrybucji Linux."
                 Write-Info "Docker Desktop moze zainstalowac dystrybucje automatycznie."
-                $wslOk = $true   # nie blokujemy — Docker Desktop obsluzy reszte
+                $wslOk = $true   # nie blokujemy  -  Docker Desktop obsluzy reszte
             }
         }
     } catch {}
@@ -357,7 +375,7 @@ if (-not $wslOk) {
         Write-Info "  Instaluje jadro Linux..."
         wsl --install --no-launch 2>&1 | Out-Null
 
-        Write-Warn "WSL2 zainstalowany — wymagany RESTART systemu."
+        Write-Warn "WSL2 zainstalowany  -  wymagany RESTART systemu."
         Write-Info "Po restarcie uruchom ponownie ten skrypt."
         Write-Host ""
         $restartNow = Read-Host "  Restartowac teraz? [T/N]"
@@ -403,13 +421,13 @@ if ($dockerCli) {
 }
 
 if (-not $dockerInstalled) {
-    Write-Warn "Docker Desktop nie jest zainstalowany — instaluje..."
+    Write-Warn "Docker Desktop nie jest zainstalowany  -  instaluje..."
     $ok = Install-WithWinget -Id "Docker.DockerDesktop" -Label "Docker Desktop"
 
     if ($ok) {
         Write-Info "Docker Desktop zainstalowany."
 
-        # Odswierz PATH — winget dodaje Docker do PATH ale nie w biezacej sesji
+        # Odswierz PATH  -  winget dodaje Docker do PATH ale nie w biezacej sesji
         $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" +
                     [System.Environment]::GetEnvironmentVariable("PATH", "User")
 
@@ -424,7 +442,7 @@ if (-not $dockerInstalled) {
             }
         }
 
-        Write-Info "Uruchamiam Docker Desktop — poczekaj az ikonka w zasobniku bedzie gotowa..."
+        Write-Info "Uruchamiam Docker Desktop  -  poczekaj az ikonka w zasobniku bedzie gotowa..."
         $dockerApp = "${env:ProgramFiles}\Docker\Docker\Docker Desktop.exe"
         if (Test-Path $dockerApp) {
             Start-Process $dockerApp
@@ -482,22 +500,22 @@ $envFile    = Join-Path $ProjectDir ".env"
 $envExample = Join-Path $ProjectDir ".env.example"
 
 if (Test-Path $envFile) {
-    Write-OK ".env juz istnieje — pomijam kopiowanie."
+    Write-OK ".env juz istnieje  -  pomijam kopiowanie."
 } elseif (Test-Path $envExample) {
     Copy-Item $envExample $envFile
     Write-OK ".env skopiowany z .env.example"
     Write-Info "Mozesz edytowac $envFile aby dostosowac konfiguracje."
 } else {
-    Write-Warn "Brak .env.example — tworze minimalny .env..."
+    Write-Warn "Brak .env.example  -  tworze minimalny .env..."
     @"
-# NetDoc konfiguracja — wygenerowany automatycznie przez setup
+# NetDoc konfiguracja  -  wygenerowany automatycznie przez setup
 # Polaczenie z PostgreSQL z HOSTA (port 15432 = zewnetrzny port kontenera)
 DB_HOST=localhost
 DB_PORT=15432
 DB_NAME=netdoc
 DB_USER=netdoc
 DB_PASSWORD=netdoc
-# Adres bindowania API uvicorn (nie URL — nie dodawaj http://)
+# Adres bindowania API uvicorn (nie URL  -  nie dodawaj http://)
 API_HOST=0.0.0.0
 API_PORT=8000
 NETWORK_RANGES=
@@ -509,31 +527,42 @@ LOG_LEVEL=INFO
 # ── Python requirements (host-side) ───────────────────────────────────────────
 
 Write-Step "Instaluje zaleznosci Python (dla skanera na hoscie)..."
+Write-Info "  (kontenery Docker dzialaja niezaleznie  -  ta sekcja dotyczy tylko hosta)"
 
 $reqFile = Join-Path $ProjectDir "requirements.txt"
-if ((Test-Path $reqFile) -and $pythonCmd) {
-    Write-Info "  $PythonExeResolved -m pip install -r requirements.txt --quiet"
+if (-not (Test-Path $reqFile)) {
+    Write-Info "Pomijam  -  brak requirements.txt."
+} elseif (-not $pythonPath) {
+    Write-Warn "Python niedostepny w PATH  -  pomijam pip install."
+    Write-Info "Uruchom recznie po restarcie: python -m pip install -r requirements.txt"
+} else {
+    Write-Info "  $PythonExeResolved -m pip install -r requirements.txt"
+    # Uzyj --quiet raz (ukrywa postep) ale zachowuje bledy i ostrzezenia
     & $PythonExeResolved -m pip install -r $reqFile --quiet 2>&1 | Out-Host
     if ($LASTEXITCODE -eq 0) {
         Write-OK "Zaleznosci zainstalowane."
     } else {
-        Write-Warn "pip install zakonczyl sie z bledem — sprawdz logi powyzej."
+        Write-Warn "pip install zakonczyl sie z bledem (kod: $LASTEXITCODE)."
+        Write-Info "Sprawdz komunikaty powyzej. Typowe przyczyny:"
+        Write-Info "  - Brak nmap.exe w PATH (wymagany przez python-nmap)"
+        Write-Info "  - Brak Visual C++ Build Tools (wymagane przez niektorepakiety)"
+        Write-Info "  - Brak dostepu do internetu (pip.pypa.io)"
+        Write-Info "Mozesz sprobowac recznie: $PythonExeResolved -m pip install -r requirements.txt"
+        Write-Info "Kontenery Docker zostana uruchomione niezaleznie od tego bledu."
     }
-} else {
-    Write-Info "Pomijam (brak requirements.txt lub Python niedostepny)."
 }
 
 # ── docker compose up ─────────────────────────────────────────────────────────
 
 Write-Step "Uruchamiam kontenery Docker (docker compose up -d --build)..."
-Write-Info "Pierwsze uruchomienie moze zajac kilka minut — pobieranie obrazow bazowych."
+Write-Info "Pierwsze uruchomienie moze zajac kilka minut  -  pobieranie obrazow bazowych."
 Write-Host ""
-Write-Warn "WAZNE — wymagane ustawienia Docker Desktop przed uruchomieniem:"
+Write-Warn "WAZNE  -  wymagane ustawienia Docker Desktop przed uruchomieniem:"
 Write-Info "  1. Docker Desktop -> Settings -> Advanced:"
 Write-Info "     Wlacz: 'Allow the default Docker socket to be used (requires password)'"
-Write-Info "     (wymagane przez serwis web i promtail — dostep do /var/run/docker.sock)"
+Write-Info "     (wymagane przez serwis web i promtail  -  dostep do /var/run/docker.sock)"
 Write-Info "  2. Kontenery api i ping-worker wymagaja uprawnien NET_RAW (ICMP ping)."
-Write-Info "     Docker Desktop na Windows obsluguje to domyslnie — jesli ping nie dziala,"
+Write-Info "     Docker Desktop na Windows obsluguje to domyslnie  -  jesli ping nie dziala,"
 Write-Info "     sprawdz ustawienia izolacji Windows Defender Firewall dla Dockera."
 Write-Host ""
 
@@ -548,7 +577,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Info "  - Docker Desktop nie jest uruchomiony"
     Write-Info "  - Brak uprawnien Docker socket: Settings -> Advanced ->"
     Write-Info "    'Allow the default Docker socket to be used'"
-    Write-Info "  - Blad budowania obrazu — sprawdz dostep do internetu (pip, apt)"
+    Write-Info "  - Blad budowania obrazu  -  sprawdz dostep do internetu (pip, apt)"
     Show-Pause "Nacisnij Enter aby zamknac..."
     exit 1
 }
@@ -607,7 +636,7 @@ foreach ($c in $ExpectedContainers) {
     if ($running -contains $c) {
         Write-OK $c
     } else {
-        Write-Fail "$c — nie dziala!"
+        Write-Fail "$c  -  nie dziala!"
     }
 }
 
@@ -663,7 +692,7 @@ try {
     $apiR = Invoke-WebRequest -Uri "http://localhost:8000/api/devices/?limit=1" -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
     Write-OK "API dostepne (HTTP $($apiR.StatusCode))"
 } catch {
-    Write-Warn "API (port 8000) nie odpowiada — sprawdz logi: docker logs netdoc-api"
+    Write-Warn "API (port 8000) nie odpowiada  -  sprawdz logi: docker logs netdoc-api"
 }
 
 # ── Podsumowanie ─────────────────────────────────────────────────────────────
@@ -723,16 +752,16 @@ if ($allUp -and $pythonCmd) {
             Write-Info "Mozesz uruchomic ponownie: $pythonCmd run_scanner.py --once"
         }
     } else {
-        Write-Warn "Nie znaleziono run_scanner.py — pomijam skanowanie."
+        Write-Warn "Nie znaleziono run_scanner.py  -  pomijam skanowanie."
     }
 } elseif (-not $allUp) {
-    Write-Warn "Pomijam skanowanie — nie wszystkie kontenery sa uruchomione."
+    Write-Warn "Pomijam skanowanie  -  nie wszystkie kontenery sa uruchomione."
 } else {
-    Write-Warn "Pomijam skanowanie — Python niedostepny."
+    Write-Warn "Pomijam skanowanie  -  Python niedostepny."
     Write-Info "Uruchom recznie: python run_scanner.py --once"
 }
 
-# ── Otworz przegladarke — tylko gdy kontenery i web sa OK ────────────────────
+# ── Otworz przegladarke  -  tylko gdy kontenery i web sa OK ────────────────────
 
 if ($allUp -and $webReady) {
     Write-Host ""
@@ -743,7 +772,7 @@ if ($allUp -and $webReady) {
     Write-Host "  Otwieram Panel Admin (nie wszystkie kontenery dzialaja)..." -ForegroundColor Yellow
     Start-Process "http://localhost:5000"
 } else {
-    Write-Warn "Przegladarki nie otwieram — Panel Web niedostepny."
+    Write-Warn "Przegladarki nie otwieram  -  Panel Web niedostepny."
     Write-Info "Sprawdz logi i sprobuj recznie: http://localhost:5000"
 }
 

@@ -1,9 +1,9 @@
-# netdoc-uninstall.ps1
+﻿# netdoc-uninstall.ps1
 # Zatrzymuje i usuwa NetDoc z systemu Windows.
 #
 # Tryby:
-#   [1] Zatrzymaj kontenery — zachowuje dane i konfiguracje
-#   [2] Pelne odinstalowanie — usuwa kontenery, voluminy, zadania Task Scheduler
+#   [1] Zatrzymaj kontenery  -  zachowuje dane i konfiguracje
+#   [2] Pelne odinstalowanie  -  usuwa kontenery, voluminy, zadania Task Scheduler
 #   [3] Anuluj
 #
 # Uzycie:
@@ -27,7 +27,7 @@ function Write-Header {
     Clear-Host
     Write-Host ""
     Write-Host "  ================================================" -ForegroundColor Red
-    Write-Host "   NetDoc — Odinstalowywanie / Zatrzymanie" -ForegroundColor Red
+    Write-Host "   NetDoc  -  Odinstalowywanie / Zatrzymanie" -ForegroundColor Red
     Write-Host "  ================================================" -ForegroundColor Red
     Write-Host ""
 }
@@ -90,7 +90,7 @@ Write-Host "  Co chcesz zrobic?" -ForegroundColor White
 Write-Host ""
 Write-Host "  [1]  Zatrzymaj kontenery (dane i konfiguracja zostaja)" -ForegroundColor Cyan
 Write-Host "  [2]  Pelne odinstalowanie (kontenery + voluminy + Task Scheduler)" -ForegroundColor Red
-Write-Host "  [3]  Anuluj — wyjdz bez zmian" -ForegroundColor DarkGray
+Write-Host "  [3]  Anuluj  -  wyjdz bez zmian" -ForegroundColor DarkGray
 Write-Host ""
 $choice = Read-Host "  Wybor"
 
@@ -130,7 +130,7 @@ if ($dockerAvailable) {
     Set-Location $ProjectDir
 
     if ($mode -eq "stop") {
-        # Tylko zatrzymanie — nie usuwaj
+        # Tylko zatrzymanie  -  nie usuwaj
         docker compose stop 2>&1 | Out-Host
         if ($LASTEXITCODE -eq 0) {
             Write-OK "Kontenery zatrzymane. Dane zachowane."
@@ -184,7 +184,7 @@ if ($dockerAvailable) {
         }
     }
 } else {
-    Write-Warn "Docker niedostepny — pomijam zatrzymanie kontenerow."
+    Write-Warn "Docker niedostepny  -  pomijam zatrzymanie kontenerow."
 }
 
 # ── Task Scheduler (tylko pelne odinstalowanie) ───────────────────────────────
@@ -206,7 +206,7 @@ if ($mode -eq "full") {
             Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
             Write-OK "Usunieto zadanie: $taskName"
         } else {
-            Write-Info "Zadanie '$taskName' nie bylo zarejestrowane — pomijam."
+            Write-Info "Zadanie '$taskName' nie bylo zarejestrowane  -  pomijam."
         }
     }
 
@@ -230,7 +230,7 @@ if ($mode -eq "full") {
             Remove-Item $envFile -Force -ErrorAction SilentlyContinue
             Write-OK "Usunieto: .env"
         } else {
-            Write-Info ".env nie istnieje — pomijam."
+            Write-Info ".env nie istnieje  -  pomijam."
         }
     }
 
