@@ -1,4 +1,4 @@
-﻿# netdoc-uninstall.ps1
+# netdoc-uninstall.ps1
 # Zatrzymuje i usuwa NetDoc z systemu Windows.
 #
 # Tryby:
@@ -77,19 +77,138 @@ if ($dockerCmd) {
     }
 }
 
-if (-not $dockerAvailable) {
-    Write-Warn "Docker Desktop nie jest uruchomiony lub niedostepny."
-    Write-Info "Kontenery nie zostaną zatrzymane (nie ma czym)."
-    Write-Info "Mozesz recznie zatrzymac Docker Desktop z ikony w zasobniku systemowym."
+# ── Skanuj aktualny stan instalacji ──────────────────────────────────────────
+
+Write-Step "Skanuje stan instalacji NetDoc..."
+
+$runningContainers = @()
+$allContainers     = @()
+$netdocVolumes     = @()
+$netdocImages      = @()
+
+if ($dockerAvailable) {
+    Set-Location $ProjectDir
+
+    $runningContainers = @(
+        docker ps --filter "name=netdoc" --filter "status=running" `
+                  --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" }
+    )
+    $allContainers = @(
+        docker ps -a --filter "name=netdoc" --format "{{.Names}}" 2>&1 |
+        Where-Object { $_ -ne "" }
+    )
+    $netdocVolumes = @(
+        docker volume ls --filter "name=netdoc" --format "{{.Name}}" 2>&1 |
+        Where-Object { $_ -ne "" }
+    )
+
+    $imgIds  = @(docker images --filter "label=com.docker.compose.project=netdoc" `
+                               --format "{{.ID}}" 2>&1 | Where-Object { $_ -ne "" })
+    $imgIds += @(docker images --filter "reference=*netdoc*" --format "{{.ID}}" 2>&1 |
+                 Where-Object { $_ -ne "" })
+    $netdocImages = $imgIds | Sort-Object -Unique
+} elseif (-not $dockerCmd) {
+    Write-Info "Docker nie jest zainstalowany  -  pomijam skanowanie kontenerow."
+} else {
+    Write-Warn "Docker Desktop nie odpowiada  -  uruchom go przed odinstalowaniem."
+    Write-Info "Kontenery i voluminy nie zostana sprawdzone."
+}
+
+$schedulerTaskNames = @("NetDocScanner", "NetDoc Watchdog")
+$existingTasks = @(
+    $schedulerTaskNames | Where-Object {
+        $null -ne (Get-ScheduledTask -TaskName $_ -ErrorAction SilentlyContinue)
+    }
+)
+
+$pidFile  = Join-Path $ProjectDir "scanner.pid"
+$hasPid   = Test-Path $pidFile
+$envFile  = Join-Path $ProjectDir ".env"
+$hasEnv   = Test-Path $envFile
+$oldLogs  = @(
+    Get-ChildItem $ProjectDir -Filter "netdoc-*-debug-*.log" -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -ne $LogFile }
+)
+
+# ── Podsumowanie stanu ────────────────────────────────────────────────────────
+
+Write-Host ""
+Write-Host "  Stan instalacji NetDoc:" -ForegroundColor White
+Write-Host ""
+
+if ($allContainers.Count -gt 0) {
+    $runStr = if ($runningContainers.Count -gt 0) {
+        "$($runningContainers.Count) uruchomionych"
+    } else {
+        "wszystkie zatrzymane"
+    }
+    Write-Host "     Kontenery:      $($allContainers.Count) ($runStr)" -ForegroundColor Yellow
+} else {
+    Write-Host "     Kontenery:      brak" -ForegroundColor DarkGray
+}
+
+if ($netdocVolumes.Count -gt 0) {
+    Write-Host "     Voluminy:       $($netdocVolumes.Count) (dane bazy, metryki)" -ForegroundColor Yellow
+} else {
+    Write-Host "     Voluminy:       brak" -ForegroundColor DarkGray
+}
+
+if ($netdocImages.Count -gt 0) {
+    Write-Host "     Obrazy Docker:  $($netdocImages.Count)" -ForegroundColor Yellow
+} else {
+    Write-Host "     Obrazy Docker:  brak" -ForegroundColor DarkGray
+}
+
+if ($existingTasks.Count -gt 0) {
+    Write-Host "     Task Scheduler: $($existingTasks -join ', ')" -ForegroundColor Yellow
+} else {
+    Write-Host "     Task Scheduler: brak zadan NetDoc" -ForegroundColor DarkGray
+}
+
+if ($hasEnv) {
+    Write-Host "     Konfiguracja:   .env (zawiera hasla)" -ForegroundColor Yellow
+} else {
+    Write-Host "     Konfiguracja:   brak .env" -ForegroundColor DarkGray
+}
+
+if ($oldLogs.Count -gt 0) {
+    Write-Host "     Logi:           $($oldLogs.Count) plik(ow) debug" -ForegroundColor DarkGray
+} else {
+    Write-Host "     Logi:           brak" -ForegroundColor DarkGray
+}
+
+Write-Host ""
+
+# Sprawdz czy jest cokolwiek do zrobienia
+$hasContainers = ($allContainers.Count -gt 0)
+$hasData       = ($netdocVolumes.Count -gt 0 -or $netdocImages.Count -gt 0 -or
+                  $existingTasks.Count -gt 0 -or $hasPid -or $hasEnv -or $oldLogs.Count -gt 0)
+
+if (-not $hasContainers -and -not $hasData) {
+    Write-OK "NetDoc nie jest zainstalowany lub zostal juz w pelni odinstalowany."
+    Write-Info "Brak kontenerow, woluminow, zadan i plikow do usuniecia."
     Write-Host ""
+    Stop-Transcript | Out-Null
+    Show-Pause "Nacisnij Enter aby zamknac..."
+    exit 0
 }
 
 # ── Menu wyboru trybu ─────────────────────────────────────────────────────────
 
 Write-Host "  Co chcesz zrobic?" -ForegroundColor White
 Write-Host ""
-Write-Host "  [1]  Zatrzymaj kontenery (dane i konfiguracja zostaja)" -ForegroundColor Cyan
-Write-Host "  [2]  Pelne odinstalowanie (kontenery + voluminy + Task Scheduler)" -ForegroundColor Red
+
+if ($hasContainers) {
+    if ($runningContainers.Count -gt 0) {
+        Write-Host "  [1]  Zatrzymaj kontenery (dane i konfiguracja zostaja)" -ForegroundColor Cyan
+    } else {
+        Write-Host "  [1]  Kontenery juz zatrzymane  -  brak akcji do wykonania" -ForegroundColor DarkGray
+    }
+} else {
+    Write-Host "  [1]  Brak kontenerow do zatrzymania" -ForegroundColor DarkGray
+}
+
+Write-Host "  [2]  Pelne odinstalowanie (usun wszystko co znaleziono powyzej)" -ForegroundColor Red
 Write-Host "  [3]  Anuluj  -  wyjdz bez zmian" -ForegroundColor DarkGray
 Write-Host ""
 $choice = Read-Host "  Wybor"
@@ -105,9 +224,11 @@ switch ($choice) {
         Write-Host ""
         Write-Host "  Tryb: Pelne odinstalowanie" -ForegroundColor Red
         Write-Host ""
-        Write-Warn "UWAGA: Usuniecie woluminow spowoduje utrate WSZYSTKICH danych"
-        Write-Info "(baza PostgreSQL, metryki Prometheus, dashboardy Grafana)"
-        Write-Host ""
+        if ($netdocVolumes.Count -gt 0) {
+            Write-Warn "UWAGA: Usuniecie woluminow spowoduje utrate WSZYSTKICH danych"
+            Write-Info "(baza PostgreSQL, metryki Prometheus, dashboardy Grafana)"
+            Write-Host ""
+        }
         $confirm = Read-Host "  Wpisz USUN aby potwierdzic"
         if ($confirm -ne "USUN") {
             Write-Warn "Potwierdzenie nieudane. Anulowanie."
@@ -122,15 +243,16 @@ switch ($choice) {
     }
 }
 
-# ── Zatrzymaj kontenery ───────────────────────────────────────────────────────
+# ── Zatrzymaj / usun kontenery ────────────────────────────────────────────────
 
-Write-Step "Zatrzymuje kontenery NetDoc..."
+if ($mode -eq "stop") {
 
-if ($dockerAvailable) {
-    Set-Location $ProjectDir
-
-    if ($mode -eq "stop") {
-        # Tylko zatrzymanie  -  nie usuwaj
+    if (-not $dockerAvailable) {
+        Write-Warn "Docker niedostepny  -  nie mozna zatrzymac kontenerow."
+    } elseif ($runningContainers.Count -eq 0) {
+        Write-OK "Kontenery sa juz zatrzymane  -  nic do zrobienia."
+    } else {
+        Write-Step "Zatrzymuje kontenery NetDoc..."
         docker compose stop 2>&1 | Out-Host
         if ($LASTEXITCODE -eq 0) {
             Write-OK "Kontenery zatrzymane. Dane zachowane."
@@ -139,117 +261,147 @@ if ($dockerAvailable) {
         } else {
             Write-Warn "Zatrzymanie zakonczone z ostrzezeniem (kod: $LASTEXITCODE)"
         }
+    }
 
-    } elseif ($mode -eq "full") {
-        # Pelne usuniecie z woluminami
-        Write-Info "Uruchamiam: docker compose down --volumes --remove-orphans"
+} elseif ($mode -eq "full") {
+
+    # ── Kontenery i voluminy ───────────────────────────────────────────────────
+
+    if (-not $dockerAvailable) {
+        Write-Warn "Docker niedostepny  -  pomijam usuwanie kontenerow i woluminow."
+    } elseif (-not $hasContainers -and $netdocVolumes.Count -eq 0) {
+        Write-OK "Brak kontenerow i woluminow do usuniecia."
+    } else {
+        Write-Step "Usuwam kontenery i voluminy NetDoc..."
         docker compose down --volumes --remove-orphans 2>&1 | Out-Host
 
-        if ($LASTEXITCODE -eq 0) {
-            Write-OK "Kontenery i voluminy usuniete."
+        # Weryfikacja: sprawdz czy kontenery i voluminy faktycznie zniknely
+        Start-Sleep -Seconds 2
+        $remainingContainers = @(
+            docker ps -a --filter "name=netdoc" --format "{{.Names}}" 2>&1 |
+            Where-Object { $_ -ne "" }
+        )
+        $remainingVolumes = @(
+            docker volume ls --filter "name=netdoc" --format "{{.Name}}" 2>&1 |
+            Where-Object { $_ -ne "" }
+        )
+
+        if ($remainingContainers.Count -eq 0 -and $remainingVolumes.Count -eq 0) {
+            Write-OK "Weryfikacja: kontenery i voluminy usuniete."
         } else {
-            Write-Warn "docker compose down zakonczyl sie z bledem (kod: $LASTEXITCODE)"
-            Write-Info "Mozesz recznie sprawdzic: docker ps -a | findstr netdoc"
+            Write-Warn "Weryfikacja: nie wszystko zostalo usuniete!"
+            foreach ($c in $remainingContainers) { Write-Info "  Kontener nadal istnieje: $c" }
+            foreach ($v in $remainingVolumes) { Write-Info "  Volumen nadal istnieje: $v" }
+            Write-Info "Sprobuj recznie: docker rm -f \$(docker ps -aq --filter name=netdoc)"
+            Write-Info "               docker volume rm \$(docker volume ls -q --filter name=netdoc)"
         }
+    }
 
-        # Obrazy Docker (opcjonalnie)
+    # ── Obrazy Docker (tylko jesli istnieja) ──────────────────────────────────
+
+    if ($dockerAvailable -and $netdocImages.Count -gt 0) {
         Write-Host ""
-        $removeImages = Read-Host "  Usunac obrazy Docker NetDoc (zaoszczedzi ~2-3 GB)? [T/N]"
+        Write-Host "     Obrazy Docker NetDoc ($($netdocImages.Count)) zajmuja ~2-3 GB." -ForegroundColor DarkGray
+        $removeImages = Read-Host "  Usunac obrazy Docker? [T/N]"
         if ($removeImages -eq "T" -or $removeImages -eq "t") {
-            Write-Info "Szukam obrazow powiazanych z projektem netdoc..."
+            $removedCount = 0
+            foreach ($id in $netdocImages) {
+                $imgName = docker inspect --format "{{.RepoTags}}" $id 2>&1
+                Write-Info "Usuwam: $imgName ($id)"
+                docker rmi $id --force 2>&1 | Out-Null
+                if ($LASTEXITCODE -eq 0) { $removedCount++ }
+            }
 
-            # Obrazy zbudowane przez docker compose (oznaczone labelem projektu)
-            $imageIds = @(
+            # Weryfikacja: czy obrazy zniknely
+            $remainingImages = @(
                 docker images --filter "label=com.docker.compose.project=netdoc" `
-                              --format "{{.ID}}" 2>&1 |
-                Where-Object { $_ -ne "" }
+                              --format "{{.ID}}" 2>&1 | Where-Object { $_ -ne "" }
             )
-            # Takze obrazy z "netdoc" w nazwie repozytorium
-            $imageIds += @(
+            $remainingImages += @(
                 docker images --filter "reference=*netdoc*" --format "{{.ID}}" 2>&1 |
                 Where-Object { $_ -ne "" }
             )
-            $imageIds = $imageIds | Sort-Object -Unique
+            $remainingImages = $remainingImages | Sort-Object -Unique
 
-            if ($imageIds.Count -gt 0) {
-                foreach ($id in $imageIds) {
-                    $name = docker inspect --format "{{.RepoTags}}" $id 2>&1
-                    Write-Info "Usuwam obraz: $name ($id)"
-                    docker rmi $id --force 2>&1 | Out-Null
-                }
-                Write-OK "$($imageIds.Count) obraz(y) usunieto."
+            if ($remainingImages.Count -eq 0) {
+                Write-OK "Weryfikacja: wszystkie obrazy NetDoc usuniete ($removedCount szt.)."
             } else {
-                Write-Info "Nie znaleziono obrazow NetDoc do usuniecia."
+                Write-Warn "Weryfikacja: $($remainingImages.Count) obraz(y) nadal istnieje!"
+                Write-Info "Mozliwa przyczyna: obraz jest uzywany przez inny kontener."
+                Write-Info "Sprawdz: docker images | findstr netdoc"
             }
         }
     }
-} else {
-    Write-Warn "Docker niedostepny  -  pomijam zatrzymanie kontenerow."
-}
 
-# ── Task Scheduler (tylko pelne odinstalowanie) ───────────────────────────────
+    # ── Task Scheduler ────────────────────────────────────────────────────────
 
-if ($mode -eq "full") {
     Write-Step "Usuwam zadania z Task Scheduler..."
 
-    $tasks = @(
-        "NetDocScanner",
-        "NetDoc Watchdog"
-    )
-
-    foreach ($taskName in $tasks) {
-        $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-        if ($existing) {
-            # Zatrzymaj jesli dziala
+    if ($existingTasks.Count -eq 0) {
+        Write-OK "Brak zadan NetDoc w Task Scheduler  -  pomijam."
+    } else {
+        foreach ($taskName in $existingTasks) {
             Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-            # Usun
             Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-            Write-OK "Usunieto zadanie: $taskName"
-        } else {
-            Write-Info "Zadanie '$taskName' nie bylo zarejestrowane  -  pomijam."
+
+            # Weryfikacja
+            $stillExists = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+            if ($null -eq $stillExists) {
+                Write-OK "Usunieto zadanie: $taskName"
+            } else {
+                Write-Warn "Nie udalo sie usunac zadania: $taskName  -  sprobuj recznie w Task Scheduler"
+            }
         }
     }
 
     # ── Plik PID skanera ──────────────────────────────────────────────────────
 
-    Write-Step "Usuwam pliki runtime..."
-
-    $pidFile = Join-Path $ProjectDir "scanner.pid"
-    if (Test-Path $pidFile) {
+    if ($hasPid) {
+        Write-Step "Usuwam pliki runtime..."
         Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
-        Write-OK "Usunieto: scanner.pid"
-    }
-
-    # ── .env (opcjonalnie) ────────────────────────────────────────────────────
-
-    Write-Host ""
-    $removeEnv = Read-Host "  Usunac plik .env (konfiguracja z haslami)? [T/N]"
-    if ($removeEnv -eq "T" -or $removeEnv -eq "t") {
-        $envFile = Join-Path $ProjectDir ".env"
-        if (Test-Path $envFile) {
-            Remove-Item $envFile -Force -ErrorAction SilentlyContinue
-            Write-OK "Usunieto: .env"
+        if (-not (Test-Path $pidFile)) {
+            Write-OK "Usunieto: scanner.pid"
         } else {
-            Write-Info ".env nie istnieje  -  pomijam."
+            Write-Warn "Nie udalo sie usunac scanner.pid  -  plik moze byc zablokowany przez proces"
         }
     }
 
-    # ── Logi instalatora (skrypt setup i uninstall) ───────────────────────────
+    # ── .env (tylko jesli istnieje) ───────────────────────────────────────────
 
-    Write-Host ""
-    $removeLogs = Read-Host "  Usunac logi debugowania instalatora (netdoc-setup-debug-*.log)? [T/N]"
-    if ($removeLogs -eq "T" -or $removeLogs -eq "t") {
-        # Wyklucz aktualny log tego skryptu (jest jeszcze otwarty przez Transcript)
-        $logFiles = Get-ChildItem $ProjectDir -Filter "netdoc-*-debug-*.log" -ErrorAction SilentlyContinue |
-                    Where-Object { $_.FullName -ne $LogFile }
-        if ($logFiles) {
-            $logFiles | ForEach-Object {
-                Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
-                Write-Info "Usunieto: $($_.Name)"
+    if ($hasEnv) {
+        Write-Host ""
+        Write-Host "     Plik .env zawiera hasla i konfiguracje polaczenia." -ForegroundColor DarkGray
+        $removeEnv = Read-Host "  Usunac plik .env? [T/N]"
+        if ($removeEnv -eq "T" -or $removeEnv -eq "t") {
+            Remove-Item $envFile -Force -ErrorAction SilentlyContinue
+            if (-not (Test-Path $envFile)) {
+                Write-OK "Usunieto: .env"
+            } else {
+                Write-Warn "Nie udalo sie usunac .env"
             }
-            Write-OK "Logi instalatora usuniete."
         } else {
-            Write-Info "Brak logow instalatora do usuniecia."
+            Write-Info "Zachowano: .env"
+        }
+    }
+
+    # ── Logi instalatora (tylko jesli istnieja) ───────────────────────────────
+
+    if ($oldLogs.Count -gt 0) {
+        Write-Host ""
+        Write-Host "     Znaleziono $($oldLogs.Count) plik(ow) logow instalatora." -ForegroundColor DarkGray
+        $removeLogs = Read-Host "  Usunac logi debugowania instalatora? [T/N]"
+        if ($removeLogs -eq "T" -or $removeLogs -eq "t") {
+            $removedLogs = 0
+            $oldLogs | ForEach-Object {
+                Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+                if (-not (Test-Path $_.FullName)) {
+                    Write-Info "Usunieto: $($_.Name)"
+                    $removedLogs++
+                } else {
+                    Write-Warn "Nie udalo sie usunac: $($_.Name)"
+                }
+            }
+            Write-OK "Usunieto $removedLogs z $($oldLogs.Count) logow."
         }
     }
 }
@@ -269,7 +421,7 @@ if ($mode -eq "stop") {
     Write-Host "   NetDoc zostal odinstalowany." -ForegroundColor Green
     Write-Host "  ================================================" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "   Co zostalo zachowane (do recznego usuniecia):" -ForegroundColor White
+    Write-Host "   Co zostalo zachowane (do recznego usuniecia jesli chcesz):" -ForegroundColor White
     Write-Host "   - Katalog projektu: $ProjectDir" -ForegroundColor DarkGray
     Write-Host "   - Python i pip packages (zainstalowane globalnie)" -ForegroundColor DarkGray
     Write-Host "   - Docker Desktop (zainstalowany systemowo)" -ForegroundColor DarkGray
