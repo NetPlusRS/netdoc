@@ -2424,6 +2424,53 @@ def _ensure_task_scheduled() -> bool:
     return False
 
 
+WATCHDOG_TASK_NAME = "NetDoc Watchdog"
+
+
+def _ensure_watchdog_scheduled() -> None:
+    """Sprawdza czy zadanie 'NetDoc Watchdog' istnieje w Task Scheduler.
+    Jesli nie — rejestruje je przez install_watchdog.ps1.
+    Wywolywane przez skaner, zeby pilnowac watchdoga (wzajemna opieka).
+    """
+    if sys.platform != "win32":
+        return
+
+    import subprocess
+    check = subprocess.run(
+        ["schtasks", "/Query", "/TN", WATCHDOG_TASK_NAME, "/FO", "LIST"],
+        capture_output=True,
+    )
+    if check.returncode == 0:
+        logger.info("Task Scheduler: watchdog %r istnieje.", WATCHDOG_TASK_NAME)
+        return
+
+    # Watchdog nie istnieje — sprobuj zarejestrowac przez install_watchdog.ps1
+    working_dir = os.path.dirname(os.path.abspath(__file__))
+    watchdog_script = os.path.join(working_dir, "install_watchdog.ps1")
+    if not os.path.exists(watchdog_script):
+        logger.warning(
+            "Task Scheduler: watchdog %r nie istnieje i brak install_watchdog.ps1!",
+            WATCHDOG_TASK_NAME,
+        )
+        return
+
+    logger.warning(
+        "Task Scheduler: watchdog %r nie istnieje — rejestruje przez install_watchdog.ps1...",
+        WATCHDOG_TASK_NAME,
+    )
+    result = subprocess.run(
+        ["powershell", "-ExecutionPolicy", "Bypass", "-NonInteractive", "-File", watchdog_script],
+        capture_output=True,
+    )
+    out = result.stdout.decode("utf-8", errors="replace")
+    err = result.stderr.decode("utf-8", errors="replace")
+    if result.returncode == 0 and "OK" in out:
+        logger.info("Task Scheduler: watchdog %r zarejestrowany pomyslnie.", WATCHDOG_TASK_NAME)
+    else:
+        logger.warning(
+            "Task Scheduler: nie udalo sie zarejestrowac watchdoga (brak uprawnien admin?): %s",
+            (err or out).strip()[:200],
+        )
 
 
 _COMPOSE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docker-compose.yml")
@@ -2695,6 +2742,8 @@ def main():
 
     # Sprawdz i zarejestruj task w Windows Task Scheduler (autostart przy logowaniu)
     _ensure_task_scheduled()
+    # Sprawdz czy watchdog tez istnieje (wzajemna opieka — skaner pilnuje watchdoga)
+    _ensure_watchdog_scheduled()
 
     # Baza producentow OUI (IEEE MA-L/MA-M/MA-S) — pobierz jesli brak lub stara (>30 dni)
     try:

@@ -25,7 +25,9 @@ $settings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 4) `
     -MultipleInstances IgnoreNew `
     -StartWhenAvailable `
-    -RunOnlyIfNetworkAvailable:$false
+    -RunOnlyIfNetworkAvailable:$false `
+    -DontStopIfGoingOnBatteries `
+    -AllowStartIfOnBatteries
 
 $principal = New-ScheduledTaskPrincipal `
     -UserId "SYSTEM" `

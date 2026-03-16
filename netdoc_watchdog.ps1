@@ -197,28 +197,45 @@ if (Test-Path $ScannerPid) {
     }
 }
 
-# 2. Sprawdz czy task skanera uruchamial sie w ciagu ostatnich 30 min
-# Jesli nie (np. blad bateryjny, wylaczony task) — uruchom recznie
-try {
-    $taskInfo = Get-ScheduledTaskInfo -TaskName $TaskName -ErrorAction Stop
-    $lastRun  = $taskInfo.LastRunTime
-    $minsSince = [int]((Get-Date) - $lastRun).TotalMinutes
-    if ($minsSince -gt 30) {
-        Write-Log "Skaner nie uruchamial sie od ${minsSince} min — wymuszam uruchomienie." "WARN"
-        # Sprawdz czy nie dziala juz (lock file istnieje = dziala)
-        if (-not (Test-Path $ScannerPid)) {
+# 2. Sprawdz czy task skanera istnieje — jesli nie, zarejestuj go ponownie
+$scannerTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+if ($null -eq $scannerTask) {
+    Write-Log "WARN: Brak zadania Task Scheduler '$TaskName' — rejestruje przez install_autostart.ps1..." "WARN"
+    $installScript = Join-Path $ProjectDir "install_autostart.ps1"
+    if (Test-Path $installScript) {
+        $installOut = & powershell -ExecutionPolicy Bypass -NonInteractive -File $installScript 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log "NetDocScanner: zarejestrowano pomyslnie." "INFO"
             Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-            Write-Log "NetDocScanner — wymuszone uruchomienie." "WARN"
+            Write-Log "NetDocScanner: uruchomiono po rejestracji." "INFO"
         } else {
-            Write-Log "scanner.pid istnieje — skan w toku, pomijam wymuszenie." "INFO"
+            Write-Log "BLAD: nie udalo sie zarejestrowac '$TaskName': $($installOut | Select-Object -First 2 | Out-String)" "ERROR"
         }
     } else {
-        if (-not $Quiet) {
-            Write-Log "Skaner OK — ostatnie uruchomienie $minsSince min temu."
-        }
+        Write-Log "BLAD: brak $installScript — nie mozna zarejestrowac skanera!" "ERROR"
     }
-} catch {
-    Write-Log "Nie mozna odczytac stanu NetDocScanner task: $_" "WARN"
+} else {
+    # Task istnieje — sprawdz czy uruchamial sie w ciagu ostatnich 30 min
+    try {
+        $taskInfo  = Get-ScheduledTaskInfo -TaskName $TaskName -ErrorAction Stop
+        $lastRun   = $taskInfo.LastRunTime
+        $minsSince = [int]((Get-Date) - $lastRun).TotalMinutes
+        if ($minsSince -gt 30) {
+            Write-Log "Skaner nie uruchamial sie od ${minsSince} min — wymuszam uruchomienie." "WARN"
+            if (-not (Test-Path $ScannerPid)) {
+                Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+                Write-Log "NetDocScanner — wymuszone uruchomienie." "WARN"
+            } else {
+                Write-Log "scanner.pid istnieje — skan w toku, pomijam wymuszenie." "INFO"
+            }
+        } else {
+            if (-not $Quiet) {
+                Write-Log "Skaner OK — ostatnie uruchomienie $minsSince min temu."
+            }
+        }
+    } catch {
+        Write-Log "Nie mozna odczytac stanu NetDocScanner task: $_" "WARN"
+    }
 }
 
 # ── Lab environment — pilnowanie wg ustawienia lab_monitoring_enabled ──────────
