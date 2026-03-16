@@ -36,10 +36,31 @@ logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)    # wycisz INFO o kazdym HTTP request
 logging.getLogger("paramiko").setLevel(logging.CRITICAL)  # wycisz "Error reading SSH protocol banner" i inne wewn. bledy paramiko
 
-# Detekcja ochrony SSH (fail2ban, rate-limit, hardening)
-# Wypełniany przez _try_ssh(), opróżniany przez _process_device() po teście SSH.
-_ssh_protection_events: dict = {}   # ip -> {"count": N, "port": P, "last": datetime}
-_ssh_protection_lock = threading.Lock()
+# Detekcja ochrony usług (fail2ban, rate-limit, host-block, lockout, TCP wrapper...)
+# Klucz: (ip, service) → {"count": N, "port": P, "reason": str, "last": datetime}
+# Wypełniany przez funkcje _try_*/discover_*, opróżniany przez _process_device().
+_protection_events: dict = {}
+_protection_lock = threading.Lock()
+
+
+def _record_protection(ip: str, service: str, port: int, reason: str) -> None:
+    """Rejestruje wykrycie ochrony aktywnej na porcie serwisu (thread-safe)."""
+    with _protection_lock:
+        key = (ip, service)
+        evt = _protection_events.setdefault(
+            key, {"count": 0, "port": port, "reason": reason, "last": None}
+        )
+        evt["count"] += 1
+        evt["port"] = port
+        evt["reason"] = reason
+        evt["last"] = datetime.utcnow()
+
+
+def _drain_protection_events(ip: str) -> list:
+    """Pobiera i usuwa wszystkie zdarzenia ochrony dla danego IP."""
+    with _protection_lock:
+        keys = [k for k in _protection_events if k[0] == ip]
+        return [(_svc, _protection_events.pop((ip, _svc))) for _svc in [k[1] for k in keys]]
 
 # Zapisuj rowniez do pliku (dostepnego przez panel www)
 _LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")
@@ -505,49 +526,55 @@ def _try_ssh(ip: str, port: int, username: str, password: str) -> bool:
         return False
     except (paramiko.ssh_exception.SSHException, EOFError) as e:
         # Połączenie zresetowane przed banerem SSH — sygnał ochrony aktywnej
-        # (fail2ban, rate-limit, TCP wrapper, IDS) — odnotuj w side-channel
         msg = str(e).lower()
         if "banner" in msg or "eof" in msg or isinstance(e, EOFError):
-            with _ssh_protection_lock:
-                evt = _ssh_protection_events.setdefault(ip, {"count": 0, "port": port, "last": None})
-                evt["count"] += 1
-                evt["port"] = port
-                evt["last"] = datetime.utcnow()
+            _record_protection(ip, "SSH", port, "banner-reset")
         return False
     except Exception:
         return False
 
 
-def _note_ssh_protection(db, device_id: int, ip: str, evt: dict) -> None:
-    """Loguje i zapisuje do asset_notes wykrycie ochrony SSH (fail2ban/rate-limit).
+def _note_protection(db, device_id: int, ip: str, service: str, evt: dict) -> None:
+    """Loguje i zapisuje do asset_notes wykrycie aktywnej ochrony serwisu.
 
-    Aktualizuje lub dodaje linię 'SSH-PROTECTED:' w asset_notes urządzenia.
-    Nie nadpisuje innych notatek — tylko zarządza własną linią.
+    Każdy serwis ma własny tag [SVC-PROTECTED ...] w asset_notes.
+    Tagi serwisów są aktualizowane niezależnie — nie nadpisują się wzajemnie
+    ani nie usuwają ręcznych notatek użytkownika.
+    Pierwszy tag zawsze na początku — widoczny w popoverze MAC (limit 60 znaków).
     """
-    ts = evt["last"].strftime("%Y-%m-%d %H:%M") if evt.get("last") else "?"
-    port = evt.get("port", 22)
-    count = evt.get("count", 1)
-    logger.info("SSH PROTECTED: %-18s port=%d — połączenie zresetowane przed banerem x%d "
-                "(fail2ban / rate-limit / TCP wrapper?)", ip, port, count)
+    ts  = evt["last"].strftime("%Y-%m-%d %H:%M") if evt.get("last") else "?"
+    port   = evt.get("port", 0)
+    count  = evt.get("count", 1)
+    reason = evt.get("reason", "protection-detected")
+    logger.info("PROTECTED: %-18s %s port=%d — %s x%d",
+                ip, service, port, reason, count)
 
-    note_line = f"[SSH-PROTECTED port={port} detected={ts}]"
+    tag_key  = f"{service.upper()}-PROTECTED"
+    note_tag = f"[{tag_key} port={port} reason={reason} detected={ts}]"
+    pattern  = rf"\[{tag_key}[^\]]*\]"
     try:
+        import re as _re
         dev = db.query(Device).filter(Device.id == device_id).first()
         if dev is None:
             return
         current = dev.asset_notes or ""
-        # Tag zawsze na początku — widoczny w popoverze MAC (który obcina do 60 znaków)
-        import re as _re
-        if _re.search(r"\[SSH-PROTECTED[^\]]*\]", current):
-            dev.asset_notes = _re.sub(r"\[SSH-PROTECTED[^\]]*\]", note_line, current)
+        if _re.search(pattern, current):
+            dev.asset_notes = _re.sub(pattern, note_tag, current)
         else:
+            # Nowy tag — wstaw na początku żeby był widoczny w popoverze MAC
             rest = current.strip()
-            dev.asset_notes = (note_line + ("\n" + rest if rest else ""))
+            dev.asset_notes = note_tag + ("\n" + rest if rest else "")
         db.commit()
-        logger.info("SSH PROTECTED: %-18s — zapisano w asset_notes urządzenia id=%d", ip, device_id)
+        logger.info("PROTECTED: %-18s %s — zapisano w asset_notes id=%d", ip, service, device_id)
     except Exception as exc:
-        logger.warning("SSH PROTECTED: nie udało się zapisać notatki dla %s: %s", ip, exc)
+        logger.warning("PROTECTED: nie udało się zapisać notatki %s %s: %s", service, ip, exc)
         db.rollback()
+
+
+def _process_protection_events(db, device_id: int, ip: str) -> None:
+    """Przetwarza wszystkie zdarzenia ochrony zebrane podczas testu usług dla danego IP."""
+    for service, evt in _drain_protection_events(ip):
+        _note_protection(db, device_id, ip, service, evt)
 
 
 _SSH_PORTS = (22, 2222, 22222)
@@ -706,6 +733,13 @@ def _web_moxa_login(base_url: str, u: str, p: str, fake_challenge: str) -> bool:
 def _web_basic_ok(url: str, u: str, p: str) -> bool:
     try:
         r = httpx.get(url, auth=(u, p), timeout=3, follow_redirects=True, verify=False)
+        if r.status_code == 429:
+            # 429 Too Many Requests = rate-limit / WAF aktywny
+            from urllib.parse import urlparse as _up
+            _h = _up(url).hostname or ""
+            if _h:
+                _record_protection(_h, "Web", _up(url).port or 80, "http-429-rate-limit")
+            return False
         if r.status_code not in (200, 201, 204):
             return False
         t = r.text.lower()
@@ -935,6 +969,11 @@ def discover_ftp(ip: str, pairs: list) -> Optional[tuple]:
         except ftplib.error_perm:
             if _VERBOSE:
                 logger.info("FTP FAIL  %-18s u=%s (error_perm)", ip, u)
+            return None
+        except ftplib.error_temp as e:
+            # Kod 421 "Too many connections" = rate-limit aktywny
+            if "421" in str(e) or "too many" in str(e).lower():
+                _record_protection(ip, "FTP", 21, "too-many-connections")
             return None
         except Exception:
             return None
@@ -1168,6 +1207,10 @@ def discover_rdp(ip: str, pairs: list) -> Optional[tuple]:
                 logger.info("RDP OK    %-18s u=%s (SMB login)", ip, u)
             return pair
         except Exception as exc:
+            # STATUS_ACCOUNT_LOCKED_OUT = konto zablokowane po zbyt wielu próbach logowania
+            err_str = str(exc)
+            if "ACCOUNT_LOCKED_OUT" in err_str or "0xC0000234" in err_str:
+                _record_protection(ip, "RDP", 445, "account-locked-out")
             if _VERBOSE:
                 logger.info("RDP FAIL  %-18s u=%-15s err=%s", ip, u, type(exc).__name__)
             return None
@@ -1389,7 +1432,10 @@ def _try_mysql(ip: str, port: int, username: str, password: str) -> bool:
     except ImportError:
         return False
     except pymysql.err.OperationalError as e:
-        # "Access denied" — polaczenie OK ale odmowa dostępu (zly login)
+        # errno 1129: "Host is blocked because of many connection errors" = ochrona aktywna
+        if e.args and e.args[0] == 1129:
+            _record_protection(ip, "MySQL", port, "host-blocked")
+        # errno 1045: "Access denied" — normalny zły login
         return False
     except Exception:
         return False
@@ -1421,7 +1467,11 @@ def _try_postgres(ip: str, port: int, username: str, password: str) -> bool:
         return True
     except ImportError:
         return False
-    except psycopg2.OperationalError:
+    except psycopg2.OperationalError as e:
+        msg = str(e).lower()
+        # "pg_hba.conf rejects connection" = IP nie na whitelist = celowa blokada
+        if "pg_hba" in msg:
+            _record_protection(ip, "PgSQL", port, "pg-hba-reject")
         return False
     except Exception:
         return False
@@ -1618,11 +1668,6 @@ def _process_device(device_id: int, ip: str,
                     res["ssh"] = True; res["new"] += 1
                 else:
                     logger.info("SSH brak: %-18s (wyprobowano %d par)", ip, len(ssh_to_try))
-                # Sprawdź czy wykryto ochronę SSH (fail2ban / banner reset)
-                with _ssh_protection_lock:
-                    evt = _ssh_protection_events.pop(ip, None)
-                if evt:
-                    _note_ssh_protection(db, device_id, ip, evt)
 
         if telnet_to_try:
             _open_telnet = [p for p in _TELNET_PORTS
@@ -1763,6 +1808,9 @@ def _process_device(device_id: int, ip: str,
         else:
             # Zapisz aktualny stan rotacji do DB
             _save_tried(device_id, tried)
+
+        # Przetwórz wszystkie zdarzenia ochrony zebrane podczas tego cyklu testów
+        _process_protection_events(db, device_id, ip)
 
     except Exception as exc:
         logger.debug("Blad device_id=%s ip=%s: %s", device_id, ip, exc)
