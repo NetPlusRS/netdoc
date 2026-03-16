@@ -47,7 +47,8 @@ async def _async_get(ip: str, community: str, oid: str, timeout: int = 2) -> Opt
             ContextData(),
             ObjectType(ObjectIdentity(oid)),
         )
-        # asyncio.wait_for gwarantuje anulowanie jesli pysnmp nie wroci w czasie
+        # asyncio.wait_for jako pierwsza warstwa — NIE gwarantuje anulowania w pysnmp 6.x.
+        # Prawdziwy timeout zapewnia daemon thread z t.join(timeout) w _snmp_get() powyżej.
         error_indication, error_status, _, var_binds = await asyncio.wait_for(
             coro, timeout=timeout + 1
         )

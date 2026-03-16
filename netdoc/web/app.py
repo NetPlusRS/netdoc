@@ -563,6 +563,10 @@ def create_app():
             "cred_postgres_enabled":   ("1",  "config"),
             "screenshot_ttl_hours":    ("12", "config"),
             "ai_assessment_enabled":   ("1",  "config"),
+            "lab_monitoring_enabled":  ("0",  "config"),
+            "network_ranges":          ("",   "worker_settings"),
+            "scan_vpn_networks":       ("0",  "worker_settings"),
+            "scan_virtual_networks":   ("0",  "worker_settings"),
         }
         _db_init = SessionLocal()
         try:
@@ -2730,7 +2734,7 @@ def create_app():
                 msg += " Siec netdoc_lab usunieta."
             return jsonify({"ok": True, "message": msg})
         except Exception as exc:
-            logger.exception("lab_stop nieoczekiwany blad: %s", exc)
+            app.logger.exception("lab_stop nieoczekiwany blad: %s", exc)
             return jsonify({"ok": False, "message": f"Nieoczekiwany blad: {exc}"})
 
     # ── docker nuke (pełny reset) ───────────────────────────────────────────────
