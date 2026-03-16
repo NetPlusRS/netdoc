@@ -304,15 +304,13 @@ if ($mode -eq "stop") {
         Write-Host "     Obrazy Docker NetDoc ($($netdocImages.Count)) zajmuja ~2-3 GB." -ForegroundColor DarkGray
         $removeImages = Read-Host "  Usunac obrazy Docker? [T/N]"
         if ($removeImages -eq "T" -or $removeImages -eq "t") {
-            $removedCount = 0
-            foreach ($id in $netdocImages) {
-                $imgName = docker inspect --format "{{.RepoTags}}" $id 2>&1
-                Write-Info "Usuwam: $imgName ($id)"
-                docker rmi $id --force 2>&1 | Out-Null
-                if ($LASTEXITCODE -eq 0) { $removedCount++ }
-            }
+            Write-Info "Usuwam obrazy przez 'docker compose down --rmi all'..."
+            # --rmi all jest bardziej niezawodne niz reczne docker rmi po ID:
+            # Docker Compose zna dokladnie ktore obrazy naleza do projektu
+            docker compose down --rmi all 2>&1 | Out-Host
 
             # Weryfikacja: czy obrazy zniknely
+            Start-Sleep -Seconds 2
             $remainingImages = @(
                 docker images --filter "label=com.docker.compose.project=netdoc" `
                               --format "{{.ID}}" 2>&1 | Where-Object { $_ -ne "" }
@@ -324,11 +322,11 @@ if ($mode -eq "stop") {
             $remainingImages = $remainingImages | Sort-Object -Unique
 
             if ($remainingImages.Count -eq 0) {
-                Write-OK "Weryfikacja: wszystkie obrazy NetDoc usuniete ($removedCount szt.)."
+                Write-OK "Weryfikacja: wszystkie obrazy NetDoc usuniete."
             } else {
                 Write-Warn "Weryfikacja: $($remainingImages.Count) obraz(y) nadal istnieje!"
                 Write-Info "Mozliwa przyczyna: obraz jest uzywany przez inny kontener."
-                Write-Info "Sprawdz: docker images | findstr netdoc"
+                Write-Info "Sprobuj recznie: docker rmi --force $(docker images --filter 'reference=*netdoc*' -q)"
             }
         }
     }

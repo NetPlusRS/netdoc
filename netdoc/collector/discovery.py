@@ -1024,6 +1024,47 @@ def _tcp_reachable(ip: str) -> bool:
     return False
 
 
+def _tcp_sweep_fallback(network_range: str) -> list:
+    """TCP connect fallback gdy nmap jest niedostepny (np. Npcap nie jest jeszcze zaladowany).
+
+    Sprawdza do 5 popularnych portow TCP dla kazdego hosta w podsieci.
+    Timeout 0.2s per port — dzieki ThreadPoolExecutor skan /24 trwa ~3-8s.
+    Uzywany automatycznie gdy nmap -sn rzuci PortScannerError.
+    """
+    import ipaddress
+    _PROBE_PORTS = [80, 443, 22, 23, 8080]
+    _TIMEOUT = 0.2
+
+    def _is_up(ip: str) -> bool:
+        for port in _PROBE_PORTS:
+            try:
+                with _socket.create_connection((ip, port), timeout=_TIMEOUT):
+                    return True
+            except OSError:
+                pass
+        return False
+
+    try:
+        net = ipaddress.IPv4Network(network_range, strict=False)
+    except ValueError:
+        return []
+
+    all_ips = [str(ip) for ip in net.hosts()]
+    if len(all_ips) > 2048:
+        logger.warning(
+            "TCP sweep fallback: siec %s zbyt duza (%d hostow) — pomijam.",
+            network_range, len(all_ips)
+        )
+        return []
+
+    with ThreadPoolExecutor(max_workers=128) as pool:
+        results = list(pool.map(_is_up, all_ips))
+
+    active = [ip for ip, up in zip(all_ips, results) if up]
+    logger.info("TCP fallback sweep: %d aktywnych hostow w %s", len(active), network_range)
+    return active
+
+
 def ping_sweep(network_range):
     """Ping sweep przez nmap -sn (ARP/ICMP) + TCP fallback dla hostow z ICMP DROP.
 
@@ -1038,8 +1079,13 @@ def ping_sweep(network_range):
         logger.warning("Ping sweep: nmap output encoding error, pomijam")
         return []
     except nmap.PortScannerError as e:
-        logger.warning("Ping sweep: nmap error dla %s, pomijam: %s", network_range, e)
-        return []
+        logger.error(
+            "Ping sweep: nmap niedostepny dla %s (%s). "
+            "Mozliwa przyczyna: Npcap nie jest jeszcze zaladowany po swiezej instalacji nmap. "
+            "Probuje TCP fallback...",
+            network_range, e
+        )
+        return _tcp_sweep_fallback(network_range)
     active = [h for h in nm.all_hosts() if nm[h].state() == "up"]
     logger.info("Aktywne hosty (nmap): %d w %s", len(active), network_range)
     return active

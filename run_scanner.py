@@ -2695,16 +2695,28 @@ def main():
     # Sprawdz i zarejestruj task w Windows Task Scheduler (autostart przy logowaniu)
     _ensure_task_scheduled()
 
+    # Baza producentow OUI (IEEE MA-L/MA-M/MA-S) — pobierz jesli brak lub stara (>30 dni)
+    try:
+        from netdoc.collector.oui_lookup import oui_db
+        if oui_db.needs_update():
+            logger.info("Pobieranie bazy producentow OUI (IEEE MA-L/MA-M/MA-S)...")
+            oui_db.update(timeout=60)
+        else:
+            oui_db.load()
+    except Exception as _oui_exc:
+        logger.warning("Nie udalo sie zaladowac/pobrac bazy OUI: %s", _oui_exc)
+
     with SessionLocal() as db:
-        seed_snmp_communities(db)
-        seed_default_credentials(db)
-        seed_lab_devices(db)
+        # Zarejestruj skaner w DB PRZED seedami — UI widzi status od razu
         _set_status(db, {
             "scanner_mode": "host",
             "scanner_pid": str(os.getpid()),
             "scanner_started_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
             "scanner_job": "-",
         })
+        seed_snmp_communities(db)
+        seed_default_credentials(db)
+        seed_lab_devices(db)
         # Inicjalizuj ustawienia konfiguracyjne (tylko jesli nie istnieja)
         from netdoc.storage.models import SystemStatus
         _config_defaults = {
