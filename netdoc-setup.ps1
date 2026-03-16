@@ -789,10 +789,14 @@ $ExpectedContainers = @(
     "netdoc-web",
     "netdoc-grafana",
     "netdoc-prometheus",
+    "netdoc-loki",
+    "netdoc-promtail",
     "netdoc-ping",
     "netdoc-snmp",
     "netdoc-cred",
-    "netdoc-vuln"
+    "netdoc-vuln",
+    "netdoc-internet",
+    "netdoc-community"
 )
 
 $maxContainerWait = 120   # sekund lacznego oczekiwania

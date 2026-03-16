@@ -24,6 +24,7 @@ $ExpectedContainers = @(
     "netdoc-cred"
     "netdoc-vuln"
     "netdoc-internet"
+    "netdoc-community"
 )
 
 function Write-Log {

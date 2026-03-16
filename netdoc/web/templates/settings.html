@@ -4,9 +4,14 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h5 class="mb-0"><i class="bi bi-gear me-2"></i>Ustawienia systemu</h5>
-  <a href="{{ grafana_url }}/d/netdoc-main" target="_blank" class="btn btn-outline-warning btn-sm">
-    <i class="bi bi-bar-chart-fill me-1"></i>Pokaz w Grafanie
-  </a>
+  <div class="d-flex gap-2 align-items-center">
+    <a href="#scan-advanced" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-shield-shaded me-1"></i>Zaawansowane nmap
+    </a>
+    <a href="{{ grafana_url }}/d/netdoc-main" target="_blank" class="btn btn-outline-warning btn-sm">
+      <i class="bi bi-bar-chart-fill me-1"></i>Pokaz w Grafanie
+    </a>
+  </div>
 </div>
 
 {# ── Ustawienia workerów ─────────────────────────────────────────────────── #}

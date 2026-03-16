@@ -453,7 +453,8 @@ def _fill_missing_screenshots(max_devices: int = 5, delay_s: float = 3.0) -> int
             db.commit()
             existing_ids.add(vuln.device_id)
             captured += 1
-            _log.info("RTSP frame captured: %s port %d", dev.ip, port)
+            import logging as _logging
+            _logging.getLogger(__name__).info("RTSP frame captured: %s port %d", dev.ip, port)
             if captured < max_devices:
                 _time.sleep(delay_s)
 
@@ -542,6 +543,35 @@ def create_app():
                     "ALTER TABLE device_screenshots ADD COLUMN IF NOT EXISTS http_scheme VARCHAR(5)"
                 ))
                 _conn.commit()
+    except Exception:
+        pass
+
+    # Inicjalizuj ustawienia konfiguracyjne jesli nie istnieja (idempotentne)
+    # Rowniez uruchamiane przez run_scanner.py — tutaj jako fallback gdy skaner jeszcze nie startował
+    try:
+        _cfg_defaults_web = {
+            "full_scan_max_age_days":  ("7",  "config"),
+            "full_scan_enabled":       ("1",  "config"),
+            "inventory_enabled":       ("1",  "config"),
+            "cred_snmp_enabled":       ("1",  "config"),
+            "cred_ssh_enabled":        ("1",  "config"),
+            "cred_ftp_enabled":        ("1",  "config"),
+            "cred_web_enabled":        ("1",  "config"),
+            "cred_rdp_enabled":        ("1",  "config"),
+            "cred_mssql_enabled":      ("1",  "config"),
+            "cred_mysql_enabled":      ("1",  "config"),
+            "cred_postgres_enabled":   ("1",  "config"),
+            "screenshot_ttl_hours":    ("12", "config"),
+            "ai_assessment_enabled":   ("1",  "config"),
+        }
+        _db_init = SessionLocal()
+        try:
+            for _k, (_v, _cat) in _cfg_defaults_web.items():
+                if not _db_init.query(SystemStatus).filter(SystemStatus.key == _k).first():
+                    _db_init.add(SystemStatus(key=_k, category=_cat, value=_v))
+            _db_init.commit()
+        finally:
+            _db_init.close()
     except Exception:
         pass
 
@@ -2731,7 +2761,7 @@ def create_app():
             self_container = None
             for c in client.containers.list(all=True):
                 is_netdoc = c.name.startswith("netdoc-")
-                is_lab = c.name.startswith("lab-")
+                is_lab = c.name.startswith("netdoc-lab-")
                 if not (is_netdoc or is_lab):
                     continue
                 if c.name == "netdoc-web":
@@ -2820,7 +2850,8 @@ def create_app():
         "prometheus": "netdoc-prometheus",
         "loki":     "netdoc-loki",
         "promtail": "netdoc-promtail",
-        "internet": "netdoc-internet",
+        "internet":   "netdoc-internet",
+        "community":  "netdoc-community",
     }
 
     @app.route("/settings/docker/restart-stream")
