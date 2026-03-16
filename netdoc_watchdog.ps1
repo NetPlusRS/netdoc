@@ -49,11 +49,42 @@ function Write-Log {
     }
 }
 
+# ── Funkcja: czekaj az Docker odpowie (bez restartu) ───────────────────────────
+function Wait-ForDocker {
+    param([int]$MaxWaitSec = 180, [int]$AlreadyWaitedSec = 0)
+    $waited = $AlreadyWaitedSec
+    while ($waited -lt $MaxWaitSec) {
+        Start-Sleep -Seconds 10
+        $waited += 10
+        $result = docker info 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log "Docker Desktop odpowiada po ${waited}s — OK" "INFO"
+            return $true
+        }
+        Write-Log "Czekam na Docker... ${waited}s/${MaxWaitSec}s" "INFO"
+    }
+    return $false
+}
+
 # ── Funkcja: naprawa Docker Desktop ────────────────────────────────────────────
 function Repair-DockerDesktop {
     Write-Log "Docker nie odpowiada — próba naprawy Docker Desktop..." "WARN"
 
-    # Krok 1: Kill wszystkich procesow Docker Desktop i backendu
+    # Krok 1: Sprawdz czy Docker Desktop juz sie uruchamia (nie zabijaj jesli niedawno startowal)
+    $ddProc = Get-Process -Name "Docker Desktop" -ErrorAction SilentlyContinue | Sort-Object StartTime | Select-Object -First 1
+    if ($ddProc) {
+        $runningSecs = [int]((Get-Date) - $ddProc.StartTime).TotalSeconds
+        if ($runningSecs -lt 180) {
+            Write-Log "Docker Desktop uruchamia sie od ${runningSecs}s — czekam zamiast restartowac (moze byc cold start)..." "WARN"
+            $ok = Wait-ForDocker -MaxWaitSec 180 -AlreadyWaitedSec $runningSecs
+            if ($ok) { return $true }
+            Write-Log "Docker Desktop nie odpowiedzial po 180s od startu — wymuszam restart." "WARN"
+        } else {
+            Write-Log "Docker Desktop dziala od ${runningSecs}s ale nie odpowiada — wymuszam restart." "WARN"
+        }
+    }
+
+    # Krok 2: Kill wszystkich procesow Docker Desktop i backendu
     $dockerProcs = @("Docker Desktop", "com.docker.backend", "dockerd", "com.docker.dev-envs")
     foreach ($proc in $dockerProcs) {
         $p = Get-Process -Name $proc -ErrorAction SilentlyContinue
@@ -65,7 +96,7 @@ function Repair-DockerDesktop {
 
     Start-Sleep -Seconds 5
 
-    # Krok 2: Upewnij sie ze procesy sa martwe
+    # Krok 3: Upewnij sie ze procesy sa martwe
     foreach ($proc in $dockerProcs) {
         $p = Get-Process -Name $proc -ErrorAction SilentlyContinue
         if ($p) {
@@ -75,7 +106,7 @@ function Repair-DockerDesktop {
 
     Start-Sleep -Seconds 3
 
-    # Krok 3: Uruchom Docker Desktop na nowo
+    # Krok 4: Uruchom Docker Desktop na nowo
     $dockerExe = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
     if (-not (Test-Path $dockerExe)) {
         Write-Log "BLAD: Nie znaleziono Docker Desktop w: $dockerExe" "ERROR"
@@ -85,28 +116,15 @@ function Repair-DockerDesktop {
     Write-Log "Uruchamiam Docker Desktop..." "WARN"
     Start-Process -FilePath $dockerExe
 
-    # Krok 4: Czekaj az Docker pipe bedzie dostepny (max 90s)
-    $maxWait = 90
-    $waited  = 0
-    $ok      = $false
-    while ($waited -lt $maxWait) {
-        Start-Sleep -Seconds 5
-        $waited += 5
-        $result = docker info 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            Write-Log "Docker Desktop odpowiada po ${waited}s — OK" "INFO"
-            $ok = $true
-            break
-        }
-        Write-Log "Czekam na Docker... ${waited}s/${maxWait}s" "INFO"
-    }
+    # Krok 5: Czekaj az Docker pipe bedzie dostepny (max 180s — cold start moze trwac 2-3 min)
+    $ok = Wait-ForDocker -MaxWaitSec 180
 
     if (-not $ok) {
-        Write-Log "BLAD: Docker Desktop nie uruchomił sie w ciagu ${maxWait}s!" "ERROR"
+        Write-Log "BLAD: Docker Desktop nie uruchomił sie w ciagu 180s!" "ERROR"
         return $false
     }
 
-    # Krok 5: Dodatkowe 5s na stabilizacje daemona przed uruchomieniem kontenerow
+    # Krok 6: Dodatkowe 5s na stabilizacje daemona przed uruchomieniem kontenerow
     Start-Sleep -Seconds 5
     return $true
 }
