@@ -545,18 +545,29 @@ def discover_ssh(ip: str, pairs: list, open_ports: dict | None = None) -> Option
 
 
 # Cache odpowiedzi bez auth — porownujemy z odpowiedzia z credentials
-_no_auth_cache: dict = {}   # url -> (status_code, text_hash)
+_no_auth_cache: dict = {}          # url -> (status_code, text_lower, timestamp)
+_NO_AUTH_CACHE_TTL  = 300          # 5 min — odswiezaj po restarcie urzadzenia
+_NO_AUTH_CACHE_MAX  = 500          # limit wpisow — zapobiega nieograniczonemu wzrostowi
 
 
 def _get_no_auth(url: str) -> tuple:
-    """Zwraca (status, text_lower) dla URL bez credentials (cachowane)."""
-    if url not in _no_auth_cache:
-        try:
-            r = httpx.get(url, timeout=5, follow_redirects=True, verify=False)
-            _no_auth_cache[url] = (r.status_code, r.text.lower())
-        except Exception:
-            _no_auth_cache[url] = (0, "")
-    return _no_auth_cache[url]
+    """Zwraca (status, text_lower) dla URL bez credentials (cachowane z TTL)."""
+    import time as _time
+    now = _time.monotonic()
+    cached = _no_auth_cache.get(url)
+    if cached and (now - cached[2]) < _NO_AUTH_CACHE_TTL:
+        return cached[0], cached[1]
+    # Evict najstarszy wpis jesli przekroczono limit
+    if len(_no_auth_cache) >= _NO_AUTH_CACHE_MAX:
+        oldest = min(_no_auth_cache, key=lambda k: _no_auth_cache[k][2])
+        del _no_auth_cache[oldest]
+    try:
+        r = httpx.get(url, timeout=5, follow_redirects=True, verify=False)
+        _no_auth_cache[url] = (r.status_code, r.text.lower(), now)
+        return r.status_code, r.text.lower()
+    except Exception:
+        # Nie cachuj bledow — ponow probe przy nastepnym wywolaniu
+        return 0, ""
 
 
 # Web — Moxa NPort challenge-response SHA256 ------------------------------------
@@ -573,9 +584,11 @@ def _moxa_encode_user(username: str, key_hex: str) -> str:
     md_tbl = [_TBL_MOXA.rindex(key_hex[i].lower()) * 16 +
               _TBL_MOXA.rindex(key_hex[i + 1].lower())
               for i in range(0, len(key_hex), 2)]
-    pw_tbl = [_ASCII_MOXA.rfind(ch) for ch in username]
+    # rfind zwraca -1 dla znakow spoza tablicy — zastap 0 (XOR neutralny)
+    pw_tbl = [max(0, _ASCII_MOXA.rfind(ch)) for ch in username]
     result = list(md_tbl)
-    for i in range(len(pw_tbl)):
+    # Ogranicz do len(result) — username dluzszy niz klucz (32B) spowodowalby IndexError
+    for i in range(min(len(pw_tbl), len(result))):
         result[i] = md_tbl[i] ^ pw_tbl[i]
     return "".join(f"{b & 0xFF:02x}" for b in result)
 

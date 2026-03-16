@@ -68,7 +68,7 @@ def _get_credential(db: Session, device: Device, method: CredentialMethod) -> Op
         return cred
     return (
         db.query(Credential)
-        .filter(Credential.device_id == None, Credential.method == method)
+        .filter(Credential.device_id.is_(None), Credential.method == method)
         .order_by(Credential.priority)
         .first()
     )
@@ -129,7 +129,7 @@ def _ensure_snmp_credential(db: Session, device: Device) -> Optional["Credential
         # Cred moze byc w DB pod inna nazwa — zwroc syntetyczny z community
         from netdoc.storage.models import Credential as Cred
         fast = db.query(Cred).filter(
-            Cred.device_id == None, Cred.method == CredentialMethod.snmp,
+            Cred.device_id.is_(None), Cred.method == CredentialMethod.snmp,
             Cred.username == device.snmp_community,
         ).first()
         if fast:
@@ -154,7 +154,7 @@ def _ensure_snmp_credential(db: Session, device: Device) -> Optional["Credential
     db_communities = [
         c.username for c in
         db.query(Credential)
-          .filter(Credential.device_id == None, Credential.method == CredentialMethod.snmp)
+          .filter(Credential.device_id.is_(None), Credential.method == CredentialMethod.snmp)
           .order_by(Credential.priority)
           .all()
         if c.username
@@ -169,7 +169,7 @@ def _ensure_snmp_credential(db: Session, device: Device) -> Optional["Credential
     from datetime import datetime
     global_cred = (
         db.query(Credential)
-        .filter(Credential.device_id == None, Credential.method == CredentialMethod.snmp,
+        .filter(Credential.device_id.is_(None), Credential.method == CredentialMethod.snmp,
                 Credential.username == working)
         .first()
     )
@@ -182,7 +182,7 @@ def _ensure_snmp_credential(db: Session, device: Device) -> Optional["Credential
     # Zapisz jako nowy global default (lub per-device jesli global ma inna wartosc)
     global_any = (
         db.query(Credential)
-        .filter(Credential.device_id == None, Credential.method == CredentialMethod.snmp)
+        .filter(Credential.device_id.is_(None), Credential.method == CredentialMethod.snmp)
         .first()
     )
     if global_any is None:
