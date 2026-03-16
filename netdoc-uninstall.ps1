@@ -3,8 +3,9 @@
 #
 # Tryby:
 #   [1] Zatrzymaj kontenery  -  zachowuje dane i konfiguracje
-#   [2] Pelne odinstalowanie  -  usuwa kontenery, voluminy, zadania Task Scheduler
-#   [3] Anuluj
+#   [2] Pelne odinstalowanie  -  wymaga wpisania USUN (z retry na literowke)
+#   [3] Pelne odinstalowanie auto  -  odlicza 30s, wcisnij klawisz aby anulowac
+#   [4] Anuluj
 #
 # Uzycie:
 #   Kliknij dwukrotnie netdoc-uninstall.bat
@@ -57,6 +58,27 @@ function Show-Pause([string]$msg = "Nacisnij Enter aby kontynuowac...") {
     Write-Host ""
     Write-Host "  $msg" -ForegroundColor DarkGray
     Read-Host | Out-Null
+}
+
+function Wait-WithCountdown {
+    # Odlicza $Seconds sekund. Zwraca $true jesli czas uplynal (kontynuuj), $false jesli klawisz wcisniety (anuluj).
+    param([int]$Seconds = 30)
+    for ($i = $Seconds; $i -gt 0; $i--) {
+        Write-Host "`r  Odliczanie: $i s... (wcisnij dowolny klawisz aby anulowac)   " -NoNewline -ForegroundColor Yellow
+        $startTime = [DateTime]::Now
+        while (([DateTime]::Now - $startTime).TotalMilliseconds -lt 1000) {
+            if ([Console]::KeyAvailable) {
+                $null = [Console]::ReadKey($true)
+                Write-Host "`r  Odliczanie przerwane przez uzytkownika.                              " -ForegroundColor DarkGray
+                Write-Host ""
+                return $false
+            }
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    Write-Host "`r  Czas uplynal. Automatyczne kontynuowanie...                          " -ForegroundColor Green
+    Write-Host ""
+    return $true
 }
 
 # ── Start ─────────────────────────────────────────────────────────────────────
@@ -208,8 +230,9 @@ if ($hasContainers) {
     Write-Host "  [1]  Brak kontenerow do zatrzymania" -ForegroundColor DarkGray
 }
 
-Write-Host "  [2]  Pelne odinstalowanie (usun wszystko co znaleziono powyzej)" -ForegroundColor Red
-Write-Host "  [3]  Anuluj  -  wyjdz bez zmian" -ForegroundColor DarkGray
+Write-Host "  [2]  Pelne odinstalowanie  -  potwierdz wpisujac USUN" -ForegroundColor Red
+Write-Host "  [3]  Pelne odinstalowanie automatyczne  -  odlicza 30s, wcisnij klawisz aby anulowac" -ForegroundColor Red
+Write-Host "  [4]  Anuluj  -  wyjdz bez zmian" -ForegroundColor DarkGray
 Write-Host ""
 $choice = Read-Host "  Wybor"
 
@@ -229,9 +252,39 @@ switch ($choice) {
             Write-Info "(baza PostgreSQL, metryki Prometheus, dashboardy Grafana)"
             Write-Host ""
         }
-        $confirm = Read-Host "  Wpisz USUN aby potwierdzic"
-        if ($confirm -ne "USUN") {
-            Write-Warn "Potwierdzenie nieudane. Anulowanie."
+        # Petla potwierdzenia — probuj dopoki uzytkownik nie wpisze USUN lub jawnie anuluje
+        $confirmed = $false
+        while (-not $confirmed) {
+            $confirm = Read-Host "  Wpisz USUN (wielkie litery) aby potwierdzic lub N aby anulowac"
+            if ($confirm -eq "USUN") {
+                $confirmed = $true
+            } elseif ($confirm -eq "N" -or $confirm -eq "n") {
+                Write-Info "Anulowano przez uzytkownika. Bez zmian."
+                Stop-Transcript | Out-Null
+                exit 0
+            } elseif ($confirm -eq "") {
+                Write-Warn "Wcisnales Enter zamiast wpisac USUN. Wpisz USUN aby potwierdzic lub N aby anulowac."
+            } else {
+                Write-Warn "Nieprawidlowy wpis: '$confirm'. Wpisz dokladnie USUN (wielkie litery) lub N aby anulowac."
+            }
+        }
+    }
+    "3" {
+        $mode = "full"
+        Write-Host ""
+        Write-Host "  Tryb: Pelne odinstalowanie automatyczne" -ForegroundColor Red
+        Write-Host ""
+        if ($netdocVolumes.Count -gt 0) {
+            Write-Warn "UWAGA: Usuniecie woluminow spowoduje utrate WSZYSTKICH danych"
+            Write-Info "(baza PostgreSQL, metryki Prometheus, dashboardy Grafana)"
+            Write-Host ""
+        }
+        Write-Host "  Odinstalowanie rozpocznie sie za 30 sekund." -ForegroundColor Yellow
+        Write-Host "  Wcisnij dowolny klawisz aby anulowac." -ForegroundColor DarkGray
+        Write-Host ""
+        $proceed = Wait-WithCountdown -Seconds 30
+        if (-not $proceed) {
+            Write-Info "Anulowano przez uzytkownika. Bez zmian."
             Stop-Transcript | Out-Null
             exit 0
         }
