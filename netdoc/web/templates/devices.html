@@ -160,6 +160,18 @@
   <button class="btn btn-sm btn-link text-muted p-0" id="devFilterReset" title="Resetuj wszystkie filtry">
     <i class="bi bi-x-circle me-1"></i>Resetuj
   </button>
+  {# ── Auto-odświeżanie strony ──────────────────────────────────────────── #}
+  <div class="d-flex align-items-center gap-1 ms-1" title="Auto-odświeżanie strony urządzeń">
+    <button id="devAutoRefreshToggle" class="btn btn-sm btn-outline-secondary p-1"
+            title="Włącz / wyłącz auto-odświeżanie">
+      <i class="bi bi-arrow-clockwise" id="devAutoRefreshIcon"></i>
+    </button>
+    <input type="number" id="devAutoRefreshSec" min="10" max="3600" value="300"
+           class="form-control form-control-sm text-center p-0"
+           style="width:54px;font-size:.8rem"
+           title="Interval odświeżania [s]">
+    <small class="text-muted" style="white-space:nowrap">s</small>
+  </div>
   {% if ai_assessment_enabled and ai_last_by_device %}
   <a href="/devices/ai-report" target="_blank"
      class="btn btn-sm btn-outline-info ms-auto"
@@ -1769,6 +1781,66 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
   // Pierwsze pobranie natychmiast, potem co POLL_INTERVAL_MS
   poll();
   setInterval(poll, POLL_INTERVAL_MS);
+})();
+
+// ── Auto-odświeżanie strony (pełny reload) ────────────────────────────────
+(function() {
+  const LS_KEY_ON  = 'devAutoRefresh';
+  const LS_KEY_SEC = 'devAutoRefreshSec';
+  const btn   = document.getElementById('devAutoRefreshToggle');
+  const icon  = document.getElementById('devAutoRefreshIcon');
+  const input = document.getElementById('devAutoRefreshSec');
+  if (!btn || !input) return;
+
+  let timer = null;
+
+  function getEnabled() { return localStorage.getItem(LS_KEY_ON) !== '0'; }
+  function getSec() {
+    const v = parseInt(localStorage.getItem(LS_KEY_SEC) || '300', 10);
+    return isNaN(v) || v < 10 ? 300 : v;
+  }
+
+  function updateUI(enabled) {
+    if (enabled) {
+      btn.classList.replace('btn-outline-secondary', 'btn-outline-success');
+      icon.className = 'bi bi-arrow-clockwise';
+      btn.title = 'Auto-odświeżanie włączone — kliknij aby wyłączyć';
+    } else {
+      btn.classList.replace('btn-outline-success', 'btn-outline-secondary');
+      icon.className = 'bi bi-arrow-clockwise text-muted';
+      btn.title = 'Auto-odświeżanie wyłączone — kliknij aby włączyć';
+    }
+  }
+
+  function scheduleRefresh(sec) {
+    clearTimeout(timer);
+    if (getEnabled()) {
+      timer = setTimeout(() => location.reload(), sec * 1000);
+    }
+  }
+
+  // Inicjalizacja z localStorage
+  const initSec = getSec();
+  input.value = initSec;
+  updateUI(getEnabled());
+  scheduleRefresh(initSec);
+
+  // Przycisk toggle
+  btn.addEventListener('click', function() {
+    const wasEnabled = getEnabled();
+    localStorage.setItem(LS_KEY_ON, wasEnabled ? '0' : '1');
+    updateUI(!wasEnabled);
+    scheduleRefresh(getSec());
+  });
+
+  // Zmiana interwału
+  input.addEventListener('change', function() {
+    let v = parseInt(this.value, 10);
+    if (isNaN(v) || v < 10) { v = 10; this.value = v; }
+    if (v > 3600) { v = 3600; this.value = v; }
+    localStorage.setItem(LS_KEY_SEC, v);
+    scheduleRefresh(v);
+  });
 })();
 </script>
 {% endblock %}

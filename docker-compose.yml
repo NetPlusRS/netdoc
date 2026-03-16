@@ -139,6 +139,7 @@ services:
     volumes:
       - ./netdoc:/app/netdoc:ro
       - ./docker-compose.lab.yml:/app/docker-compose.lab.yml:ro
+      - ./config:/app/config:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/app/data
       - ./logs:/app/logs

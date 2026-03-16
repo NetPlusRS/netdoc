@@ -2429,7 +2429,19 @@ def create_app():
                 client.api.start(cinfo["Id"])
                 return True, None
             except docker.errors.ImageNotFound:
-                continue
+                # Sprobuj pobrac obraz (standardowe obrazy jak nginx:alpine)
+                try:
+                    client.images.pull(img)
+                    # Pobrano — sprobuj znowu
+                    cinfo = client.api.create_container(
+                        image=img, name=ct["name"],
+                        environment=ct.get("environment", {}),
+                        networking_config=net_config, host_config=host_cfg,
+                    )
+                    client.api.start(cinfo["Id"])
+                    return True, None
+                except Exception:
+                    continue
             except Exception as e:
                 return False, str(e)
         return False, (
@@ -2469,6 +2481,43 @@ def create_app():
     @app.route("/settings/lab/start", methods=["POST"])
     def lab_start():
         """Uruchamia kontenery lab. Zwraca JSON dla fetch() w UI."""
+        import pathlib as _pl
+        _COMPOSE_LAB = str(_pl.Path(__file__).parent.parent.parent / "docker-compose.lab.yml")
+        _PROJECT_DIR = str(_pl.Path(__file__).parent.parent.parent)
+
+        # Konteksty budowania per kontener lab (wzgledne do /app)
+        _LAB_BUILD_CONTEXTS = {
+            "lab-plc-s7":    ("config/lab/plc",    "netdoc-lab-lab-plc-s7"),
+            "lab-plc-meter": ("config/lab/plc",    "netdoc-lab-lab-plc-meter"),
+            "lab-plc-fuel":  ("config/lab/plc",    "netdoc-lab-lab-plc-fuel"),
+            "lab-router":    ("config/lab/router",  "netdoc-lab-lab-router"),
+            "lab-ssh":       ("config/lab/ssh",     "netdoc-lab-lab-ssh"),
+        }
+
+        def _auto_build_and_start(docker_client, missing_names):
+            """Buduje brakujace obrazy przez Docker SDK i uruchamia kontenery."""
+            import pathlib as _plb
+            built, failed = [], []
+            for name in missing_names:
+                ctx = _LAB_BUILD_CONTEXTS.get(name)
+                if not ctx:
+                    continue
+                rel_path, tag = ctx
+                build_path = str(_plb.Path(_PROJECT_DIR) / rel_path)
+                if not _plb.Path(build_path).exists():
+                    failed.append(f"{name}: brak katalogu {build_path} — czy config/ jest zamontowany w kontenerze?")
+                    continue
+                try:
+                    docker_client.images.build(path=build_path, tag=tag, rm=True)
+                    built.append(name)
+                except Exception as e:
+                    failed.append(f"{name}: {str(e)[:100]}")
+            if failed and not built:
+                return False, "Budowanie obrazow nie powiodlo sie: " + "; ".join(failed)
+            if failed:
+                return True, f"Zbudowano {len(built)} obrazow. Bledy ({len(failed)}): {'; '.join(failed)}"
+            return True, f"Zbudowano {len(built)} obrazow lab."
+
         try:
             import docker as _docker_mod
             client, err = _docker_client()
@@ -2482,6 +2531,7 @@ def create_app():
 
             started = created = 0
             errors = []
+            image_missing_names = []
             for ct in _LAB_CONTAINERS:
                 try:
                     c = client.containers.get(ct["name"])
@@ -2493,9 +2543,55 @@ def create_app():
                     if ok:
                         created += 1
                     else:
-                        errors.append(f"{ct['name']}: {errmsg}")
+                        if "Brak obrazu" in errmsg:
+                            image_missing_names.append(ct["name"])
+                        else:
+                            errors.append(f"{ct['name']}: {errmsg}")
                 except Exception as e:
                     errors.append(f"{ct['name']}: {e}")
+
+            # Jesli wszystkie bledy to brak obrazow — sprobuj auto-budowanie
+            if image_missing_names and not errors and started == 0 and created == 0:
+                app.logger.info(
+                    "lab_start: brak obrazow dla %s — probuje auto-build przez docker compose",
+                    ", ".join(image_missing_names))
+                build_ok, build_msg = _auto_build_and_start(client, image_missing_names)
+                if build_ok:
+                    # Po buildzie — uruchom kontenery ponownie
+                    started2 = created2 = 0
+                    for ct in _LAB_CONTAINERS:
+                        if ct["name"] not in image_missing_names:
+                            continue
+                        try:
+                            c = client.containers.get(ct["name"])
+                            if c.status != "running":
+                                c.start()
+                            started2 += 1
+                        except Exception:
+                            ok2, _ = _create_lab_container(client, ct)
+                            if ok2:
+                                created2 += 1
+                    # Podlacz workersy po udanym buildzie
+                    try:
+                        lab_net = client.networks.get("netdoc_lab")
+                        for wname in ["netdoc-ping", "netdoc-snmp", "netdoc-cred", "netdoc-vuln"]:
+                            try:
+                                lab_net.connect(wname)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                    total_built = started2 + created2
+                    return jsonify({"ok": True,
+                                    "message": f"{build_msg} Uruchomiono {total_built}/{len(image_missing_names)} kontenerow.",
+                                    "started": started2, "created": created2})
+                else:
+                    return jsonify({"ok": False,
+                                    "message": f"Brak obrazow lab ({len(image_missing_names)} kontenerow). "
+                                               f"Auto-budowanie nie powiodlo sie: {build_msg}. "
+                                               f"Uruchom recznie: docker compose -f docker-compose.lab.yml up -d --build"})
+            elif image_missing_names:
+                errors.append(f"Brak obrazow dla: {', '.join(image_missing_names)} — uruchom: docker compose -f docker-compose.lab.yml up -d --build")
 
             total = started + created
 
@@ -2516,6 +2612,25 @@ def create_app():
 
             if errors and total == 0:
                 return jsonify({"ok": False, "message": f"Blad uruchamiania: {'; '.join(errors)}"})
+
+            # Ustaw notatke "NetDoc Lab" dla sieci 172.28.0.0/24 jesli istnieje w DB
+            try:
+                from netdoc.storage.models import DiscoveredNetwork
+                with SessionLocal() as _db:
+                    _net = _db.query(DiscoveredNetwork).filter_by(cidr="172.28.0.0/24").first()
+                    if _net and not _net.notes:
+                        _net.notes = "NetDoc Lab"
+                        _db.commit()
+                    elif not _net:
+                        from netdoc.storage.models import NetworkSource
+                        _db.add(DiscoveredNetwork(
+                            cidr="172.28.0.0/24", notes="NetDoc Lab",
+                            source=NetworkSource.manual, is_active=True,
+                        ))
+                        _db.commit()
+            except Exception:
+                pass
+
             msg = f"Lab aktywny — {total}/{len(_LAB_CONTAINERS)} kontenerow uruchomionych."
             if errors:
                 msg += f" Bledy ({len(errors)}): {'; '.join(errors)}"
@@ -2523,7 +2638,7 @@ def create_app():
                 msg += f" Siec: {'; '.join(net_errors)}"
             return jsonify({"ok": not errors, "message": msg, "started": started, "created": created})
         except Exception as exc:
-            logger.exception("lab_start nieoczekiwany blad: %s", exc)
+            app.logger.exception("lab_start nieoczekiwany blad: %s", exc)
             return jsonify({"ok": False, "message": f"Nieoczekiwany blad: {exc}"})
 
     @app.route("/settings/lab/stop", methods=["POST"])
@@ -2630,11 +2745,16 @@ def create_app():
                     except Exception as exc:
                         yield _msg(f"  ✗ {v.name}: {exc}")
 
-            # 3. Usuń sieci netdoc
+            # 3. Usuń sieci netdoc (najpierw odlacz siebie)
             yield _msg("▶ Usuwanie sieci netdoc…")
             for n in client.networks.list():
                 if "netdoc" in n.name:
                     try:
+                        if self_container:
+                            try:
+                                n.disconnect(self_container, force=True)
+                            except Exception:
+                                pass
                         n.remove()
                         yield _msg(f"  ✓ {n.name}")
                     except Exception as exc:
@@ -2657,15 +2777,16 @@ def create_app():
             except Exception as exc:
                 yield _msg(f"  ✗ Prune volumes/networks: {exc}")
 
-            yield _msg("✅ Gotowe! Zatrzymuję kontener web…")
+            yield _msg("✅ Gotowe! Zatrzymuję i usuwam kontener web…")
             yield _msg("DONE")
 
-            # 5. Na końcu zatrzymaj siebie
+            # 5. Na końcu zatrzymaj i usuń siebie
             import time
             time.sleep(1)
             if self_container:
                 try:
                     self_container.stop(timeout=5)
+                    self_container.remove()
                 except Exception:
                     pass
 

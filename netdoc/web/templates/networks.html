@@ -941,7 +941,7 @@ document.querySelectorAll('.notes-cell').forEach(function(cell) {
         if (d.ok) {
           cell.dataset.notes = newNotes;
           display.textContent = newNotes || '—';
-          display.className = 'notes-display ' + (newNotes ? 'text-light' : 'text-muted');
+          display.className = 'notes-display ' + (newNotes ? '' : 'text-muted');
         }
       } catch {}
       cleanup();

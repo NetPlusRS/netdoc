@@ -2214,6 +2214,7 @@ def run_scan_cycle(db, scan_type: str = "discovery") -> dict:
         if scan_type == "full_single":
             # Pełny skan tylko dla IP z kolejki full_scan_ip_queue (żądanie per urządzenie z UI)
             from netdoc.collector.discovery import FULL_SCAN_BATCH_SIZE
+            from netdoc.storage.models import SystemStatus
             import math as _math
             queue_row = db.query(SystemStatus).filter_by(key="full_scan_ip_queue").first()
             queued_ips = [x.strip() for x in (queue_row.value if queue_row else "").split(",") if x.strip()]
@@ -2713,6 +2714,7 @@ def main():
             "scanner_pid": str(os.getpid()),
             "scanner_started_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
             "scanner_job": "-",
+            "scanning_ips": "",   # wyczyść po ewentualnym poprzednim nieudanym skanie
         })
         seed_snmp_communities(db)
         seed_default_credentials(db)
@@ -2745,6 +2747,18 @@ def main():
 
     if args.once or args.full:
         scan_type = "full" if args.full else "discovery"
+        # W trybie --once sprawdź czy UI zleciło konkretny typ skanu (full_single / full)
+        if not args.full:
+            try:
+                with SessionLocal() as db:
+                    requested = _get_status(db, "scan_requested")
+                    if requested and requested not in ("-", ""):
+                        if requested in ("full", "discovery", "full_single"):
+                            scan_type = requested
+                            logger.info("--once: trigger z UI: %s", scan_type)
+                        _set_status(db, {"scan_requested": "-"})
+            except Exception:
+                pass
         try:
             with SessionLocal() as db:
                 run_scan_cycle(db, scan_type)
@@ -2764,7 +2778,7 @@ def main():
                 # Sprawdz czy panel zlecil inny typ skanu
                 requested = _get_status(db, "scan_requested")
                 if requested and requested not in ("-", ""):
-                    next_scan_type = requested if requested in ("full", "discovery") else "discovery"
+                    next_scan_type = requested if requested in ("full", "discovery", "full_single") else "discovery"
                     logger.info("Trigger z panelu admin: %s", next_scan_type)
                     _set_status(db, {"scan_requested": "-"})
 
