@@ -228,6 +228,54 @@ if (-not $gitOk) {
     }
 }
 
+# ── nmap ─────────────────────────────────────────────────────────────────────
+
+Write-Step "Sprawdzam nmap (wymagany przez python-nmap do skanowania portow)..."
+
+$nmapKnownPaths = @(
+    "C:\Program Files (x86)\Nmap\nmap.exe",
+    "C:\Program Files\Nmap\nmap.exe"
+)
+
+$nmapFound = Get-Command nmap -ErrorAction SilentlyContinue
+
+if ($nmapFound) {
+    $nmapVer = try { (nmap --version 2>&1 | Select-Object -First 1) } catch { "?" }
+    Write-OK "nmap: $nmapVer"
+} else {
+    # Sprawdz typowe lokalizacje instalacji nmap (moze byc zainstalowany bez PATH)
+    $nmapExe = $nmapKnownPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($nmapExe) {
+        $nmapDir = Split-Path $nmapExe
+        $env:PATH += ";$nmapDir"
+        $nmapVer  = try { (& $nmapExe --version 2>&1 | Select-Object -First 1) } catch { "?" }
+        Write-OK "nmap znaleziony i dodany do PATH: $nmapDir"
+        Write-Info "$nmapVer"
+    } else {
+        Write-Warn "nmap nie znaleziony  -  instaluje przez winget..."
+        Install-WithWinget -Id "Insecure.Nmap" -Label "nmap" | Out-Null
+
+        # Odswierz PATH i sprawdz znane lokalizacje po instalacji
+        $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" +
+                    [System.Environment]::GetEnvironmentVariable("PATH", "User")
+
+        $nmapExe = $nmapKnownPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+        if ($nmapExe) {
+            $nmapDir = Split-Path $nmapExe
+            if ($env:PATH -notlike "*$nmapDir*") {
+                $env:PATH += ";$nmapDir"
+            }
+            Write-OK "nmap zainstalowany i dodany do PATH: $nmapDir"
+        } elseif (Get-Command nmap -ErrorAction SilentlyContinue) {
+            Write-OK "nmap zainstalowany i dostepny w PATH."
+        } else {
+            Write-Warn "nmap zainstalowany ale nie znaleziony w PATH."
+            Write-Info "Po instalacji moze byc wymagany restart terminala."
+            Write-Info "Nmap instaluje sie domyslnie w: C:\Program Files (x86)\Nmap\"
+        }
+    }
+}
+
 # ── Python ───────────────────────────────────────────────────────────────────
 
 Write-Step "Sprawdzam Python 3.9+ (wymagany przez NetDoc)..."
