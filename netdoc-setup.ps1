@@ -12,6 +12,25 @@
 $ErrorActionPreference = "Continue"
 $ProjectDir = $PSScriptRoot
 
+# ── Self-elevation: wymagaj uprawnien Administratora ──────────────────────────
+#    Musi byc PRZED Start-Transcript — UAC restartuje proces, wiec nowy
+#    wznowi transkrypt samodzielnie.
+
+$_currentPrincipal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+if (-not $_currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host ""
+    Write-Host "  NetDoc Installer wymaga uprawnien Administratora." -ForegroundColor Yellow
+    Write-Host "  Za chwile pojawi sie okno UAC  -  kliknij Tak aby kontynuowac." -ForegroundColor DarkGray
+    Write-Host ""
+    Start-Sleep -Seconds 2
+    $scriptPath = $MyInvocation.MyCommand.Path
+    Start-Process powershell.exe `
+        -Verb RunAs `
+        -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`"" `
+        -WorkingDirectory $ProjectDir
+    exit
+}
+
 # ── Plik logu debugowania ─────────────────────────────────────────────────────
 
 $LogDir       = Join-Path $ProjectDir "logs"
@@ -115,7 +134,7 @@ function Show-Pause([string]$msg = "Nacisnij Enter aby kontynuowac...") {
     Read-Host | Out-Null
 }
 
-# ── Sprawdz czy jest Administrator ───────────────────────────────────────────
+# ── Uprawnienia (self-elevation wczesniej gwarantuje admina) ──────────────────
 
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
     [Security.Principal.WindowsBuiltInRole]::Administrator
@@ -124,16 +143,12 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
 Write-Header
 Write-Host "  Katalog projektu: $ProjectDir" -ForegroundColor DarkGray
 Write-Host "  Log debugowania:  $LogFile" -ForegroundColor DarkGray
+if ($isAdmin) {
+    Write-Host "  Uprawnienia:      Administrator" -ForegroundColor Green
+}
 Write-Host ""
 
 Write-SystemInfo
-
-if (-not $isAdmin) {
-    Write-Warn "Skrypt nie jest uruchomiony jako Administrator."
-    Write-Info "Niektorych operacji (WSL2, winget system-wide) moze nie byc mozna wykonac."
-    Write-Info "Jesli instalacja sie zatrzyma, uruchom ponownie: Prawy klik -> Uruchom jako administrator"
-    Write-Host ""
-}
 
 # ── Wersja Windows ───────────────────────────────────────────────────────────
 
