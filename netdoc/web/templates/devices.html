@@ -280,560 +280,7 @@
       </thead>
       <tbody>
         {% for d in devices %}
-        {% set vuln_cnt = vuln_counts.get(d.id, 0) %}
-        {% set vuln_sev = vuln_severity.get(d.id, '') %}
-        {% set cred = cred_by_device.get(d.id) %}
-        {% set stats = device_stats.get(d.id, {}) %}
-        {% set cscan = cred_scan_by_device.get(d.id, {}) %}
-        <tr id="row-{{ d.id }}"
-            data-id="{{ d.id }}"
-            data-ip="{{ d.ip }}"
-            data-hostname="{{ (d.hostname or '')|lower }}"
-            data-mac="{{ (d.mac or '')|lower }}"
-            data-vendor="{{ (d.vendor or '')|lower }}"
-            data-active="{{ '1' if d.is_active else '0' }}"
-            data-trusted="{{ '1' if d.is_trusted else '0' }}"
-            data-vulns="{{ vuln_cnt }}"
-            data-severity="{{ vuln_sev }}"
-            data-iptype="{{ d.ip_type }}"
-            data-flag="{{ d.flag_color or '' }}"
-            data-type="{{ d.device_type.value if d.device_type else 'unknown' }}"
-            data-cred="{{ '1' if cred else '0' }}"
-            data-monitored="{{ '1' if d.is_monitored else '0' }}"
-            data-ports="{{ stats.get('display_port_count', -1) }}"
-            data-lastseen="{{ d.last_seen.isoformat() if d.last_seen else '' }}"
-            data-snmp="{{ '2' if d.snmp_community else '0' }}"
-            >
-          <td class="font-monospace">
-            {% if d.ip in scanning_ips %}
-            <span class="spinner-grow spinner-grow-sm text-info me-1"
-                  title="Full scan w toku dla tego urządzenia"></span>
-            {% endif %}
-            {% if d.id in screenshot_device_ids %}
-            <span class="ip-preview-trigger"
-                  data-device-id="{{ d.id }}"
-                  data-ip="{{ d.ip }}"
-                  title="Podgląd HTTP — kliknij aby odświeżyć"
-                  style="cursor:pointer; border-bottom:1px dashed #6c757d;">{{ d.ip }}</span>
-            {% else %}{{ d.ip }}{% endif %}
-            {% if d.ip_type == 'static' %}
-              <i class="bi bi-lock-fill text-secondary ms-1" style="font-size:.7rem;"
-                 title="Adres statyczny — przypisany ręcznie"></i>
-            {% elif d.ip_type == 'dhcp' %}
-              <i class="bi bi-arrow-repeat text-info ms-1" style="font-size:.7rem;"
-                 title="Adres DHCP — przydzielany dynamicznie"></i>
-            {% else %}
-              <i class="bi bi-question-circle text-muted ms-1" style="font-size:.7rem;opacity:.4;"
-                 title="Typ adresacji nieznany — kliknij ⋮ → Oznacz typ IP"></i>
-            {% endif %}
-          </td>
-          <td>{{ d.hostname or "—" }}</td>
-          <td>
-            {%- set _dt = d.device_type.value if d.device_type else "unknown" -%}
-            {%- set _dt_icon = {
-              "router":      "bi-router",
-              "switch":      "bi-diagram-3",
-              "ap":          "bi-wifi",
-              "firewall":    "bi-shield-lock",
-              "server":      "bi-server",
-              "workstation": "bi-pc-display",
-              "phone":       "bi-phone",
-              "camera":      "bi-camera-video",
-              "printer":     "bi-printer",
-              "iot":         "bi-cpu",
-              "nas":         "bi-hdd-stack",
-              "inverter":    "bi-lightning-charge",
-              "unknown":     "bi-question-circle",
-            } -%}
-            {%- set _dt_color = {
-              "router":      "bg-primary",
-              "switch":      "bg-primary bg-opacity-75",
-              "ap":          "bg-info text-dark",
-              "firewall":    "bg-danger",
-              "server":      "bg-secondary",
-              "workstation": "bg-success bg-opacity-75",
-              "phone":       "bg-success",
-              "camera":      "bg-warning text-dark",
-              "printer":     "bg-info text-dark",
-              "iot":         "bg-warning text-dark",
-              "nas":         "bg-secondary",
-              "inverter":    "bg-warning text-dark",
-              "unknown":     "bg-dark",
-            } -%}
-            <span class="badge {{ _dt_color.get(_dt, 'bg-dark') }}" title="{{ _dt }}">
-              <i class="bi {{ _dt_icon.get(_dt, 'bi-question-circle') }} me-1"></i>{{ _dt }}
-            </span>
-          </td>
-          <td class="small text-muted">{{ d.vendor or "—" }}</td>
-          <td class="font-monospace small">
-            {% if d.mac and (d.serial_number or d.asset_tag or d.responsible_person or d.asset_notes) %}
-              {% set _inv_lines = [] %}
-              {% if d.serial_number %}{% set _ = _inv_lines.append('<b>S/N:</b> ' ~ d.serial_number) %}{% endif %}
-              {% if d.asset_tag %}{% set _ = _inv_lines.append('<b>Asset tag:</b> ' ~ d.asset_tag) %}{% endif %}
-              {% if d.responsible_person %}{% set _ = _inv_lines.append('<b>Opiekun:</b> ' ~ d.responsible_person) %}{% endif %}
-              {% if d.support_end %}{% set _ = _inv_lines.append('<b>Wsparcie do:</b> ' ~ d.support_end.isoformat()) %}{% endif %}
-              {% if d.asset_notes %}{% set _ = _inv_lines.append('<b>Uwagi:</b> ' ~ d.asset_notes[:60] ~ ('…' if d.asset_notes|length > 60 else '')) %}{% endif %}
-              <span data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-html="true"
-                data-bs-title="<i class='bi bi-box-seam me-1'></i>Inwentarz"
-                data-bs-content="{{ _inv_lines | join('<br>') }}"
-                style="cursor:help; border-bottom:1px dashed #6c757d;">{{ d.mac }}</span>
-            {% else %}{{ d.mac or "—" }}{% endif %}
-          </td>
-          <td>
-            {# ── Buduj tresc popovera statusu ── #}
-            {% set _fs = d.first_seen.strftime('%Y-%m-%d') if d.first_seen else '?' %}
-            {% set _ls = d.last_seen.strftime('%Y-%m-%d %H:%M') if d.last_seen else '?' %}
-            {% set _ld = stats.last_down.strftime('%Y-%m-%d %H:%M') if stats.last_down else 'brak' %}
-            {% set _lu = stats.last_up.strftime('%Y-%m-%d %H:%M') if stats.last_up else 'brak' %}
-            {% set _d7  = stats.down_7d  or 0 %}
-            {% set _d30 = stats.down_30d or 0 %}
-            {% set _up  = stats.uptime_pct %}
-            {% if not d.is_active and d.last_seen %}
-              {# Oblicz czas trwania niedostepnosci w JS (dynamicznie) #}
-              {% set _down_since = d.last_seen.strftime('%Y-%m-%dT%H:%M:%S') %}
-              {% set _down_row = '<b>DOWN od:</b> <span class=\"down-since\" data-since=\"' ~ _down_since ~ '\">...</span><br>' %}
-            {% else %}
-              {% set _down_row = '' %}
-            {% endif %}
-            {% set _sep = '<hr style=\"margin:3px 0;opacity:.3\">' %}
-            {# ─ Sekcja 1: timing statusu ─ #}
-            {% set _uptime_row = ('<b>Uptime 30d:</b> ' ~ _up ~ '%<br>') if _up is not none else '' %}
-            {# ─ Sekcja 2: dane odkrywania / enrichment ─ #}
-            {% set _os_row    = ('<b>OS (SNMP):</b> ' ~ d.os_version ~ '<br>') if d.os_version else '' %}
-            {% set _ports_row = ('<b>Porty (nmap):</b> ' ~ stats.open_ports_str ~ '<br>') if stats.open_ports_str else '' %}
-            {% set _scan_row  = ('<b>Ost. skan:</b> ' ~ stats.last_scan_time.strftime('%Y-%m-%d') ~ '<br>') if stats.last_scan_time else '' %}
-            {% if stats.last_full_scan %}
-              {% set _full_scan_row = '<b>Pełny skan (1-65535):</b> ' ~ stats.last_full_scan.strftime('%Y-%m-%d') ~ ' &middot; ' ~ (stats.full_scan_ports|string) ~ ' portów<br>' %}
-              {% if stats.full_scan_ports_str %}
-                {% set _full_ports_row = '<b>Otwarte:</b> <span style=\"font-family:monospace;font-size:.85em\">' ~ stats.full_scan_ports_str ~ '</span><br>' %}
-              {% else %}
-                {% set _full_ports_row = '' %}
-              {% endif %}
-            {% else %}
-              {% set _full_scan_row = '<b>Pełny skan:</b> brak<br>' %}
-              {% set _full_ports_row = '' %}
-            {% endif %}
-            {% if stats.vendor_source %}
-              {% if stats.vendor_source == 'OUI (MAC)' and oui_db_date %}
-                {% set _vsrc_row = '<b>Vendor z:</b> OUI (MAC) &middot; baza: ' ~ oui_db_date ~ '<br>' %}
-              {% else %}
-                {% set _vsrc_row = '<b>Vendor z:</b> ' ~ stats.vendor_source ~ '<br>' %}
-              {% endif %}
-            {% else %}
-              {% set _vsrc_row = '' %}
-            {% endif %}
-            {% set _pop_content =
-              _down_row ~
-              '<b>Ostatni kontakt:</b> ' ~ _ls ~ '<br>' ~
-              '<b>Ostatni DOWN:</b> ' ~ _ld ~ '<br>' ~
-              '<b>Ostatni UP:</b> ' ~ _lu ~ '<br>' ~
-              '<b>Znany od:</b> ' ~ _fs ~ '<br>' ~
-              _sep ~
-              _uptime_row ~
-              '<b>DOWN 7d:</b> ' ~ _d7 ~ 'x &nbsp; <b>DOWN 30d:</b> ' ~ _d30 ~ 'x<br>' ~
-              _sep ~
-              '<b>Monitoring:</b> TCP+ICMP co ' ~ ping_interval_s ~ 's (ping-worker)<br>' ~
-              _scan_row ~
-              _full_scan_row ~
-              _full_ports_row ~
-              _ports_row ~
-              _os_row ~
-              _vsrc_row
-            %}
-            {# Oblicz minuty od ostatniego kontaktu — brak last_seen = nigdy nie widziane = uncertain #}
-            {% set _mins_ago = ((now - d.last_seen).total_seconds() / 60)|int if d.last_seen and now else uncertain_min %}
-            {% if d.is_active and _mins_ago >= uncertain_min %}
-              {# AMBER: aktywny w bazie, ale ostatni kontakt dawno — status niepewny #}
-              <span class="badge badge-uncertain status-badge" style="cursor:pointer"
-                    data-device-id="{{ d.id }}"
-                    data-bs-toggle="popover" data-bs-trigger="hover focus"
-                    data-bs-placement="right" data-bs-html="true"
-                    data-bs-title="Status: NIEPEWNY" data-bs-content="{{ _pop_content }}">?</span>
-            {% elif d.is_active %}
-              <span class="badge badge-up status-badge" style="cursor:pointer"
-                    data-device-id="{{ d.id }}"
-                    data-bs-toggle="popover" data-bs-trigger="hover focus"
-                    data-bs-placement="right" data-bs-html="true"
-                    data-bs-title="Status: UP" data-bs-content="{{ _pop_content }}">UP</span>
-            {% else %}
-              <span class="badge badge-down status-badge" style="cursor:pointer"
-                    data-device-id="{{ d.id }}"
-                    data-bs-toggle="popover" data-bs-trigger="hover focus"
-                    data-bs-placement="right" data-bs-html="true"
-                    data-bs-title="Status: DOWN" data-bs-content="{{ _pop_content }}">DOWN</span>
-            {% endif %}
-          </td>
-
-          {# ── SNMP ──────────────────────────────────────────────────────────── #}
-          <td class="text-center">
-            {% if d.snmp_community %}
-              {% set _snmp_ago = '' %}
-              {% if d.snmp_ok_at %}
-                {% set _snmp_diff = (now - d.snmp_ok_at).total_seconds() | int %}
-                {% if _snmp_diff < 3600 %}
-                  {% set _snmp_ago = (_snmp_diff // 60) | string ~ ' min temu' %}
-                {% elif _snmp_diff < 86400 %}
-                  {% set _snmp_ago = (_snmp_diff // 3600) | string ~ ' h temu' %}
-                {% else %}
-                  {% set _snmp_ago = (_snmp_diff // 86400) | string ~ ' dni temu' %}
-                {% endif %}
-              {% endif %}
-              <span class="badge bg-success"
-                    style="cursor:default;font-family:monospace;font-size:.75rem"
-                    title="SNMP OK — community: {{ d.snmp_community }}{% if _snmp_ago %} ({{ _snmp_ago }}){% endif %}">
-                {{ d.snmp_community }}
-              </span>
-            {% else %}
-              <span class="text-muted" style="font-size:.8rem" title="SNMP — brak dostępu lub nie testowano">—</span>
-            {% endif %}
-          </td>
-
-          {# ── Credentials ──────────────────────────────────────────────────── #}
-          {% set ssh_tried = cscan.get('ssh_tried',0) %}
-          {% set ssh_total = cscan.get('ssh_total',0) %}
-          {% set api_tried = cscan.get('api_tried',0) %}
-          {% set api_total = cscan.get('api_total',0) %}
-          {% set rdp_tried = cscan.get('rdp_tried',0) %}
-          {% set rdp_total = cscan.get('rdp_total',0) %}
-          {% set ssh_q  = [ssh_total - ssh_tried, 0] | max %}
-          {% set api_q  = [api_total - api_tried, 0] | max %}
-          {% set rdp_q  = [rdp_total - rdp_tried, 0] | max %}
-          {% set _lat   = cscan.get('last_attempt_at','') %}
-          {% set _lat_s = (_lat[0:10] ~ ' ' ~ _lat[11:16]) if _lat else '—' %}
-          {% set _scan_detail %}<b>SSH</b> {{ ssh_tried }}/{{ ssh_total }} haseł <span style='color:#8b949e'>({{ ssh_q }} w kolejce)</span><br><b>WEB</b> {{ api_tried }}/{{ api_total }} haseł <span style='color:#8b949e'>({{ api_q }} w kolejce)</span><br><b>RDP</b> {{ rdp_tried }}/{{ rdp_total }} haseł <span style='color:#8b949e'>({{ rdp_q }} w kolejce)</span><br><hr style='margin:4px 0'><small style='color:#8b949e'>Ostatni skan: {{ _lat_s }}</small>{% endset %}
-          <td class="text-center">
-            {% if cred %}
-              {% set cred_method = cred.method.value %}
-              {% set cred_user   = cred.username or '(brak loginu)' %}
-              {% set cred_pass   = cred.password_encrypted or '(brak hasla)' %}
-              {% set cred_date   = cred.last_success_at.strftime('%Y-%m-%d %H:%M') if cred.last_success_at else '?' %}
-              <span class="badge bg-success"
-                    style="cursor:pointer"
-                    data-bs-toggle="popover"
-                    data-bs-trigger="hover focus"
-                    data-bs-placement="left"
-                    data-bs-html="true"
-                    data-bs-title="Dostep uzyskany"
-                    data-bs-content="<b>Metoda:</b> {{ cred_method }}<br><b>Login:</b> {{ cred_user }}<br><b>Haslo:</b> <code>{{ cred_pass }}</code><br><b>Kiedy:</b> {{ cred_date }}<hr class='my-1'>{{ _scan_detail }}">
-                <i class="bi bi-key-fill"></i>
-              </span>
-            {% elif d.last_credential_ok_at and d.last_credential_ok_at.year == 1970 %}
-              {% if cscan %}
-              <span class="badge bg-secondary"
-                    style="cursor:pointer"
-                    data-bs-toggle="popover"
-                    data-bs-trigger="hover focus"
-                    data-bs-placement="left"
-                    data-bs-html="true"
-                    data-bs-title="Sprawdzono — brak dostepu"
-                    data-bs-content="{{ _scan_detail }}">
-                <i class="bi bi-key"></i>
-              </span>
-              {% else %}
-              <span class="badge bg-secondary" title="Sprawdzono — brak dostepu">
-                <i class="bi bi-key"></i>
-              </span>
-              {% endif %}
-            {% elif cscan %}
-              <span class="text-muted small"
-                    style="cursor:pointer"
-                    data-bs-toggle="popover"
-                    data-bs-trigger="hover focus"
-                    data-bs-placement="left"
-                    data-bs-html="true"
-                    data-bs-title="Skan credentiali"
-                    data-bs-content="{{ _scan_detail }}">
-                <i class="bi bi-hourglass-split"></i>
-              </span>
-            {% else %}
-              <span class="text-muted small" title="Jeszcze nie sprawdzono">—</span>
-            {% endif %}
-          </td>
-
-          {# ── Podatnosci ───────────────────────────────────────────────────── #}
-          <td class="text-center">
-            {% if vuln_cnt > 0 %}
-              {% if vuln_sev == 'critical' %}{% set sev_cls = 'danger' %}
-              {% elif vuln_sev == 'high' %}{% set sev_cls = 'warning' %}
-              {% elif vuln_sev == 'medium' %}{% set sev_cls = 'info' %}
-              {% else %}{% set sev_cls = 'secondary' %}{% endif %}
-              {% set vd = vuln_details.get(d.id, []) %}
-              {% set _sev_icon = {'critical':'🔴','high':'🟠','medium':'🟡','low':'🟢'} %}
-              {% set _plines = namespace(v=[]) %}
-              {% for item in vd %}
-                {% if item.get("id") %}
-                  {% set _label = _sev_icon.get(item.severity,'⚪') ~ ' ' ~ item.name ~ (' &nbsp;<span class=\'text-muted\'>p.' ~ item.port|string ~ '</span>' if item.port else '') %}
-                  {% set _plines.v = _plines.v + ['<a href="/security#vuln-' ~ item.id|string ~ '" class="vuln-pop-link d-block text-decoration-none" style="line-height:1.9;font-size:.82rem;color:inherit">' ~ _label ~ '</a>'] %}
-                {% else %}
-                  {% set _plines.v = _plines.v + ['<span class="text-muted small px-1">' ~ item.name ~ '</span>'] %}
-                {% endif %}
-              {% endfor %}
-              {% set _footer = '<hr class="my-1"><a href="/security" class="text-muted small text-decoration-none d-block text-center">Wszystkie zagrożenia →</a>' %}
-              <span class="badge bg-{{ sev_cls }} text-decoration-none vuln-badge-pop"
-                    style="cursor:pointer"
-                    data-bs-toggle="popover"
-                    data-bs-trigger="manual"
-                    data-bs-placement="auto"
-                    data-bs-html="true"
-                    title="Zagrożenia urządzenia ({{ vuln_cnt }})"
-                    data-bs-content="{{ _plines.v | join('') ~ _footer }}">
-                {{ vuln_cnt }}
-              </span>
-            {% else %}
-              <span class="text-muted small">—</span>
-            {% endif %}
-          </td>
-
-          <td class="small text-muted">{{ d.last_seen.strftime("%Y-%m-%d %H:%M") if d.last_seen else "—" }}</td>
-
-          {# ── Kolumna: liczba otwartych portów ──────────────────────────── #}
-          <td class="text-center">
-            {% set _pc = stats.get("display_port_count") %}
-            {% if _pc is not none %}
-              {% if _pc >= 500 %}
-                {% set _pc_bg = "#6e0000" %}{% set _pc_fw = "bold" %}
-              {% elif _pc >= 100 %}
-                {% set _pc_bg = "#da3633" %}{% set _pc_fw = "normal" %}
-              {% elif _pc >= 50 %}
-                {% set _pc_bg = "#e3b341" %}{% set _pc_fw = "normal" %}
-              {% elif _pc >= 20 %}
-                {% set _pc_bg = "#e6a817" %}{% set _pc_fw = "normal" %}
-              {% elif _pc >= 6 %}
-                {% set _pc_bg = "#238636" %}{% set _pc_fw = "normal" %}
-              {% else %}
-                {% set _pc_bg = "#444c56" %}{% set _pc_fw = "normal" %}
-              {% endif %}
-              {% set _pc_src = stats.get("display_port_source", "") %}
-              {% set _pc_time = stats.get("display_port_time") %}
-              <span class="badge"
-                    style="background:{{ _pc_bg }};font-weight:{{ _pc_fw }};min-width:2.5rem"
-                    title="{{ _pc }} otwartych portów · {{ _pc_src }}{% if _pc_time %} · {{ _pc_time.strftime('%Y-%m-%d') }}{% endif %}">
-                {{ _pc }}
-              </span>
-            {% else %}
-              <span class="text-muted small">—</span>
-            {% endif %}
-          </td>
-
-          {# ── Pełny skan portów 1-65535 ─────────────────────────────────── #}
-          <td class="text-center">
-            {% if stats.last_full_scan %}
-              {% set _days_ago = ((now - stats.last_full_scan).total_seconds() / 86400)|int %}
-              {% if _days_ago <= 7 %}
-                {% set _scan_color = "text-success" %}
-                {% set _scan_title = "Pełny skan OK — znaleziono " ~ stats.full_scan_ports ~ " otwartych portów TCP (zakres 1-65535) — " ~ stats.last_full_scan.strftime('%Y-%m-%d') %}
-              {% elif _days_ago <= 30 %}
-                {% set _scan_color = "text-warning" %}
-                {% set _scan_title = "Pełny skan starszy niż 7 dni — " ~ stats.last_full_scan.strftime('%Y-%m-%d') %}
-              {% else %}
-                {% set _scan_color = "text-danger" %}
-                {% set _scan_title = "Pełny skan starszy niż 30 dni — " ~ stats.last_full_scan.strftime('%Y-%m-%d') %}
-              {% endif %}
-              <i class="bi bi-check-circle-fill {{ _scan_color }}"
-                 title="{{ _scan_title }}"></i>
-            {% elif d.is_active %}
-              <i class="bi bi-circle text-secondary"
-                 title="Tylko szybki skan (~30 portów) — pełny skan nie był wykonany"></i>
-            {% else %}
-              <span class="text-muted">—</span>
-            {% endif %}
-          </td>
-
-          <td class="text-nowrap">
-            {# Ikona zaufania #}
-            {% if d.is_trusted %}
-            <i class="bi bi-shield-fill text-success me-1"
-               title="Zaufane — {{ d.trust_category or 'brak kategorii' }}{% if d.trust_note %}: {{ d.trust_note }}{% endif %}"></i>
-            {% endif %}
-            {# Kolorowa flaga uzytkownika #}
-            {% if d.flag_color %}
-            {%- set _fc_map = {"red":"danger","orange":"warning","yellow":"warning","green":"success","blue":"primary","purple":"info"} -%}
-            <i class="bi bi-flag-fill text-{{ _fc_map.get(d.flag_color, 'secondary') }} me-1"
-               style="{% if d.flag_color == 'orange' %}color:#fd7e14!important{% elif d.flag_color == 'purple' %}color:#6f42c1!important{% endif %}"
-               title="Flaga: {{ d.flag_color }}"></i>
-            {% endif %}
-            {# Monitorowanie dostepnosci #}
-            {% if d.is_monitored %}
-            <i class="bi bi-bell-fill text-info me-1"
-               title="Monitorowane{% if d.monitor_note %}: {{ d.monitor_note }}{% endif %}"></i>
-            {% endif %}
-            {# Badge konca wsparcia producenta (EoS) lub gwarancji #}
-            {% if inventory_enabled %}
-            {% set _today_d = now.date() %}
-            {% if d.support_end %}
-              {% set _eos_days = (d.support_end - _today_d).days %}
-              {% if _eos_days < 0 %}
-                <span class="badge bg-danger" style="font-size:.65rem"
-                      title="Wsparcie producenta wygaslo {{ d.support_end.isoformat() }}">EoS</span>
-              {% elif _eos_days <= 90 %}
-                <span class="badge bg-warning text-dark" style="font-size:.65rem"
-                      title="Wsparcie producenta wygasa za {{ _eos_days }} dni">EoS</span>
-              {% endif %}
-            {% elif d.warranty_end %}
-              {% set _war_days = (d.warranty_end.date() - _today_d).days %}
-              {% if _war_days < 0 %}
-                <span class="badge bg-danger" style="font-size:.65rem"
-                      title="Gwarancja wygasla {{ d.warranty_end.date().isoformat() }}">GWR</span>
-              {% elif _war_days <= 90 %}
-                <span class="badge bg-warning text-dark" style="font-size:.65rem"
-                      title="Gwarancja wygasa za {{ _war_days }} dni">GWR</span>
-              {% endif %}
-            {% endif %}
-            {% endif %}
-            {# Badge oceny AI #}
-            {% if ai_assessment_enabled %}
-            {% set _ai = ai_last_by_device.get(d.id) %}
-            {% if _ai %}
-              {% set _rl = _ai.get("risk_level", "") %}
-              {% set _obs = _ai.get("is_obsolete") %}
-              {% if _rl in ("critical",) %}
-                {% set _ai_color = "danger" %}
-              {% elif _rl == "high" %}
-                {% set _ai_color = "danger" %}
-              {% elif _rl == "medium" %}
-                {% set _ai_color = "warning" %}
-              {% elif _rl in ("low", "ok") %}
-                {% set _ai_color = "success" %}
-              {% else %}
-                {% set _ai_color = "secondary" %}
-              {% endif %}
-              <span class="badge bg-{{ _ai_color }} dev-ai-assess-btn"
-                    style="font-size:.65rem;cursor:pointer"
-                    role="button" tabindex="0"
-                    data-device-id="{{ d.id }}"
-                    data-device-ip="{{ d.ip }}"
-                    data-device-label="{{ d.hostname or d.ip }}"
-                    title="Ocena AI ({{ _ai.get('assessed_at','') }}): {{ _rl or '?' }}{% if _obs %} · Do wymiany{% endif %}&#10;{{ _ai.get('summary','') }}">
-                AI{% if _obs %}&#x26A0;{% endif %}
-              </span>
-            {% endif %}
-            {% endif %}
-            {# Dropdown z akcjami #}
-            <div class="dropdown d-inline">
-              <button class="btn btn-outline-secondary btn-sm py-0 px-1" data-bs-toggle="dropdown"
-                      aria-expanded="false" title="Akcje">
-                <i class="bi bi-three-dots-vertical"></i>
-              </button>
-              <ul class="dropdown-menu dropdown-menu-end">
-                <li>
-                  <form method="post" action="/devices/{{ d.id }}/reclassify">
-                    <button class="dropdown-item" type="submit">
-                      <i class="bi bi-arrow-repeat me-2 text-info"></i>Reklasyfikuj
-                    </button>
-                  </form>
-                </li>
-                <li>
-                  <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#setTypeModal"
-                    data-device-id="{{ d.id }}" data-device-ip="{{ d.ip }}"
-                    data-device-type="{{ d.device_type.value if d.device_type else '' }}">
-                    <i class="bi bi-pencil me-2 text-secondary"></i>Ustaw typ
-                  </button>
-                </li>
-                <li>
-                  <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#ipTypeModal"
-                    data-device-id="{{ d.id }}" data-device-ip="{{ d.ip }}"
-                    data-ip-type="{{ d.ip_type or 'unknown' }}">
-                    <i class="bi bi-ethernet me-2 text-secondary"></i>Oznacz typ IP
-                  </button>
-                </li>
-                <li><hr class="dropdown-divider"></li>
-                <li>
-                  <button class="dropdown-item {% if d.is_trusted %}text-success{% endif %}"
-                    data-bs-toggle="modal" data-bs-target="#trustModal"
-                    data-device-id="{{ d.id }}" data-device-ip="{{ d.ip }}"
-                    data-is-trusted="{{ '1' if d.is_trusted else '0' }}"
-                    data-trust-note="{{ d.trust_note or '' }}"
-                    data-trust-category="{{ d.trust_category or '' }}">
-                    <i class="bi bi-shield{% if d.is_trusted %}-fill{% else %}-check{% endif %} me-2"></i>
-                    {% if d.is_trusted %}Edytuj zaufanie{% else %}Oznacz jako zaufane{% endif %}
-                  </button>
-                </li>
-                <li><hr class="dropdown-divider"></li>
-                <li>
-                  <button class="dropdown-item"
-                    data-bs-toggle="modal" data-bs-target="#flagModal"
-                    data-device-id="{{ d.id }}" data-device-ip="{{ d.ip }}"
-                    data-flag-color="{{ d.flag_color or '' }}">
-                    <i class="bi bi-flag me-2 text-warning"></i>Ustaw flagę
-                  </button>
-                </li>
-                <li>
-                  <button class="dropdown-item {% if d.is_monitored %}text-info{% endif %}"
-                    data-bs-toggle="modal" data-bs-target="#monitorModal"
-                    data-device-id="{{ d.id }}" data-device-ip="{{ d.ip }}"
-                    data-is-monitored="{{ '1' if d.is_monitored else '0' }}"
-                    data-monitor-note="{{ d.monitor_note or '' }}">
-                    <i class="bi bi-bell{% if d.is_monitored %}-fill{% endif %} me-2"></i>
-                    {% if d.is_monitored %}Edytuj monitorowanie{% else %}Monitoruj dostępność{% endif %}
-                  </button>
-                </li>
-                {% if inventory_enabled %}
-                <li>
-                  <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#inventoryModal"
-                    data-device-id="{{ d.id }}" data-device-ip="{{ d.ip }}"
-                    data-serial="{{ d.serial_number or '' }}"
-                    data-asset="{{ d.asset_tag or '' }}"
-                    data-purchase-date="{{ d.purchase_date.isoformat() if d.purchase_date else '' }}"
-                    data-purchase-price="{{ d.purchase_price or '' }}"
-                    data-purchase-currency="{{ d.purchase_currency or 'PLN' }}"
-                    data-purchase-vendor="{{ d.purchase_vendor or '' }}"
-                    data-invoice="{{ d.invoice_number or '' }}"
-                    data-warranty-end="{{ d.warranty_end.date().isoformat() if d.warranty_end else '' }}"
-                    data-support-end="{{ d.support_end.isoformat() if d.support_end else '' }}"
-                    data-responsible="{{ d.responsible_person or '' }}"
-                    data-notes="{{ d.asset_notes or '' }}">
-                    <i class="bi bi-box-seam me-2 text-secondary"></i>Inwentarz / ST
-                  </button>
-                </li>
-                {% endif %}
-                {% if ai_assessment_enabled %}
-                <li>
-                  <button class="dropdown-item dev-ai-assess-btn"
-                    data-device-id="{{ d.id }}"
-                    data-device-ip="{{ d.ip }}"
-                    data-device-label="{{ d.hostname or d.ip }}">
-                    <i class="bi bi-cpu me-2 text-info"></i>Ocena AI
-                  </button>
-                </li>
-                {% endif %}
-                <li><hr class="dropdown-divider"></li>
-                <li>
-                  <form method="post" action="/devices/{{ d.id }}/full-scan">
-                    <button class="dropdown-item" type="submit"
-                            title="Zakolejkuj skan wszystkich 65535 portów TCP dla tego urządzenia. Zostanie wykonany przy następnym cyklu skanera.">
-                      <i class="bi bi-search me-2 text-warning"></i>Pełny skan portów (1-65535)
-                    </button>
-                  </form>
-                </li>
-                <li>
-                  <form method="post" action="/devices/{{ d.id }}/clear-ports">
-                    <input type="hidden" name="scan_type" value="nmap_full">
-                    <button class="dropdown-item" type="submit"
-                            title="Usuwa zapisane wyniki pełnego skanu (1-65535) dla tego urządzenia. Dane zostaną odświeżone przy następnym skanie.">
-                      <i class="bi bi-eraser me-2 text-secondary"></i>Wyczyść wyniki pełnego skanu
-                    </button>
-                  </form>
-                </li>
-                <li>
-                  <form method="post" action="/devices/{{ d.id }}/clear-ports">
-                    <button class="dropdown-item" type="submit"
-                            title="Usuwa wszystkie wyniki skanowania portów (szybki + pełny) dla tego urządzenia.">
-                      <i class="bi bi-x-circle me-2 text-secondary"></i>Wyczyść wszystkie wyniki portów
-                    </button>
-                  </form>
-                </li>
-                <li><hr class="dropdown-divider"></li>
-                <li>
-                  <button class="dropdown-item text-danger"
-                    data-bs-toggle="modal" data-bs-target="#deleteModal"
-                    data-device-id="{{ d.id }}" data-device-ip="{{ d.ip }}">
-                    <i class="bi bi-trash me-2"></i>Usuń urządzenie
-                  </button>
-                </li>
-              </ul>
-            </div>
-          </td>
-        </tr>
+        {% include '_device_row.html' %}
         {% else %}
         <tr><td colspan="11" class="text-center text-muted py-4">Brak urzadzen. Uruchom skanowanie.</td></tr>
         {% endfor %}
@@ -1939,6 +1386,8 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
   }
 
   function refresh() { applySort(); applyFilters(); }
+  // Eksportuj dla live-status IIFE (wstrzykiwanie nowych wierszy wymaga odswiezenia filtrow)
+  window._devTableRefresh = refresh;
 
   function saveState() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
@@ -2128,11 +1577,22 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
   refresh();
 })();
 
-// ── Live status polling (bez pelnego reload) ────────────────────────────────
+// ── Live status polling + nowe urzadzenia (bez pelnego reload) ───────────────
 (function() {
   const POLL_INTERVAL_MS = 15000;  // co 15s
   const staleEl   = document.getElementById('monitoring-stale-banner');
   const staleText = document.getElementById('monitoring-age-text');
+  const tbody     = document.querySelector('table tbody');
+
+  // Timestamp zaladowania strony — uzywany do wykrywania nowych urzadzen
+  // Odejmujemy 5s marginesu zeby nie zgubic urządzenia odkrytego tuż przed otwarciem strony
+  const PAGE_LOAD_TS = new Date(Date.now() - 5000).toISOString().replace('Z', '');
+
+  // Zbior ID wierszy juz obecnych w DOM (zapobiega podwojnemu wstrzykiwaniu)
+  const knownIds = new Set(
+    Array.from(document.querySelectorAll('tr[id^="row-"]'))
+         .map(tr => parseInt(tr.id.replace('row-', '')))
+  );
 
   function applyStatus(item, uncertainMin) {
     const row = document.getElementById('row-' + item.id);
@@ -2194,13 +1654,104 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
     if (item.last_seen_iso) row.setAttribute('data-lastseen', item.last_seen_iso);
   }
 
+  // Pobierz HTML wierszy dla podanych ID i wstaw/zastap je w tabeli
+  function fetchAndApplyRows(ids, replaceExisting) {
+    if (!ids || ids.length === 0 || !tbody) return;
+    fetch('/devices/rows?ids=' + ids.join(','))
+      .then(r => r.ok ? r.text() : null)
+      .then(html => {
+        if (!html || !html.trim()) return;
+        const tpl = document.createElement('template');
+        tpl.innerHTML = html;
+        const fetchedRows = Array.from(tpl.content.querySelectorAll('tr[id^="row-"]'));
+        if (fetchedRows.length === 0) return;
+
+        // Usun pusty wiersz "Brak urzadzen" jesli istnieje
+        const emptyRow = tbody.querySelector('tr td[colspan]');
+        if (emptyRow) emptyRow.closest('tr').remove();
+
+        const firstRow = tbody.firstElementChild;
+        let changed = false;
+
+        fetchedRows.forEach(newRow => {
+          const id = parseInt(newRow.id.replace('row-', ''));
+          const existingRow = document.getElementById('row-' + id);
+
+          if (existingRow && replaceExisting) {
+            // Zastap istniejacy wiersz — zachowaj pozycje w tabeli
+            existingRow.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
+              const p = bootstrap.Popover.getInstance(el);
+              if (p) p.dispose();
+            });
+            existingRow.replaceWith(newRow);
+            changed = true;
+          } else if (!existingRow) {
+            // Nowy wiersz — wstaw na poczatek
+            knownIds.add(id);
+            tbody.insertBefore(newRow, firstRow);
+            changed = true;
+          }
+
+          // Inicjalizuj popovers
+          newRow.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
+            new bootstrap.Popover(el, { trigger: 'hover focus', html: true });
+          });
+        });
+
+        // Odswież filtry tylko gdy cos sie rzeczywiscie zmienilo
+        if (changed && typeof window._devTableRefresh === 'function') {
+          window._devTableRefresh();
+        }
+      })
+      .catch(() => {});
+  }
+
+  // Identyfikator kolejki zmian — debounce zeby nie bombadowac serwera
+  let _pendingRefresh = new Set();
+  let _refreshTimer = null;
+
+  function scheduleRowRefresh(ids) {
+    ids.forEach(id => _pendingRefresh.add(id));
+    clearTimeout(_refreshTimer);
+    _refreshTimer = setTimeout(() => {
+      const toRefresh = Array.from(_pendingRefresh);
+      _pendingRefresh.clear();
+      if (toRefresh.length > 0) fetchAndApplyRows(toRefresh, true);
+    }, 500);  // 500ms debounce: grupuje zmiany z tego samego cyklu
+  }
+
   function poll() {
-    fetch('/devices/live-status')
+    fetch('/devices/live-status?since=' + encodeURIComponent(PAGE_LOAD_TS))
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data) return;
         const unc = data.uncertain_min || 7;
-        (data.devices || []).forEach(item => applyStatus(item, unc));
+        const needsRowRefresh = [];
+
+        (data.devices || []).forEach(item => {
+          applyStatus(item, unc);
+
+          // Wykryj zmiany danych urzadzenia (hostname, vendor, snmp) przez porownanie z data-* atrybutami
+          const row = document.getElementById('row-' + item.id);
+          if (row && item.hostname !== undefined) {
+            const hostnameChanged = item.hostname !== (row.dataset.hostname || '');
+            const vendorChanged   = item.vendor   !== (row.dataset.vendor   || '');
+            const snmpChanged     = String(item.snmp_ok) !== (row.dataset.snmp || '0');
+            if (hostnameChanged || vendorChanged || snmpChanged) {
+              needsRowRefresh.push(item.id);
+            }
+          }
+        });
+
+        // Wstrzyknij nowe urzadzenia odkryte podczas skanu
+        if (data.new_device_ids && data.new_device_ids.length > 0) {
+          fetchAndApplyRows(data.new_device_ids.filter(id => !knownIds.has(id)), false);
+        }
+
+        // Zakolejkuj odswiezenie wierszy ze zmienionymi danymi
+        if (needsRowRefresh.length > 0) {
+          scheduleRowRefresh(needsRowRefresh);
+        }
         // Aktualizuj baner o przestarzalym monitoringu
         if (staleEl) {
           staleEl.style.display = data.monitoring_stale ? '' : 'none';

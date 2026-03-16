@@ -1037,13 +1037,27 @@ def create_app():
 
     @app.route("/devices/live-status")
     def devices_live_status():
-        """Lekki endpoint JSON do odswiezania statusow bez pelnego reload strony."""
+        """Lekki endpoint JSON do odswiezania statusow bez pelnego reload strony.
+
+        Parametr ?since=<ISO_UTC> — gdy podany, zwraca tez new_device_ids:
+        liste ID urzadzen odkrytych PO tym momencie (first_seen > since).
+        JS uzywa tego do dynamicznego doklejania nowych wierszy do tabeli.
+        """
         from datetime import datetime as _dt
-        from flask import jsonify as _jsonify
+        from flask import jsonify as _jsonify, request as _req
         db = SessionLocal()
         try:
             devs = db.query(Device).all()
             _now = _dt.utcnow()
+            # Parsuj parametr ?since= (UTC ISO, np. 2026-03-16T10:00:00)
+            _since_str = _req.args.get("since", "")
+            _since_dt = None
+            if _since_str:
+                try:
+                    _s = _since_str.replace("Z", "").replace("+00:00", "")
+                    _since_dt = _dt.fromisoformat(_s)
+                except (ValueError, AttributeError):
+                    pass
             # Czytaj uncertain_min z DB
             def _si(key, default):
                 r = db.query(SystemStatus).filter(SystemStatus.key == key).first()
@@ -1054,6 +1068,8 @@ def create_app():
             _ping_inact = _si("ping_inactive_after_min", 5)
             _uncertain  = _ping_inact + 2
             items = []
+            new_device_ids = []
+            changed_device_ids = []
             for d in devs:
                 # None = nigdy nie widziane → JS potraktuje jak uncertain (minsAgo >= uncertainMin)
                 mins_ago = int((_now - d.last_seen).total_seconds() / 60) if d.last_seen else None
@@ -1063,7 +1079,14 @@ def create_app():
                     "last_seen": d.last_seen.strftime("%Y-%m-%d %H:%M") if d.last_seen else None,
                     "last_seen_iso": d.last_seen.isoformat() if d.last_seen else None,
                     "mins_ago":  mins_ago,
+                    # Dane do detekcji zmian w wierszach (JS porownuje z data-* atrybutami)
+                    "hostname":  (d.hostname or "").lower(),
+                    "vendor":    (d.vendor or "").lower(),
+                    "snmp_ok":   2 if d.snmp_community else 0,
                 })
+                # Urzadzenie jest "nowe" jesli first_seen > since (odkryte po zaladowaniu strony)
+                if _since_dt and d.first_seen and d.first_seen > _since_dt:
+                    new_device_ids.append(d.id)
             # min() — chcemy czas od NAJŚWIEŻSZEGO kontaktu (odpowiednik max(datetimes) w devices())
             # Większe mins_ago = widziane dawniej; min(mins_ago) = urządzenie widziane najniedawniej
             # max(mins_ago) byłby błędny: zgłaszałby stale gdy JEDNO urządzenie jest offline od dawna
@@ -1071,13 +1094,295 @@ def create_app():
             mon_age   = min(_all_mins) if _all_mins else 0
             _stale_thr = max(30, _ping_inact * 6)
             return _jsonify({
-                "devices":         items,
-                "uncertain_min":   _uncertain,
-                "monitoring_stale": mon_age > _stale_thr and mon_age >= 2,
+                "devices":           items,
+                "uncertain_min":     _uncertain,
+                "monitoring_stale":  mon_age > _stale_thr and mon_age >= 2,
                 "monitoring_age_min": mon_age,
+                "new_device_ids":    new_device_ids,
+                "total_count":       len(devs),
             })
         finally:
             db.close()
+
+    @app.route("/devices/rows")
+    def devices_rows():
+        """Zwraca HTML wierszy <tr> dla podanych ID urzadzen (do dynamicznego wstrzykiwania).
+
+        Parametr ?ids=1,2,3 — lista ID po przecinku.
+        Uzywany przez JS gdy live-status zwroci new_device_ids.
+        """
+        from flask import request as _req
+        from datetime import datetime, timedelta
+        from netdoc.storage.models import (
+            Credential, Vulnerability, Event, EventType, ScanResult,
+            DeviceScreenshot, DeviceAssessment,
+        )
+        from sqlalchemy import func as _func
+        from collections import defaultdict
+        import json as _json2
+
+        _ids_raw = _req.args.get("ids", "")
+        try:
+            device_ids = [int(x) for x in _ids_raw.split(",") if x.strip().isdigit()]
+        except ValueError:
+            return "", 400
+        if not device_ids:
+            return "", 200
+
+        db = SessionLocal()
+        try:
+            devs = db.query(Device).filter(Device.id.in_(device_ids)).all()
+            if not devs:
+                return "", 200
+
+            now = datetime.utcnow()
+            month_ago = now - timedelta(days=30)
+            dev_id_set = {d.id for d in devs}
+
+            # Credentials (najlepszy skuteczny per urzadzenie)
+            cred_rows = db.query(Credential).filter(
+                Credential.last_success_at.isnot(None),
+                Credential.device_id.in_(dev_id_set),
+            ).order_by(Credential.last_success_at.desc()).all()
+            cred_by_device = {}
+            for c in cred_rows:
+                if c.device_id not in cred_by_device:
+                    cred_by_device[c.device_id] = c
+
+            # Podatnosci
+            vuln_counts = dict(
+                db.query(Vulnerability.device_id, _func.count(Vulnerability.id))
+                  .filter(Vulnerability.is_open == True,
+                          Vulnerability.suppressed == False,
+                          Vulnerability.device_id.in_(dev_id_set))
+                  .group_by(Vulnerability.device_id)
+                  .all()
+            )
+            _sev_order = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+            vuln_severity = {}
+            vuln_details: dict = {}
+            for v in db.query(Vulnerability).filter(
+                Vulnerability.is_open == True, Vulnerability.suppressed == False,
+                Vulnerability.device_id.in_(dev_id_set),
+            ).all():
+                sev = getattr(v.severity, "value", str(v.severity))
+                cur = vuln_severity.get(v.device_id, "")
+                if _sev_order.get(sev, 0) > _sev_order.get(cur, 0):
+                    vuln_severity[v.device_id] = sev
+                vuln_details.setdefault(v.device_id, []).append({
+                    "id": v.id, "name": getattr(v.vuln_type, "value", str(v.vuln_type)),
+                    "severity": sev, "port": v.port,
+                })
+            for _did in vuln_details:
+                vuln_details[_did].sort(key=lambda x: -_sev_order.get(x["severity"], 0))
+                _total = len(vuln_details[_did])
+                vuln_details[_did] = vuln_details[_did][:10]
+                if _total > 10:
+                    vuln_details[_did].append({"name": f"...i {_total - 10} więcej",
+                                                "severity": "", "port": None})
+
+            # Events (statystyki statusu)
+            down_7d = dict(
+                db.query(Event.device_id, _func.count(Event.id))
+                  .filter(Event.event_type == EventType.device_disappeared,
+                          Event.event_time >= (now - timedelta(days=7)),
+                          Event.device_id.in_(dev_id_set))
+                  .group_by(Event.device_id).all()
+            )
+            down_30d = dict(
+                db.query(Event.device_id, _func.count(Event.id))
+                  .filter(Event.event_type == EventType.device_disappeared,
+                          Event.event_time >= month_ago,
+                          Event.device_id.in_(dev_id_set))
+                  .group_by(Event.device_id).all()
+            )
+            last_down = {}
+            last_up = {}
+            uptime_pct = {}
+            dev_events_map = defaultdict(list)
+            for e in db.query(Event).filter(
+                Event.event_type.in_([EventType.device_disappeared, EventType.device_appeared]),
+                Event.event_time >= month_ago,
+                Event.device_id.in_(dev_id_set),
+            ).order_by(Event.device_id, Event.event_time.asc()).all():
+                et = e.event_type.value if hasattr(e.event_type, "value") else str(e.event_type)
+                if et == "device_disappeared" and e.device_id not in last_down:
+                    last_down[e.device_id] = e.event_time
+                if et == "device_appeared" and e.device_id not in last_up:
+                    last_up[e.device_id] = e.event_time
+                dev_events_map[e.device_id].append(e)
+            period_sec = 30 * 24 * 3600
+            for dev_id, evs in dev_events_map.items():
+                total_down = 0
+                pending_down = None
+                for e in evs:
+                    et = e.event_type.value if hasattr(e.event_type, "value") else str(e.event_type)
+                    if et == "device_disappeared":
+                        pending_down = e.event_time
+                    elif et == "device_appeared" and pending_down:
+                        total_down += (e.event_time - pending_down).total_seconds()
+                        pending_down = None
+                if pending_down:
+                    total_down += (now - pending_down).total_seconds()
+                pct = max(0.0, min(100.0, (1 - total_down / period_sec) * 100))
+                uptime_pct[dev_id] = round(pct, 1)
+
+            # Skany (szybki + pelny)
+            last_scans = {}
+            last_full_scans = {}
+            for sr in db.query(ScanResult).filter(
+                ScanResult.device_id.in_(dev_id_set),
+                ScanResult.scan_type.in_(["nmap", "nmap_full"]),
+            ).order_by(ScanResult.scan_time.desc()).all():
+                if sr.scan_type == "nmap" and sr.device_id not in last_scans:
+                    last_scans[sr.device_id] = sr
+                elif sr.scan_type == "nmap_full" and sr.device_id not in last_full_scans:
+                    last_full_scans[sr.device_id] = sr
+
+            # OUI db date
+            try:
+                from netdoc.collector.oui_lookup import _DATA_DIR, IEEE_SOURCES
+                _oui_fpath = _DATA_DIR / IEEE_SOURCES[0]["file"]
+                oui_db_date = (
+                    datetime.fromtimestamp(_oui_fpath.stat().st_mtime).strftime("%Y-%m-%d")
+                    if _oui_fpath.exists() else None
+                )
+            except Exception:
+                oui_db_date = None
+
+            # device_stats (taka sama logika jak w devices())
+            device_stats = {}
+            for d in devs:
+                sr = last_scans.get(d.id)
+                fsr = last_full_scans.get(d.id)
+                ports_str = None
+                if sr and sr.open_ports:
+                    ports = sorted(sr.open_ports.items(), key=lambda x: int(x[0]))
+                    parts = []
+                    for p, info in ports[:6]:
+                        svc = (info.get("service", "") if isinstance(info, dict) else "")
+                        parts.append(f"{p}({svc})" if svc else str(p))
+                    if len(sr.open_ports) > 6:
+                        parts.append(f"+{len(sr.open_ports) - 6}")
+                    ports_str = ", ".join(parts)
+                full_ports_str = None
+                if fsr and fsr.open_ports:
+                    fports = sorted(fsr.open_ports.items(), key=lambda x: int(x[0]))
+                    fparts = []
+                    for p, info in fports[:15]:
+                        svc = (info.get("service", "") if isinstance(info, dict) else "")
+                        fparts.append(f"{p}({svc})" if svc else str(p))
+                    if len(fsr.open_ports) > 15:
+                        fparts.append(f"+{len(fsr.open_ports) - 15}")
+                    full_ports_str = ", ".join(fparts)
+                _quick_cnt = len(sr.open_ports)  if sr  and sr.open_ports  else None
+                _full_cnt  = len(fsr.open_ports) if fsr and fsr.open_ports else None
+                _disp_cnt  = _full_cnt if _full_cnt is not None else _quick_cnt
+                _disp_src  = ("pełny skan" if _full_cnt is not None
+                              else ("szybki skan" if _quick_cnt is not None else None))
+                _disp_time = (fsr.scan_time if _full_cnt is not None
+                              else (sr.scan_time if sr else None))
+                vendor_source = ("OUI (MAC)" if (d.vendor and d.mac)
+                                 else ("nmap/ARP" if d.vendor else None))
+                device_stats[d.id] = {
+                    "down_7d": down_7d.get(d.id, 0), "down_30d": down_30d.get(d.id, 0),
+                    "last_down": last_down.get(d.id), "last_up": last_up.get(d.id),
+                    "uptime_pct": uptime_pct.get(d.id),
+                    "open_ports_str": ports_str,
+                    "last_scan_time": sr.scan_time if sr else None,
+                    "vendor_source": vendor_source,
+                    "last_full_scan": fsr.scan_time if fsr else None,
+                    "full_scan_ports": _full_cnt,
+                    "full_scan_ports_str": full_ports_str,
+                    "display_port_count": _disp_cnt,
+                    "display_port_source": _disp_src,
+                    "display_port_time": _disp_time,
+                }
+
+            # Screenshoty
+            screenshot_device_ids = {
+                r.device_id for r in db.query(DeviceScreenshot.device_id)
+                                        .filter(DeviceScreenshot.device_id.in_(dev_id_set)).all()
+            }
+
+            # Ostatnia ocena AI
+            from sqlalchemy import func as _sqlfunc2
+            _ai_subq = (
+                db.query(DeviceAssessment.device_id,
+                         _sqlfunc2.max(DeviceAssessment.assessed_at).label("max_at"))
+                  .filter(DeviceAssessment.device_id.in_(dev_id_set))
+                  .group_by(DeviceAssessment.device_id).subquery()
+            )
+            _ai_rows = (
+                db.query(DeviceAssessment)
+                  .join(_ai_subq,
+                        (DeviceAssessment.device_id == _ai_subq.c.device_id) &
+                        (DeviceAssessment.assessed_at == _ai_subq.c.max_at))
+                  .all()
+            )
+            ai_last_by_device = {}
+            for _ar in _ai_rows:
+                if not _ar.device_id:
+                    continue
+                try:
+                    _rd = _json2.loads(_ar.result)
+                except Exception:
+                    _rd = {}
+                ai_last_by_device[_ar.device_id] = {
+                    "risk_level": _rd.get("security", {}).get("risk_level", ""),
+                    "is_obsolete": _rd.get("is_obsolete"),
+                    "assessed_at": _ar.assessed_at.strftime("%Y-%m-%d %H:%M"),
+                    "summary": _rd.get("summary", "")[:120],
+                    "entry_id": _ar.id,
+                }
+
+            # SystemStatus (scanning_ips, uncertain_min, flags)
+            _scan_rows = {
+                r.key: r.value
+                for r in db.query(SystemStatus).filter(
+                    SystemStatus.key.in_(["scanning_ips", "inventory_enabled",
+                                          "ai_assessment_enabled",
+                                          "ping_inactive_after_min", "ping_interval_s"])
+                ).all()
+            }
+        finally:
+            db.close()
+
+        # Cred scan stats z API
+        cred_scan_data, _ = _api("get", "/api/credentials/cred-scan-stats")
+        cred_scan_by_device = {}
+        if cred_scan_data:
+            cred_scan_by_device = {d["device_id"]: d
+                                   for d in cred_scan_data.get("devices", [])
+                                   if d["device_id"] in dev_id_set}
+
+        _ping_inactive_min = int(_scan_rows.get("ping_inactive_after_min", 5))
+        _ping_interval_s   = int(_scan_rows.get("ping_interval_s", 18))
+        _scanning_raw      = _scan_rows.get("scanning_ips", "")
+        scanning_ips       = set(_scanning_raw.split(",")) - {""}
+        inventory_enabled      = _scan_rows.get("inventory_enabled", "1") != "0"
+        ai_assessment_enabled  = _scan_rows.get("ai_assessment_enabled", "1") != "0"
+        uncertain_min = _ping_inactive_min + 2
+
+        return render_template(
+            "_devices_rows_fragment.html",
+            devices=devs,
+            cred_by_device=cred_by_device,
+            vuln_counts=vuln_counts,
+            vuln_severity=vuln_severity,
+            vuln_details=vuln_details,
+            device_stats=device_stats,
+            oui_db_date=oui_db_date,
+            now=now,
+            uncertain_min=uncertain_min,
+            cred_scan_by_device=cred_scan_by_device,
+            screenshot_device_ids=screenshot_device_ids,
+            scanning_ips=scanning_ips,
+            inventory_enabled=inventory_enabled,
+            ai_assessment_enabled=ai_assessment_enabled,
+            ping_interval_s=_ping_interval_s,
+            ai_last_by_device=ai_last_by_device,
+        )
 
     @app.route("/devices/<int:device_id>/reclassify", methods=["POST"])
     def device_reclassify(device_id):
