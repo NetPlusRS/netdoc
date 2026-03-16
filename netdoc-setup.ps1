@@ -992,15 +992,15 @@ if (Test-Path $watchdogScript) {
 
 if ($allUp -and $webReady) {
     Write-Host ""
-    Write-Host "  Otwieram Panel Admin w domyslnej przegladarce..." -ForegroundColor Cyan
-    Start-Process "http://localhost:5000"
+    Write-Host "  Otwieram karte Urzadzenia w domyslnej przegladarce..." -ForegroundColor Cyan
+    Start-Process "http://localhost:5000/devices"
 } elseif ($webReady) {
     Write-Host ""
-    Write-Host "  Otwieram Panel Admin (nie wszystkie kontenery dzialaja)..." -ForegroundColor Yellow
-    Start-Process "http://localhost:5000"
+    Write-Host "  Otwieram karte Urzadzenia (nie wszystkie kontenery dzialaja)..." -ForegroundColor Yellow
+    Start-Process "http://localhost:5000/devices"
 } else {
     Write-Warn "Przegladarki nie otwieram  -  Panel Web niedostepny."
-    Write-Info "Sprawdz logi i sprobuj recznie: http://localhost:5000"
+    Write-Info "Sprawdz logi i sprobuj recznie: http://localhost:5000/devices"
 }
 
 Write-Host ""
