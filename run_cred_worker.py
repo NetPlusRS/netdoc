@@ -525,9 +525,10 @@ def _try_ssh(ip: str, port: int, username: str, password: str) -> bool:
             logger.info("SSH FAIL  %-18s port=%-5d u=%s", ip, port, username)
         return False
     except (paramiko.ssh_exception.SSHException, EOFError) as e:
-        # Połączenie zresetowane przed banerem SSH — sygnał ochrony aktywnej
+        # Połączenie zresetowane/przerwane przed banerem SSH — sygnał ochrony aktywnej
+        # (fail2ban, TCP wrapper, IDS, rate-limit)
         msg = str(e).lower()
-        if "banner" in msg or "eof" in msg or isinstance(e, EOFError):
+        if "banner" in msg or "eof" in msg or "reset" in msg or isinstance(e, EOFError):
             _record_protection(ip, "SSH", port, "banner-reset")
         return False
     except Exception:
@@ -551,7 +552,7 @@ def _note_protection(db, device_id: int, ip: str, service: str, evt: dict) -> No
 
     tag_key  = f"{service.upper()}-PROTECTED"
     note_tag = f"[{tag_key} port={port} reason={reason} detected={ts}]"
-    pattern  = rf"\[{tag_key}[^\]]*\]"
+    pattern  = rf"\[{re.escape(tag_key)}[^\]]*\]"
     try:
         import re as _re
         dev = db.query(Device).filter(Device.id == device_id).first()
@@ -795,6 +796,12 @@ def _web_form_ok(url: str, u: str, p: str) -> bool:
             try:
                 r = httpx.post(url, data={uf: u, pf: p},
                                timeout=2, follow_redirects=True, verify=False)
+                if r.status_code == 429:
+                    from urllib.parse import urlparse as _up2
+                    _h2 = _up2(url).hostname or ""
+                    if _h2:
+                        _record_protection(_h2, "Web", _up2(url).port or 80, "http-429-rate-limit")
+                    return False
                 if r.status_code == 200:
                     t = r.text.lower()
                     ok_  = ("logout", "dashboard", "welcome", "hostname")
@@ -1809,13 +1816,17 @@ def _process_device(device_id: int, ip: str,
             # Zapisz aktualny stan rotacji do DB
             _save_tried(device_id, tried)
 
-        # Przetwórz wszystkie zdarzenia ochrony zebrane podczas tego cyklu testów
-        _process_protection_events(db, device_id, ip)
-
     except Exception as exc:
         logger.debug("Blad device_id=%s ip=%s: %s", device_id, ip, exc)
         db.rollback()
     finally:
+        # Zawsze drenuj zdarzenia ochrony — nawet gdy wystąpił wyjątek wcześniej.
+        # Bez finally: zdarzenia z poprzedniego cyklu narastają w globalnym dict
+        # i przy następnym cyklu count jest fałszywie zawyżony.
+        try:
+            _process_protection_events(db, device_id, ip)
+        except Exception:
+            pass
         db.close()
     return res
 
