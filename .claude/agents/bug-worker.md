@@ -92,3 +92,11 @@ Workery NetDoc działają jako osobne kontenery Docker, nieprzerwanie przez dłu
 5. `run_community_worker.py` — sprawdź czy w ogóle istnieje
 
 Dla każdego workera: znajdź główną pętlę `while True:` i sprawdź strukturę try/except.
+
+## Zapisz raport do pliku
+
+Na końcu swojej pracy:
+1. Użyj Bash: `BASEDIR=$(pwd) && TIMESTAMP=$(date +%Y-%m-%d-%H%M) && echo "${BASEDIR}/logs/agents/bug-worker-${TIMESTAMP}.md"` aby uzyskać ścieżkę.
+2. Użyj narzędzia Write z tą ścieżką aby zapisać pełny raport.
+
+Format: nagłówek `# Bug-Worker Report — [data]`, wszystkie BUG-WRK[N] w formacie raportu, na końcu `## Podsumowanie` z listą workerów i znalezionych problemów per typ.

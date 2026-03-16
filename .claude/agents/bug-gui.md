@@ -85,3 +85,11 @@ Dla każdego `fetch("/path")` lub `url_for('name')` w szablonach:
 1. Znajdź odpowiadający route w app.py
 2. Sprawdź metodę HTTP (GET/POST)
 3. Sprawdź format odpowiedzi (JSON/HTML)
+
+## Zapisz raport do pliku
+
+Na końcu swojej pracy:
+1. Użyj Bash: `BASEDIR=$(pwd) && TIMESTAMP=$(date +%Y-%m-%d-%H%M) && echo "${BASEDIR}/logs/agents/bug-gui-${TIMESTAMP}.md"` aby uzyskać ścieżkę.
+2. Użyj narzędzia Write z tą ścieżką aby zapisać pełny raport.
+
+Format: nagłówek `# Bug-GUI Report — [data]`, wszystkie BUG-GUI[N] w formacie raportu, na końcu `## Podsumowanie` z liczbą błędów per typ.

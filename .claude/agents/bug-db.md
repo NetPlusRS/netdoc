@@ -78,3 +78,11 @@ Jesteś ekspertem od SQLAlchemy i PostgreSQL. Szukasz błędów w kodzie NetDoc 
 7. `netdoc/api/routes/*.py` — endpointy API z DB
 
 Sprawdź KAŻDE miejsce gdzie otwierana jest sesja DB. Policz ile razy `SessionLocal()` jest wywołane i ile razy `db.close()` jest wywoływane.
+
+## Zapisz raport do pliku
+
+Na końcu swojej pracy:
+1. Użyj Bash: `BASEDIR=$(pwd) && TIMESTAMP=$(date +%Y-%m-%d-%H%M) && echo "${BASEDIR}/logs/agents/bug-db-${TIMESTAMP}.md"` aby uzyskać ścieżkę.
+2. Użyj narzędzia Write z tą ścieżką aby zapisać pełny raport.
+
+Format: nagłówek `# Bug-DB Report — [data]`, wszystkie BUG-DB[N] w formacie raportu, na końcu `## Podsumowanie` z liczbą SessionLocal() vs db.close() i listą znalezionych problemów per typ.

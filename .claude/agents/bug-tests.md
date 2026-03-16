@@ -132,3 +132,11 @@ cd C:/Users/Yeszie/OneDrive/Targi2026
 python -m pytest tests/ -q --tb=no 2>&1 | tail -5
 ```
 Podaj liczbę passed/failed/error jako podsumowanie aktualnego stanu testów.
+
+## Zapisz raport do pliku
+
+Na końcu swojej pracy:
+1. Użyj Bash: `BASEDIR=$(pwd) && TIMESTAMP=$(date +%Y-%m-%d-%H%M) && echo "${BASEDIR}/logs/agents/bug-tests-${TIMESTAMP}.md"` aby uzyskać ścieżkę.
+2. Użyj narzędzia Write z tą ścieżką aby zapisać pełny raport.
+
+Format: nagłówek `# Bug-Tests Report — [data]`, wszystkie TEST-[N] w formacie raportu, na końcu `## Podsumowanie` z wynikiem pytest i liczbą brakujących testów per priorytet.

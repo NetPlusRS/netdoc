@@ -12,6 +12,9 @@ netdoc_pro/
 # Logi i runtime
 logs/*
 !logs/.gitkeep
+!logs/agents/
+logs/agents/*
+!logs/agents/.gitkeep
 *.pid
 *.log
 

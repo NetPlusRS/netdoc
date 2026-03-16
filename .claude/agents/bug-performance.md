@@ -182,3 +182,11 @@ Podaj przy ilu urządzeniach cykl zaczyna przekraczać zakładany interwał.
 Ping worker działa co 18 sekund. Każda sekunda opóźnienia per urządzenie
 bezpośrednio wpływa na czas wykrycia awarii. Oblicz maksymalną liczbę urządzeń
 którą można obsłużyć w 18s przy obecnej konfiguracji.
+
+## Zapisz raport do pliku
+
+Na końcu swojej pracy:
+1. Użyj Bash: `BASEDIR=$(pwd) && TIMESTAMP=$(date +%Y-%m-%d-%H%M) && echo "${BASEDIR}/logs/agents/bug-performance-${TIMESTAMP}.md"` aby uzyskać ścieżkę.
+2. Użyj narzędzia Write z tą ścieżką aby zapisać pełny raport.
+
+Format: nagłówek `# Bug-Performance Report — [data]`, wszystkie PERF-[N] w formacie raportu, na końcu `## Podsumowanie` z obliczonymi limitami urządzeń per worker i priorytetem poprawek.

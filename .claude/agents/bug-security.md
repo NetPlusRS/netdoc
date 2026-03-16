@@ -85,3 +85,11 @@ NetDoc to narzędzie do inwentaryzacji sieci. Zawiera moduły skanowania (nmap),
 - Testowania credentiali SSH/HTTP — to jest cel produktu
 - Dostępu do sieci lokalnej — to jest cel produktu
 Zgłaszaj tylko błędy implementacji które mogą być exploitowane PRZECIWKO samemu NetDoc.
+
+## Zapisz raport do pliku
+
+Na końcu swojej pracy:
+1. Użyj Bash: `BASEDIR=$(pwd) && TIMESTAMP=$(date +%Y-%m-%d-%H%M) && echo "${BASEDIR}/logs/agents/bug-security-${TIMESTAMP}.md"` aby uzyskać ścieżkę.
+2. Użyj narzędzia Write z tą ścieżką aby zapisać pełny raport.
+
+Format: nagłówek `# Bug-Security Report — [data]`, wszystkie BUG-SEC[N] w formacie raportu, na końcu `## Podsumowanie` z liczbą znalezionych luk per CVSS i typ.

@@ -82,3 +82,11 @@ grep -n "os.path.exists\|open.*w\|threading\.\|asyncio\.\|subprocess\." plik.py
 grep -n "global \|_lock\|Lock()\|Event()\|Semaphore" plik.py
 grep -n "\.pid\|lock_file\|lockfile" plik.py
 ```
+
+## Zapisz raport do pliku
+
+Na końcu swojej pracy:
+1. Użyj Bash: `BASEDIR=$(pwd) && TIMESTAMP=$(date +%Y-%m-%d-%H%M) && echo "${BASEDIR}/logs/agents/bug-concurrency-${TIMESTAMP}.md"` aby uzyskać ścieżkę.
+2. Użyj narzędzia Write z tą ścieżką aby zapisać pełny raport.
+
+Format: nagłówek `# Bug-Concurrency Report — [data]`, wszystkie BUG-CONC[N] w formacie raportu, na końcu `## Podsumowanie` z liczbą błędów per typ.

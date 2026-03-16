@@ -71,3 +71,11 @@ Dla każdego znalezionego błędu:
 7. `netdoc/storage/models.py` — modele, defaults, typy kolumn
 
 Przeczytaj pliki, znajdź rzeczywiste błędy w kodzie. Nie zgłaszaj problemów stylistycznych — tylko realne błędy które mogą powodować nieprawidłowe zachowanie.
+
+## Zapisz raport do pliku
+
+Na końcu swojej pracy:
+1. Użyj Bash: `BASEDIR=$(pwd) && TIMESTAMP=$(date +%Y-%m-%d-%H%M) && echo "${BASEDIR}/logs/agents/bug-logic-${TIMESTAMP}.md"` aby uzyskać ścieżkę do pliku logu.
+2. Użyj narzędzia Write z tą ścieżką aby zapisać cały raport.
+
+Format pliku: nagłówek `# Bug-Logic Report — [data]`, następnie wszystkie BUG-L[N] w formacie raportu, na końcu sekcja `## Podsumowanie` z liczbą znalezionych błędów per typ.

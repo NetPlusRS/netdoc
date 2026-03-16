@@ -91,3 +91,11 @@ Sprawdź funkcje które używają `logger.` lub `_log.` czy te zmienne są zdefi
 2. Porównaj listę serwisów w `docker-compose.yml` z listami w PS1 i `_DOCKER_SERVICES`
 3. Porównaj klucze config w `run_scanner.py` i `app.py`
 4. Sprawdź wszystkie `render_template()` w `app.py` czy przekazują `ai_last_by_device`
+
+## Zapisz raport do pliku
+
+Na końcu swojej pracy:
+1. Użyj Bash: `BASEDIR=$(pwd) && TIMESTAMP=$(date +%Y-%m-%d-%H%M) && echo "${BASEDIR}/logs/agents/bug-regression-${TIMESTAMP}.md"` aby uzyskać ścieżkę.
+2. Użyj narzędzia Write z tą ścieżką aby zapisać pełny raport.
+
+Format: nagłówek `# Bug-Regression Report — [data]`, wszystkie BUG-REG[N] w formacie raportu, na końcu `## Podsumowanie` z liczbą znalezionych regresji per typ.
