@@ -42,9 +42,9 @@ _log_fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 _stdout_handler = logging.StreamHandler(sys.stdout)
 _stdout_handler.setFormatter(_log_fmt)
 
-# Handler plik (rotacja 5MB × 5 kopii)
+# Handler plik (rotacja 1MB × 1 kopia)
 from logging.handlers import RotatingFileHandler
-_file_handler = RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
+_file_handler = RotatingFileHandler(LOG_FILE, maxBytes=1 * 1024 * 1024, backupCount=1, encoding="utf-8")
 _file_handler.setFormatter(_log_fmt)
 
 logging.basicConfig(level=logging.INFO, handlers=[_stdout_handler, _file_handler])

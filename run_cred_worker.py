@@ -68,7 +68,7 @@ os.makedirs(_LOG_DIR, exist_ok=True)
 from logging.handlers import RotatingFileHandler as _RotatingFileHandler
 _file_handler = _RotatingFileHandler(
     os.path.join(_LOG_DIR, "cred.log"), encoding="utf-8",
-    maxBytes=10 * 1024 * 1024, backupCount=3,  # 10MB × 3 = max 40MB
+    maxBytes=1 * 1024 * 1024, backupCount=1,  # 1MB × 1 kopia
 )
 _file_handler.setFormatter(logging.Formatter(_LOG_FMT))
 logging.getLogger().addHandler(_file_handler)

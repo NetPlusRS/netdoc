@@ -11,12 +11,20 @@ name: netdoc
 # 5. Pierwsze uruchomienie:  docker compose up -d --build
 #    (moze trwac 10-20 min — pobieranie obrazow + budowanie)
 
+x-log-limit: &log-limit
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "1m"
+      max-file: "1"
+
 services:
 
   postgres:
     image: postgres:16-alpine
     container_name: netdoc-postgres
     restart: unless-stopped
+    <<: *log-limit
     environment:
       TZ: "${TZ:-UTC}"
       POSTGRES_DB: netdoc
@@ -36,6 +44,7 @@ services:
     image: prom/prometheus:v2.55.1
     container_name: netdoc-prometheus
     restart: unless-stopped
+    <<: *log-limit
     environment:
       TZ: "${TZ:-UTC}"
     volumes:
@@ -51,6 +60,7 @@ services:
     image: grafana/loki:3.2.0
     container_name: netdoc-loki
     restart: unless-stopped
+    <<: *log-limit
     environment:
       TZ: "${TZ:-UTC}"
     ports:
@@ -64,6 +74,7 @@ services:
     image: grafana/promtail:3.2.0
     container_name: netdoc-promtail
     restart: unless-stopped
+    <<: *log-limit
     environment:
       TZ: "${TZ:-UTC}"
     volumes:
@@ -77,6 +88,7 @@ services:
     image: grafana/grafana:11.4.0
     container_name: netdoc-grafana
     restart: unless-stopped
+    <<: *log-limit
     environment:
       TZ: "${TZ:-UTC}"
       GF_SECURITY_ADMIN_USER: admin
@@ -98,6 +110,7 @@ services:
     build: .
     container_name: netdoc-api
     restart: unless-stopped
+    <<: *log-limit
     command: uvicorn netdoc.api.main:app --host 0.0.0.0 --port 8000 --workers 1
     environment:
       TZ: "${TZ:-UTC}"
@@ -122,6 +135,7 @@ services:
     build: .
     container_name: netdoc-web
     restart: unless-stopped
+    <<: *log-limit
     command: python -m flask --app netdoc.web.app run --host 0.0.0.0 --port 5000
     environment:
       TZ: "${TZ:-UTC}"
@@ -154,6 +168,7 @@ services:
     build: .
     container_name: netdoc-ping
     restart: unless-stopped
+    <<: *log-limit
     command: python run_ping.py
     environment:
       TZ: "${TZ:-UTC}"
@@ -177,6 +192,7 @@ services:
     build: .
     container_name: netdoc-snmp
     restart: unless-stopped
+    <<: *log-limit
     command: python run_snmp_worker.py
     environment:
       TZ: "${TZ:-UTC}"
@@ -199,6 +215,7 @@ services:
     build: .
     container_name: netdoc-community
     restart: unless-stopped
+    <<: *log-limit
     command: python run_community_worker.py
     environment:
       TZ: "${TZ:-UTC}"
@@ -222,6 +239,7 @@ services:
     build: .
     container_name: netdoc-cred
     restart: unless-stopped
+    <<: *log-limit
     command: python run_cred_worker.py
     environment:
       TZ: "${TZ:-UTC}"
@@ -254,6 +272,7 @@ services:
     build: .
     container_name: netdoc-vuln
     restart: unless-stopped
+    <<: *log-limit
     command: python run_vuln_worker.py
     environment:
       TZ: "${TZ:-UTC}"
@@ -275,6 +294,7 @@ services:
     build: .
     container_name: netdoc-internet
     restart: unless-stopped
+    <<: *log-limit
     command: python run_internet.py
     environment:
       TZ: "${TZ:-UTC}"
