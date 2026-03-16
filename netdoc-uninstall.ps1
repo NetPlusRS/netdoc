@@ -16,6 +16,33 @@
 $ErrorActionPreference = "Continue"
 $ProjectDir = $PSScriptRoot
 
+# ── Self-elevation: wymagaj uprawnien Administratora ──────────────────────────
+#    Unregister-ScheduledTask i Stop-ScheduledTask wymagaja admina.
+#    Musi byc PRZED Start-Transcript.
+
+$_currentPrincipal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+if (-not $_currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host ""
+    Write-Host "  NetDoc Uninstaller wymaga uprawnien Administratora." -ForegroundColor Yellow
+    Write-Host "  Za chwile pojawi sie okno UAC  -  kliknij Tak aby kontynuowac." -ForegroundColor DarkGray
+    Write-Host ""
+    Start-Sleep -Seconds 2
+    try {
+        Start-Process powershell.exe `
+            -Verb RunAs `
+            -ArgumentList "-ExecutionPolicy Bypass -File `"$PSCommandPath`"" `
+            -WorkingDirectory $ProjectDir `
+            -ErrorAction Stop
+    } catch {
+        Write-Host ""
+        Write-Host "  Odmowa uprawnien  -  UAC zostalo odrzucone lub zabronione przez polityki." -ForegroundColor Red
+        Write-Host "  Sprobuj: prawy klik na netdoc-uninstall.bat -> Uruchom jako administrator" -ForegroundColor DarkGray
+        Write-Host ""
+        Read-Host "  Nacisnij Enter aby zamknac..."
+    }
+    exit
+}
+
 # ── Log debugowania ────────────────────────────────────────────────────────────
 
 $LogDir       = Join-Path $ProjectDir "logs"
@@ -76,8 +103,11 @@ function Wait-WithCountdown {
                     Write-Host ""
                     return $false
                 }
-            } catch {
-                # stdin nie jest interaktywny (np. potok/CI) — ignoruj blad KeyAvailable
+            } catch [System.InvalidOperationException] {
+                # stdin nie jest interaktywny (potok/CI/ISE) — pomijaj caly countdown
+                break
+            } catch [System.IO.IOException] {
+                break   # uchwyt stdin niedostepny
             }
             Start-Sleep -Milliseconds 100
         }

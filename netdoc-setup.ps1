@@ -23,11 +23,21 @@ if (-not $_currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Ad
     Write-Host "  Za chwile pojawi sie okno UAC  -  kliknij Tak aby kontynuowac." -ForegroundColor DarkGray
     Write-Host ""
     Start-Sleep -Seconds 2
-    $scriptPath = $MyInvocation.MyCommand.Path
-    Start-Process powershell.exe `
-        -Verb RunAs `
-        -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`"" `
-        -WorkingDirectory $ProjectDir
+    $scriptPath = $PSCommandPath   # bardziej niezawodne niz $MyInvocation.MyCommand.Path
+    try {
+        Start-Process powershell.exe `
+            -Verb RunAs `
+            -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`"" `
+            -WorkingDirectory $ProjectDir `
+            -ErrorAction Stop
+    } catch {
+        Write-Host ""
+        Write-Host "  Odmowa uprawnien  -  UAC zostalo odrzucone lub zabronione przez polityki." -ForegroundColor Red
+        Write-Host "  Instalacja wymaga praw Administratora." -ForegroundColor Yellow
+        Write-Host "  Sprobuj: prawy klik na netdoc-setup.bat -> Uruchom jako administrator" -ForegroundColor DarkGray
+        Write-Host ""
+        Read-Host "  Nacisnij Enter aby zamknac..."
+    }
     exit
 }
 
@@ -928,8 +938,11 @@ if ($allUp -and $pythonCmd) {
     $scanScript = Join-Path $ProjectDir "run_scanner.py"
     if (Test-Path $scanScript) {
         $env:PYTHONUNBUFFERED = "1"   # wymus natychmiastowe flusowanie logow Pythona do transkryptu
-        & $PythonExeResolved $scanScript --once 2>&1 | Out-Host
-        $env:PYTHONUNBUFFERED = $null
+        try {
+            & $PythonExeResolved $scanScript --once 2>&1 | Out-Host
+        } finally {
+            Remove-Item -Path env:PYTHONUNBUFFERED -ErrorAction SilentlyContinue
+        }
         if ($LASTEXITCODE -eq 0) {
             Write-OK "Pierwsze skanowanie zakonczone."
         } else {
