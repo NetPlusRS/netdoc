@@ -33,8 +33,8 @@
 
 {# ── Ostrzezenie o przestarzalych danych monitoringu ────────────────────── #}
 <div id="monitoring-stale-banner"
-     class="alert alert-warning d-flex align-items-center gap-2 py-2 mb-2"
-     role="alert" style="display:none">
+     class="alert alert-warning d-flex align-items-center gap-2 py-2 mb-2{% if not monitoring_stale %} d-none{% endif %}"
+     role="alert">
   <i class="bi bi-exclamation-triangle-fill flex-shrink-0"></i>
   <div>
     <strong>Ping-worker moze nie dzialac</strong> — ostatni kontakt z jakimkolwiek urzadzeniem:
@@ -1754,7 +1754,7 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
         }
         // Aktualizuj baner o przestarzalym monitoringu
         if (staleEl) {
-          staleEl.style.display = data.monitoring_stale ? '' : 'none';
+          staleEl.classList.toggle('d-none', !data.monitoring_stale);
           if (staleText && data.monitoring_stale) {
             const m = data.monitoring_age_min || 0;
             staleText.textContent = m >= 60
