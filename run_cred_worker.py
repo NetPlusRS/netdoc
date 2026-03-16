@@ -536,12 +536,13 @@ def _note_ssh_protection(db, device_id: int, ip: str, evt: dict) -> None:
         if dev is None:
             return
         current = dev.asset_notes or ""
-        # Zastąp poprzednią linię SSH-PROTECTED lub dołącz nową
+        # Tag zawsze na początku — widoczny w popoverze MAC (który obcina do 60 znaków)
         import re as _re
         if _re.search(r"\[SSH-PROTECTED[^\]]*\]", current):
             dev.asset_notes = _re.sub(r"\[SSH-PROTECTED[^\]]*\]", note_line, current)
         else:
-            dev.asset_notes = (current.rstrip() + "\n" + note_line).lstrip()
+            rest = current.strip()
+            dev.asset_notes = (note_line + ("\n" + rest if rest else ""))
         db.commit()
         logger.info("SSH PROTECTED: %-18s — zapisano w asset_notes urządzenia id=%d", ip, device_id)
     except Exception as exc:
