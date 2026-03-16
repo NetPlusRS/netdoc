@@ -156,11 +156,19 @@ if ($dockerAvailable) {
     Set-Location $ProjectDir
 
     $runningContainers = @(
-        docker ps --filter "name=netdoc" --filter "status=running" `
-                  --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" }
+        @(docker ps --filter "name=netdoc" --filter "status=running" `
+                  --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" }) +
+        @(docker ps --filter "name=lab-"   --filter "status=running" `
+                  --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" })
     )
     $allContainers = @(
-        docker ps -a --filter "name=netdoc" --format "{{.Names}}" 2>&1 |
+        @(docker ps -a --filter "name=netdoc" --format "{{.Names}}" 2>&1 |
+          Where-Object { $_ -ne "" }) +
+        @(docker ps -a --filter "name=lab-"   --format "{{.Names}}" 2>&1 |
+          Where-Object { $_ -ne "" })
+    )
+    $labAllContainers = @(
+        docker ps -a --filter "name=lab-" --format "{{.Names}}" 2>&1 |
         Where-Object { $_ -ne "" }
     )
     $netdocVolumes = @(
@@ -395,6 +403,21 @@ if ($mode -eq "stop") {
         } else {
             Write-Warn "Zatrzymanie zakonczone z ostrzezeniem (kod: $LASTEXITCODE)"
         }
+
+        # Zatrzymaj tez kontenery lab (oddzielny projekt Compose)
+        $labComposeFile = Join-Path $ProjectDir "docker-compose.lab.yml"
+        $labRunningNow = @(docker ps --filter "name=lab-" --filter "status=running" --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" })
+        if ($labRunningNow.Count -gt 0) {
+            Write-Step "Zatrzymuje kontenery lab ($($labRunningNow.Count))..."
+            if (Test-Path $labComposeFile) {
+                docker compose -f $labComposeFile stop 2>&1 | Out-Host
+            } else {
+                foreach ($name in $labRunningNow) {
+                    docker stop $name 2>&1 | Out-Null
+                }
+            }
+            Write-OK "Kontenery lab zatrzymane."
+        }
     }
 
 } elseif ($mode -eq "full") {
@@ -442,6 +465,34 @@ if ($mode -eq "stop") {
                 Write-Warn "Nie udalo sie usunac wszystkiego nawet force-remove!"
                 foreach ($c in $remainingContainers) { Write-Info "  Kontener nadal istnieje: $c" }
                 foreach ($v in $remainingVolumes) { Write-Info "  Volumen nadal istnieje: $v" }
+            }
+        }
+
+        # ── Kontenery i obrazy laboratoryjne (oddzielny projekt Compose: netdoc-lab) ──
+        if ($labAllContainers.Count -gt 0) {
+            Write-Step "Usuwam kontenery i obrazy lab ($($labAllContainers.Count) kontenerow)..."
+            $labComposeFile = Join-Path $ProjectDir "docker-compose.lab.yml"
+            if (Test-Path $labComposeFile) {
+                docker compose -f $labComposeFile down --rmi all 2>&1 | Out-Host
+            }
+            # Force-remove jesli compose down nie usunelo (np. brak pliku)
+            $labLeftIds = @(docker ps -aq --filter "name=lab-" 2>&1 | Where-Object { $_ -ne "" })
+            foreach ($id in $labLeftIds) {
+                docker rm -f $id 2>&1 | Out-Null
+            }
+            # Usun obrazy lab recznie (reference=*netdoc-lab* — nie sa objete glownym compose down)
+            $labImgIds = @(docker images --filter "reference=*netdoc-lab*" --format "{{.ID}}" 2>&1 | Where-Object { $_ -ne "" })
+            foreach ($img in ($labImgIds | Sort-Object -Unique)) {
+                docker rmi -f $img 2>&1 | Out-Null
+            }
+            # Usun siec lab
+            docker network rm netdoc_lab 2>&1 | Out-Null
+            # Weryfikacja
+            $labStill = @(docker ps -aq --filter "name=lab-" 2>&1 | Where-Object { $_ -ne "" })
+            if ($labStill.Count -eq 0) {
+                Write-OK "Kontenery i obrazy lab usuniete."
+            } else {
+                Write-Warn "Nie udalo sie usunac $($labStill.Count) kontenera(ow) lab."
             }
         }
     }
