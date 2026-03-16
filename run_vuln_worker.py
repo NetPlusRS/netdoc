@@ -667,7 +667,7 @@ def check_vnc_weak(ip: str):
             Credential.method == CredentialMethod.vnc,
             Credential.device_id.is_(None),
         ).order_by(Credential.priority.desc()).all()
-        WEAK_PWD = [c.username for c in db_creds if c.username] or DEFAULT_PWD
+        WEAK_PWD = [c.password_encrypted for c in db_creds if c.password_encrypted] or DEFAULT_PWD
     finally:
         db.close()
     import struct as _s

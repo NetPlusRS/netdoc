@@ -68,7 +68,7 @@ def _read_nmap_settings() -> tuple:
         finally:
             db.close()
     except Exception:
-        return 100, 9
+        return 100, 1   # BUG-L3: bezpieczny fallback — intensity=9 moglo destabilizowac urzadzenia embedded
 
 
 # Porty drukarek wykluczone z fazy version detection (-sV).

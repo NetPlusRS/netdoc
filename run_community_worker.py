@@ -72,7 +72,7 @@ def _get_db_communities(db) -> list:
     return [
         c.username for c in
         db.query(Credential)
-          .filter(Credential.device_id == None, Credential.method == CredentialMethod.snmp)
+          .filter(Credential.device_id.is_(None), Credential.method == CredentialMethod.snmp)
           .order_by(Credential.priority)
           .all()
         if c.username
@@ -121,7 +121,7 @@ def _save_found_community(device_id: int, community: str, snmp_timeout: int) -> 
 
         # Znajdz lub stworz global credential
         global_cred = db.query(Credential).filter(
-            Credential.device_id == None,
+            Credential.device_id.is_(None),
             Credential.method    == CredentialMethod.snmp,
             Credential.username  == community,
         ).first()
@@ -185,12 +185,12 @@ def scan_once() -> None:
             db.query(Device)
             .filter(Device.is_active == True)
             .filter(
-                (Device.snmp_community == None) |
+                (Device.snmp_community.is_(None)) |
                 (Device.snmp_ok_at < stale_threshold)
             )
             .filter(
                 Device.device_type.in_(_snmp_types) |
-                (Device.snmp_ok_at != None) |
+                (Device.snmp_ok_at.isnot(None)) |
                 Device.id.in_(snmp_port_ids)
             )
             .all()

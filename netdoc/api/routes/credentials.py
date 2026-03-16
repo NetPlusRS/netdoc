@@ -133,7 +133,7 @@ def cred_scan_stats(db: Session = Depends(get_db)):
     # 1. Globalne liczniki par per metoda
     def _count_global(method):
         return db.query(func.count(Credential.id)).filter(
-            Credential.device_id == None, Credential.method == method
+            Credential.device_id.is_(None), Credential.method == method
         ).scalar() or 0
 
     cred_totals = {
@@ -194,8 +194,8 @@ def cred_scan_stats(db: Session = Depends(get_db)):
     # 5. Per globalny credential — ile urzadzen ma z nim sukces
     #    Liczymy device-specific creds (device_id != None) posortowane po username+password
     dev_creds = db.query(Credential).filter(
-        Credential.device_id != None,
-        Credential.last_success_at != None,
+        Credential.device_id.isnot(None),
+        Credential.last_success_at.isnot(None),
     ).all()
     # Mapowanie (method, user, pass) -> count urzadzen
     from collections import Counter
@@ -204,7 +204,7 @@ def cred_scan_stats(db: Session = Depends(get_db)):
         _usage[(c.method, c.username or "", c.password_encrypted or "")] += 1
 
     # Global creds z usage count
-    global_creds = db.query(Credential).filter(Credential.device_id == None).all()
+    global_creds = db.query(Credential).filter(Credential.device_id.is_(None)).all()
     global_cred_usage = {}
     for c in global_creds:
         key = (c.method, c.username or "", c.password_encrypted or "")
@@ -231,7 +231,7 @@ def snmp_fallback_list(db: Session = Depends(get_db)):
     db_communities = [
         c.username for c in
         db.query(Credential)
-          .filter(Credential.device_id == None, Credential.method == CredentialMethod.snmp)
+          .filter(Credential.device_id.is_(None), Credential.method == CredentialMethod.snmp)
           .order_by(Credential.priority)
           .all()
         if c.username

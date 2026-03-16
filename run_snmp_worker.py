@@ -80,7 +80,7 @@ def _poll_device(device_id: int, snmp_timeout: int = 2) -> dict:
             .first()
         ) or (
             db.query(Credential)
-            .filter(Credential.device_id == None, Credential.method == CredentialMethod.snmp,
+            .filter(Credential.device_id.is_(None), Credential.method == CredentialMethod.snmp,
                     Credential.username == community)
             .first()
         )
@@ -131,7 +131,7 @@ def scan_once() -> None:
         # Tylko urzadzenia ze znana community — autodiscovery robi community-worker
         devices = (
             db.query(Device)
-            .filter(Device.is_active == True, Device.snmp_community != None)
+            .filter(Device.is_active == True, Device.snmp_community.isnot(None))
             .all()
         )
     finally:

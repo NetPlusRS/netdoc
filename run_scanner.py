@@ -1728,7 +1728,7 @@ def seed_snmp_communities(db):
     existing_names = {
         r.username for r in db.query(Credential.username).filter(
             Credential.method == CredentialMethod.snmp,
-            Credential.device_id == None,
+            Credential.device_id.is_(None),
         ).all()
     }
     added = 0
@@ -2132,7 +2132,7 @@ def seed_default_credentials(db):
         existing_pairs = set()
         for r in db.query(Credential).filter(
             Credential.method == method,
-            Credential.device_id == None,
+            Credential.device_id.is_(None),
         ).all():
             try:
                 plain_pw = decrypt(r.password_encrypted or "")
