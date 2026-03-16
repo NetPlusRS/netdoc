@@ -14,8 +14,10 @@ $ProjectDir = $PSScriptRoot
 
 # ── Plik logu debugowania ─────────────────────────────────────────────────────
 
+$LogDir       = Join-Path $ProjectDir "logs"
+if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
 $LogTimestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$LogFile      = Join-Path $ProjectDir "netdoc-setup-debug-$LogTimestamp.log"
+$LogFile      = Join-Path $LogDir "netdoc-setup-debug-$LogTimestamp.log"
 
 # Start-Transcript rejestruje WSZYSTKO  -  kazde polecenie, wyjscie, bledy
 Start-Transcript -Path $LogFile -Append | Out-Null
@@ -660,6 +662,9 @@ if (-not (Test-Path $reqFile)) {
             Write-Info "  $ProjectDir"
         } else {
             Write-Info "Sprawdz komunikaty powyzej. Typowe przyczyny:"
+            Write-Info "  - Windows Defender blokuje budowanie impacket (dcomexec.py / dacledit.py)"
+            Write-Info "    Rozwiazanie: uruchom instalator jako Administrator"
+            Write-Info "    (instalator automatycznie doda wykluczenia Defender i ponowi probe)"
             Write-Info "  - Inny AV zablokował impacket (sprawdz Kwarantanne)"
             Write-Info "  - Brak Visual C++ Build Tools (wymagane przez niektore pakiety)"
             Write-Info "  - Brak dostepu do internetu (pip.pypa.io)"
@@ -907,7 +912,9 @@ if ($allUp -and $pythonCmd) {
 
     $scanScript = Join-Path $ProjectDir "run_scanner.py"
     if (Test-Path $scanScript) {
+        $env:PYTHONUNBUFFERED = "1"   # wymus natychmiastowe flusowanie logow Pythona do transkryptu
         & $PythonExeResolved $scanScript --once 2>&1 | Out-Host
+        $env:PYTHONUNBUFFERED = $null
         if ($LASTEXITCODE -eq 0) {
             Write-OK "Pierwsze skanowanie zakonczone."
         } else {

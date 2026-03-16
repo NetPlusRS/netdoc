@@ -18,8 +18,10 @@ $ProjectDir = $PSScriptRoot
 
 # ── Log debugowania ────────────────────────────────────────────────────────────
 
+$LogDir       = Join-Path $ProjectDir "logs"
+if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
 $LogTimestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$LogFile      = Join-Path $ProjectDir "netdoc-uninstall-debug-$LogTimestamp.log"
+$LogFile      = Join-Path $LogDir "netdoc-uninstall-debug-$LogTimestamp.log"
 Start-Transcript -Path $LogFile -Append | Out-Null
 
 # ── Funkcje pomocnicze ────────────────────────────────────────────────────────
@@ -152,7 +154,9 @@ $hasPid   = Test-Path $pidFile
 $envFile  = Join-Path $ProjectDir ".env"
 $hasEnv   = Test-Path $envFile
 $oldLogs  = @(
-    Get-ChildItem $ProjectDir -Filter "netdoc-*-debug-*.log" -ErrorAction SilentlyContinue |
+    # szukaj w logs/ (nowe polozenie) i w glownym katalogu (starsze logi)
+    @(Get-ChildItem (Join-Path $ProjectDir "logs") -Filter "netdoc-*-debug-*.log" -ErrorAction SilentlyContinue) +
+    @(Get-ChildItem $ProjectDir -Filter "netdoc-*-debug-*.log" -ErrorAction SilentlyContinue) |
     Where-Object { $_.FullName -ne $LogFile }
 )
 
