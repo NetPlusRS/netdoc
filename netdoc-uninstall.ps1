@@ -67,11 +67,15 @@ function Wait-WithCountdown {
         Write-Host "`r  Odliczanie: $i s... (wcisnij dowolny klawisz aby anulowac)   " -NoNewline -ForegroundColor Yellow
         $startTime = [DateTime]::Now
         while (([DateTime]::Now - $startTime).TotalMilliseconds -lt 1000) {
-            if ([Console]::KeyAvailable) {
-                $null = [Console]::ReadKey($true)
-                Write-Host "`r  Odliczanie przerwane przez uzytkownika.                              " -ForegroundColor DarkGray
-                Write-Host ""
-                return $false
+            try {
+                if ([Console]::KeyAvailable) {
+                    $null = [Console]::ReadKey($true)
+                    Write-Host "`r  Odliczanie przerwane przez uzytkownika.                              " -ForegroundColor DarkGray
+                    Write-Host ""
+                    return $false
+                }
+            } catch {
+                # stdin nie jest interaktywny (np. potok/CI) — ignoruj blad KeyAvailable
             }
             Start-Sleep -Milliseconds 100
         }
@@ -236,6 +240,8 @@ Write-Host "  [4]  Anuluj  -  wyjdz bez zmian" -ForegroundColor DarkGray
 Write-Host ""
 $choice = Read-Host "  Wybor"
 
+$autoMode = $false   # ustawiane na $true tylko przez opcje [3]
+
 switch ($choice) {
     "1" {
         $mode = "stop"
@@ -271,6 +277,7 @@ switch ($choice) {
     }
     "3" {
         $mode = "full"
+        $autoMode = $true
         Write-Host ""
         Write-Host "  Tryb: Pelne odinstalowanie automatyczne" -ForegroundColor Red
         Write-Host ""
@@ -355,7 +362,12 @@ if ($mode -eq "stop") {
     if ($dockerAvailable -and $netdocImages.Count -gt 0) {
         Write-Host ""
         Write-Host "     Obrazy Docker NetDoc ($($netdocImages.Count)) zajmuja ~2-3 GB." -ForegroundColor DarkGray
-        $removeImages = Read-Host "  Usunac obrazy Docker? [T/N]"
+        if ($autoMode) {
+            Write-Info "Tryb auto: usuwam obrazy bez pytania."
+            $removeImages = "T"
+        } else {
+            $removeImages = Read-Host "  Usunac obrazy Docker? [T/N]"
+        }
         if ($removeImages -eq "T" -or $removeImages -eq "t") {
             Write-Info "Usuwam obrazy przez 'docker compose down --rmi all'..."
             # --rmi all jest bardziej niezawodne niz reczne docker rmi po ID:
@@ -422,7 +434,12 @@ if ($mode -eq "stop") {
     if ($hasEnv) {
         Write-Host ""
         Write-Host "     Plik .env zawiera hasla i konfiguracje polaczenia." -ForegroundColor DarkGray
-        $removeEnv = Read-Host "  Usunac plik .env? [T/N]"
+        if ($autoMode) {
+            Write-Info "Tryb auto: usuwam .env bez pytania."
+            $removeEnv = "T"
+        } else {
+            $removeEnv = Read-Host "  Usunac plik .env? [T/N]"
+        }
         if ($removeEnv -eq "T" -or $removeEnv -eq "t") {
             Remove-Item $envFile -Force -ErrorAction SilentlyContinue
             if (-not (Test-Path $envFile)) {
@@ -440,7 +457,12 @@ if ($mode -eq "stop") {
     if ($oldLogs.Count -gt 0) {
         Write-Host ""
         Write-Host "     Znaleziono $($oldLogs.Count) plik(ow) logow instalatora." -ForegroundColor DarkGray
-        $removeLogs = Read-Host "  Usunac logi debugowania instalatora? [T/N]"
+        if ($autoMode) {
+            Write-Info "Tryb auto: usuwam logi bez pytania."
+            $removeLogs = "T"
+        } else {
+            $removeLogs = Read-Host "  Usunac logi debugowania instalatora? [T/N]"
+        }
         if ($removeLogs -eq "T" -or $removeLogs -eq "t") {
             $removedLogs = 0
             $oldLogs | ForEach-Object {
