@@ -3680,6 +3680,140 @@ class TestNetworksPageStructure:
         assert "UndefinedError" not in self.html
         assert "jinja2.exceptions" not in self.html
 
+    def test_delete_modal_has_delete_devices_option(self):
+        """Modal usuwania sieci musi zawierać opcję 'Rowniez usun urzadzenia'."""
+        assert "deleteNetDevices" in self.html
+        assert "deleteDevOption" in self.html
+        assert "delete_devices" in self.html
+
+    def test_delete_modal_delete_devices_checkbox_present(self):
+        """Checkbox 'rowniez usun urzadzenia' musi byc w modalu #deleteNetModal."""
+        assert 'id="deleteNetDevices"' in self.html
+
+    def test_delete_modal_dev_count_span_present(self):
+        """Span z liczba urzadzen musi byc w modalu usuwania sieci."""
+        assert 'id="deleteNetDevCount"' in self.html
+
+    def test_pause_modal_delete_devices_checkbox_present(self):
+        """Checkbox 'rowniez usun urzadzenia' musi byc w modalu zatrzymywania sieci."""
+        assert 'id="pauseDeleteDevices"' in self.html
+
+
+class TestNetworksMalformedCidr:
+    """Regresja: /networks nie moze zwrocic 500 gdy w bazie jest wpis z nieprawidlowym CIDR."""
+
+    def test_networks_ok_with_normal_cidrs(self, client):
+        """/networks zwraca 200 przy poprawnych CIDR."""
+        assert client.get("/networks").status_code == 200
+
+    def test_networks_ok_when_db_has_cidr_without_slash(self, client):
+        """GET /networks nie crasha gdy w bazie jest rekord z CIDR bez ulamka (np. '[]').
+
+        Regresja: n.cidr.split('/')[1] rzucalo UndefinedError gdy cidr='[]'.
+        Fix: route handler filtruje nieprawidlowe CIDR przed renderingiem.
+        """
+        from netdoc.storage.database import SessionLocal
+        from netdoc.storage.models import DiscoveredNetwork, NetworkSource
+        db = SessionLocal()
+        try:
+            bad = DiscoveredNetwork(cidr="[]", source=NetworkSource.manual)
+            db.add(bad)
+            db.commit()
+            bad_id = bad.id
+        finally:
+            db.close()
+
+        try:
+            r = client.get("/networks")
+            assert r.status_code == 200, \
+                "GET /networks zwrocilo 500 — sprawdz filtrowanie nieprawidlowych CIDR w route"
+            html = r.data.decode()
+            assert "UndefinedError" not in html
+            assert "jinja2.exceptions" not in html
+            # Zly rekord nie moze sie pokazac w tabeli
+            assert ">[]<" not in html
+        finally:
+            db2 = SessionLocal()
+            try:
+                db2.query(DiscoveredNetwork).filter_by(id=bad_id).delete()
+                db2.commit()
+            finally:
+                db2.close()
+
+    def test_networks_valid_cidrs_still_rendered_after_bad_cidr(self, client):
+        """Prawidlowe sieci sa renderowane nawet gdy w bazie jest zepsuty rekord."""
+        from netdoc.storage.database import SessionLocal
+        from netdoc.storage.models import DiscoveredNetwork, NetworkSource
+        db = SessionLocal()
+        try:
+            good = DiscoveredNetwork(cidr="172.16.0.0/12", source=NetworkSource.manual)
+            bad  = DiscoveredNetwork(cidr="no-slash", source=NetworkSource.manual)
+            db.add_all([good, bad])
+            db.commit()
+            good_id, bad_id = good.id, bad.id
+        finally:
+            db.close()
+
+        try:
+            r = client.get("/networks")
+            assert r.status_code == 200
+            html = r.data.decode()
+            assert "172.16.0.0/12" in html, "Prawidlowa siec nie jest renderowana"
+            assert "no-slash" not in html, "Nieprawidlowa siec nie powinna byc renderowana"
+        finally:
+            db2 = SessionLocal()
+            try:
+                db2.query(DiscoveredNetwork).filter(
+                    DiscoveredNetwork.id.in_([good_id, bad_id])
+                ).delete(synchronize_session=False)
+                db2.commit()
+            finally:
+                db2.close()
+
+    def test_network_delete_with_devices_removes_devices(self, client):
+        """POST /networks/<id>/delete?delete_devices=1 usuwa urzadzenia z tego zakresu.
+
+        Regresja: opcja 'rowniez usun urzadzenia' musi faktycznie usuwac urzadzenia.
+        """
+        from netdoc.storage.database import SessionLocal
+        from netdoc.storage.models import DiscoveredNetwork, NetworkSource, Device
+        db = SessionLocal()
+        try:
+            net = DiscoveredNetwork(cidr="10.77.0.0/24", source=NetworkSource.manual)
+            db.add(net)
+            db.flush()
+            dev1 = Device(ip="10.77.0.1")
+            dev2 = Device(ip="10.77.0.2")
+            dev_other = Device(ip="10.88.0.1")  # inny zakres — nie powinien byc usuniety
+            db.add_all([dev1, dev2, dev_other])
+            db.commit()
+            net_id = net.id
+            dev_other_id = dev_other.id
+        finally:
+            db.close()
+
+        r = client.post(f"/networks/{net_id}/delete", data={"delete_devices": "1"})
+        assert r.status_code in (302, 200), f"Nieoczekiwany status: {r.status_code}"
+
+        db3 = SessionLocal()
+        try:
+            remaining_in_range = db3.query(Device).filter(
+                Device.ip.in_(["10.77.0.1", "10.77.0.2"])
+            ).count()
+            other_device_exists = db3.query(Device).filter_by(id=dev_other_id).first()
+            assert remaining_in_range == 0, \
+                f"Po usunieciu sieci z delete_devices=1 pozostaly {remaining_in_range} urzadzenia z tego zakresu"
+            assert other_device_exists is not None, \
+                "Urzadzenie spoza zakresu zostalo blednie usuniete"
+            # Siec tez powinna byc usunieta
+            net_exists = db3.query(DiscoveredNetwork).filter_by(id=net_id).first()
+            assert net_exists is None, "Siec nie zostala usunieta mimo POST /delete"
+        finally:
+            # Cleanup
+            db3.query(Device).filter_by(id=dev_other_id).delete()
+            db3.commit()
+            db3.close()
+
 
 # ─── Regresja struktury strony /inventory ─────────────────────────────────────
 

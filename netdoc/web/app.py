@@ -583,6 +583,12 @@ def create_app():
             db.close()
         return {"grafana_url": GRAFANA_URL, "inventory_enabled": inv_on, "PRO_ENABLED": PRO_ENABLED}
 
+    # ── favicon ────────────────────────────────────────────────────────────────
+    @app.route("/favicon.ico")
+    def favicon():
+        from flask import send_from_directory
+        return send_from_directory(app.static_folder, "favicon.ico", mimetype="image/x-icon")
+
     # ── index ──────────────────────────────────────────────────────────────────
     @app.route("/")
     def index():
@@ -1827,6 +1833,8 @@ def create_app():
         db = SessionLocal()
         try:
             nets = db.query(DiscoveredNetwork).order_by(DiscoveredNetwork.cidr).all()
+            # Pomijaj wpisy bez prawidlowego formatu CIDR (np. '[]' z pustej konfiguracji)
+            nets = [n for n in nets if n.cidr and '/' in n.cidr]
             all_devs = db.query(Device).all()
             counts = {n.cidr: _count_devices_active_inactive(all_devs, n.cidr) for n in nets}
         finally:
