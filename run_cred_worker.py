@@ -36,6 +36,11 @@ logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)    # wycisz INFO o kazdym HTTP request
 logging.getLogger("paramiko").setLevel(logging.CRITICAL)  # wycisz "Error reading SSH protocol banner" i inne wewn. bledy paramiko
 
+# Detekcja ochrony SSH (fail2ban, rate-limit, hardening)
+# Wypełniany przez _try_ssh(), opróżniany przez _process_device() po teście SSH.
+_ssh_protection_events: dict = {}   # ip -> {"count": N, "port": P, "last": datetime}
+_ssh_protection_lock = threading.Lock()
+
 # Zapisuj rowniez do pliku (dostepnego przez panel www)
 _LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")
 os.makedirs(_LOG_DIR, exist_ok=True)
@@ -498,8 +503,50 @@ def _try_ssh(ip: str, port: int, username: str, password: str) -> bool:
         if _VERBOSE:
             logger.info("SSH FAIL  %-18s port=%-5d u=%s", ip, port, username)
         return False
+    except (paramiko.ssh_exception.SSHException, EOFError) as e:
+        # Połączenie zresetowane przed banerem SSH — sygnał ochrony aktywnej
+        # (fail2ban, rate-limit, TCP wrapper, IDS) — odnotuj w side-channel
+        msg = str(e).lower()
+        if "banner" in msg or "eof" in msg or isinstance(e, EOFError):
+            with _ssh_protection_lock:
+                evt = _ssh_protection_events.setdefault(ip, {"count": 0, "port": port, "last": None})
+                evt["count"] += 1
+                evt["port"] = port
+                evt["last"] = datetime.utcnow()
+        return False
     except Exception:
         return False
+
+
+def _note_ssh_protection(db, device_id: int, ip: str, evt: dict) -> None:
+    """Loguje i zapisuje do asset_notes wykrycie ochrony SSH (fail2ban/rate-limit).
+
+    Aktualizuje lub dodaje linię 'SSH-PROTECTED:' w asset_notes urządzenia.
+    Nie nadpisuje innych notatek — tylko zarządza własną linią.
+    """
+    ts = evt["last"].strftime("%Y-%m-%d %H:%M") if evt.get("last") else "?"
+    port = evt.get("port", 22)
+    count = evt.get("count", 1)
+    logger.info("SSH PROTECTED: %-18s port=%d — połączenie zresetowane przed banerem x%d "
+                "(fail2ban / rate-limit / TCP wrapper?)", ip, port, count)
+
+    note_line = f"[SSH-PROTECTED port={port} detected={ts}]"
+    try:
+        dev = db.query(Device).filter(Device.id == device_id).first()
+        if dev is None:
+            return
+        current = dev.asset_notes or ""
+        # Zastąp poprzednią linię SSH-PROTECTED lub dołącz nową
+        import re as _re
+        if _re.search(r"\[SSH-PROTECTED[^\]]*\]", current):
+            dev.asset_notes = _re.sub(r"\[SSH-PROTECTED[^\]]*\]", note_line, current)
+        else:
+            dev.asset_notes = (current.rstrip() + "\n" + note_line).lstrip()
+        db.commit()
+        logger.info("SSH PROTECTED: %-18s — zapisano w asset_notes urządzenia id=%d", ip, device_id)
+    except Exception as exc:
+        logger.warning("SSH PROTECTED: nie udało się zapisać notatki dla %s: %s", ip, exc)
+        db.rollback()
 
 
 _SSH_PORTS = (22, 2222, 22222)
@@ -1570,6 +1617,11 @@ def _process_device(device_id: int, ip: str,
                     res["ssh"] = True; res["new"] += 1
                 else:
                     logger.info("SSH brak: %-18s (wyprobowano %d par)", ip, len(ssh_to_try))
+                # Sprawdź czy wykryto ochronę SSH (fail2ban / banner reset)
+                with _ssh_protection_lock:
+                    evt = _ssh_protection_events.pop(ip, None)
+                if evt:
+                    _note_ssh_protection(db, device_id, ip, evt)
 
         if telnet_to_try:
             _open_telnet = [p for p in _TELNET_PORTS
