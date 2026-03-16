@@ -4,6 +4,22 @@ Instrukcje dla modelu AI (Claude Code) oraz wytyczne dla deweloperów pracujący
 
 ---
 
+## Pamięć projektu — PRZECZYTAJ NA POCZĄTKU KAŻDEJ SESJI
+
+Katalog `_private/memory/` zawiera trwałą pamięć projektu. Pliki te przeżywają reinstalację systemu i zmianę sprzętu (są na OneDrive, poza gitem).
+
+**Po otwarciu projektu zawsze przeczytaj:**
+
+- `_private/memory/MEMORY.md` — indeks i główna wiedza o projekcie
+- `_private/memory/feedback_credential_false_positives.md` — feedback o false positives
+- `_private/memory/targi-demo-projekt.md` — kontekst demo na targi
+
+Jeśli użytkownik prosi Cię o zapamiętanie czegoś, zapisz do odpowiedniego pliku w `_private/memory/` (nie do `~/.claude/projects/.../memory/` — ten katalog ginie przy reinstalacji).
+
+Gdy aktualizujesz pamięć, aktualizuj też `_private/memory/MEMORY.md` jako indeks.
+
+---
+
 ## Dla modelu AI — zasady pracy z tym projektem
 
 ### Konwencje kodu
