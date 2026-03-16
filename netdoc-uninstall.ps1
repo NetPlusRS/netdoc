@@ -168,8 +168,40 @@ if ($dockerAvailable) {
 } elseif (-not $dockerCmd) {
     Write-Info "Docker nie jest zainstalowany  -  pomijam skanowanie kontenerow."
 } else {
-    Write-Warn "Docker Desktop nie odpowiada  -  uruchom go przed odinstalowaniem."
-    Write-Info "Kontenery i voluminy nie zostana sprawdzone."
+    # Docker zainstalowany ale nie dziala — probuj go uruchomic automatycznie
+    Write-Warn "Docker Desktop nie odpowiada."
+    Write-Info "Probuje uruchomic Docker Desktop automatycznie..."
+    $dockerDesktopExe = "${env:ProgramFiles}\Docker\Docker\Docker Desktop.exe"
+    if (Test-Path $dockerDesktopExe) {
+        Start-Process $dockerDesktopExe -ErrorAction SilentlyContinue
+        Write-Info "Czekam az Docker daemon bedzie gotowy (max 60s)..."
+        $waited = 0
+        while ($waited -lt 60) {
+            Start-Sleep -Seconds 3
+            $waited += 3
+            docker info 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                $dockerAvailable = $true
+                Write-OK "Docker daemon gotowy."
+                Set-Location $ProjectDir
+                $runningContainers = @(docker ps --filter "name=netdoc" --filter "status=running" --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" })
+                $allContainers     = @(docker ps -a --filter "name=netdoc" --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" })
+                $netdocVolumes     = @(docker volume ls --filter "name=netdoc" --format "{{.Name}}" 2>&1 | Where-Object { $_ -ne "" })
+                $imgIds  = @(docker images --filter "label=com.docker.compose.project=netdoc" --format "{{.ID}}" 2>&1 | Where-Object { $_ -ne "" })
+                $imgIds += @(docker images --filter "reference=*netdoc*" --format "{{.ID}}" 2>&1 | Where-Object { $_ -ne "" })
+                $netdocImages = $imgIds | Sort-Object -Unique
+                break
+            }
+            Write-Host "." -NoNewline -ForegroundColor DarkGray
+        }
+        Write-Host ""
+        if (-not $dockerAvailable) {
+            Write-Warn "Docker nie odpowiedzial w ciagu 60s."
+            Write-Warn "Kontenery i voluminy NIE zostana usuniete  -  uruchom Docker i ponow odinstalowanie."
+        }
+    } else {
+        Write-Warn "Nie znaleziono Docker Desktop.exe  -  pomijam czyszczenie kontenerow."
+    }
 }
 
 $schedulerTaskNames = @("NetDocScanner", "NetDoc Watchdog")
@@ -383,11 +415,26 @@ if ($mode -eq "stop") {
         if ($remainingContainers.Count -eq 0 -and $remainingVolumes.Count -eq 0) {
             Write-OK "Weryfikacja: kontenery i voluminy usuniete."
         } else {
-            Write-Warn "Weryfikacja: nie wszystko zostalo usuniete!"
-            foreach ($c in $remainingContainers) { Write-Info "  Kontener nadal istnieje: $c" }
-            foreach ($v in $remainingVolumes) { Write-Info "  Volumen nadal istnieje: $v" }
-            Write-Info "Sprobuj recznie: docker rm -f \$(docker ps -aq --filter name=netdoc)"
-            Write-Info "               docker volume rm \$(docker volume ls -q --filter name=netdoc)"
+            # Force-remove fallback — docker compose down czasem zostawia kontenery w zlym stanie
+            Write-Warn "docker compose down nie usunal wszystkiego  -  force-remove..."
+            $forceIds = @(docker ps -aq --filter "name=netdoc" 2>&1 | Where-Object { $_ -ne "" })
+            foreach ($id in $forceIds) {
+                docker rm -f $id 2>&1 | Out-Null
+            }
+            $forceVols = @(docker volume ls -q --filter "name=netdoc" 2>&1 | Where-Object { $_ -ne "" })
+            foreach ($v in $forceVols) {
+                docker volume rm $v --force 2>&1 | Out-Null
+            }
+            # Weryfikacja po force-remove
+            $stillLeft = @(docker ps -aq --filter "name=netdoc" 2>&1 | Where-Object { $_ -ne "" })
+            $volsLeft  = @(docker volume ls -q --filter "name=netdoc" 2>&1 | Where-Object { $_ -ne "" })
+            if ($stillLeft.Count -eq 0 -and $volsLeft.Count -eq 0) {
+                Write-OK "Weryfikacja: force-remove zakonczony  -  wszystko usuniete."
+            } else {
+                Write-Warn "Nie udalo sie usunac wszystkiego nawet force-remove!"
+                foreach ($c in $remainingContainers) { Write-Info "  Kontener nadal istnieje: $c" }
+                foreach ($v in $remainingVolumes) { Write-Info "  Volumen nadal istnieje: $v" }
+            }
         }
     }
 
@@ -427,6 +474,11 @@ if ($mode -eq "stop") {
                 Write-Info "Mozliwa przyczyna: obraz jest uzywany przez inny kontener."
                 Write-Info "Sprobuj recznie: docker rmi --force $(docker images --filter 'reference=*netdoc*' -q)"
             }
+
+            # Usun dangling images (warstwy po rebuildach) — nie usuwane przez --rmi all
+            Write-Info "Czyszcze warstwy posrednie (dangling images)..."
+            docker image prune -f 2>&1 | Out-Null
+            Write-OK "Warstwy posrednie wyczyszczone."
         }
     }
 
