@@ -2115,6 +2115,7 @@ def seed_default_credentials(db):
     moze byc zarejestrowana tylko raz dla danej metody jako global default.
     """
     from netdoc.storage.models import Credential, CredentialMethod
+    from netdoc.config.credentials import encrypt, decrypt
 
     _SEED_SETS = [
         (CredentialMethod.ssh,    _DEFAULT_SSH_CREDENTIALS,    "SSH"),
@@ -2126,14 +2127,19 @@ def seed_default_credentials(db):
     ]
 
     for method, cred_list, label in _SEED_SETS:
-        # Zbierz istniejace pary (username, password) dla tej metody
-        existing_pairs = {
-            (r.username or "", r.password_encrypted or "")
-            for r in db.query(Credential).filter(
-                Credential.method == method,
-                Credential.device_id == None,
-            ).all()
-        }
+        # Zbierz istniejace pary (username, plaintext_password) dla tej metody
+        # Obsluga wsteczna: stare wpisy moga miec plaintext w password_encrypted
+        existing_pairs = set()
+        for r in db.query(Credential).filter(
+            Credential.method == method,
+            Credential.device_id == None,
+        ).all():
+            try:
+                plain_pw = decrypt(r.password_encrypted or "")
+            except Exception:
+                plain_pw = r.password_encrypted or ""  # stare plaintext (przed migracją)
+            existing_pairs.add((r.username or "", plain_pw))
+
         added = 0
         for username, password, priority, notes in cred_list:
             pair = (username, password)
@@ -2143,7 +2149,7 @@ def seed_default_credentials(db):
                 device_id=None,
                 method=method,
                 username=username,
-                password_encrypted=password,
+                password_encrypted=encrypt(password),
                 priority=priority,
                 notes=notes,
             ))

@@ -908,10 +908,7 @@ Write-Host "  Nastepne kroki:" -ForegroundColor Cyan
 Write-Host "   1. Pierwsze skanowanie sieci:" -ForegroundColor White
 Write-Host "      $pythonCmd run_scanner.py --once" -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "   2. Autostart (Task Scheduler):" -ForegroundColor White
-Write-Host "      powershell -ExecutionPolicy Bypass -File install_autostart.ps1" -ForegroundColor DarkGray
-Write-Host ""
-Write-Host "   3. Zarzadzanie Docker:" -ForegroundColor White
+Write-Host "   2. Zarzadzanie Docker:" -ForegroundColor White
 Write-Host "      powershell -ExecutionPolicy Bypass -File netdoc_docker.ps1" -ForegroundColor DarkGray
 Write-Host ""
 
@@ -951,6 +948,35 @@ if ($allUp -and $pythonCmd) {
 } else {
     Write-Warn "Pomijam skanowanie  -  Python niedostepny."
     Write-Info "Uruchom recznie: python run_scanner.py --once"
+}
+
+# ── Task Scheduler  -  autostart i watchdog ──────────────────────────────────
+
+Write-Step "Rejestruje zadania w Task Scheduler (NetDocScanner + NetDoc Watchdog)..."
+
+$autostartScript = Join-Path $ProjectDir "install_autostart.ps1"
+$watchdogScript  = Join-Path $ProjectDir "install_watchdog.ps1"
+
+if (Test-Path $autostartScript) {
+    & powershell.exe -NonInteractive -ExecutionPolicy Bypass -File $autostartScript 2>&1 | Out-Host
+    if ($LASTEXITCODE -eq 0) {
+        Write-OK "Zadanie 'NetDocScanner' zarejestrowane w Task Scheduler."
+    } else {
+        Write-Warn "Problem z rejestracją 'NetDocScanner'  -  uruchom recznie: install_autostart.ps1"
+    }
+} else {
+    Write-Warn "Nie znaleziono install_autostart.ps1  -  pomijam rejestracje skanera."
+}
+
+if (Test-Path $watchdogScript) {
+    & powershell.exe -NonInteractive -ExecutionPolicy Bypass -File $watchdogScript 2>&1 | Out-Host
+    if ($LASTEXITCODE -eq 0) {
+        Write-OK "Zadanie 'NetDoc Watchdog' zarejestrowane w Task Scheduler."
+    } else {
+        Write-Warn "Problem z rejestracją 'NetDoc Watchdog'  -  uruchom recznie: install_watchdog.ps1"
+    }
+} else {
+    Write-Warn "Nie znaleziono install_watchdog.ps1  -  pomijam rejestracje watchdoga."
 }
 
 # ── Otworz przegladarke  -  tylko gdy kontenery i web sa OK ────────────────────
