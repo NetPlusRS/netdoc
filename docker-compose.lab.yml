@@ -13,12 +13,12 @@
 #   NETWORK_RANGES=["192.168.5.0/24","172.28.0.0/24"]
 #
 # URZADZENIA (172.28.0.0/24):
-#   172.28.0.10  lab-plc-s7       Siemens S7-200 PLC   (Modbus/502, S7/102, SNMP, Telnet/23, FTP/21, HTTP/80)
-#   172.28.0.11  lab-plc-meter    Kamstrup licznik      (Modbus/502, SNMP, HTTP/80)
-#   172.28.0.12  lab-plc-fuel     Guardian AST zbiornik (Modbus/502, SNMP, HTTP/80)
-#   172.28.0.20  lab-router       MikroTik RB750 router (SNMP/161, Telnet/23)
-#   172.28.0.30  lab-ssh          Cisco IOS switch      (SSH/22 — slabe haslo admin/admin)
-#   172.28.0.40  lab-hmi          Panel HMI WebServer   (HTTP/80 — strona logowania)
+#   172.28.0.10  netdoc-lab-plc-s7     Siemens S7-200 PLC   (Modbus/502, S7/102, SNMP, Telnet/23, FTP/21, HTTP/80)
+#   172.28.0.11  netdoc-lab-plc-meter  Kamstrup licznik      (Modbus/502, SNMP, HTTP/80)
+#   172.28.0.12  netdoc-lab-plc-fuel   Guardian AST zbiornik (Modbus/502, SNMP, HTTP/80)
+#   172.28.0.20  netdoc-lab-router     MikroTik RB750 router (SNMP/161, Telnet/23)
+#   172.28.0.30  netdoc-lab-ssh        Cisco IOS switch      (SSH/22 — slabe haslo admin/admin)
+#   172.28.0.40  netdoc-lab-hmi        Panel HMI WebServer   (HTTP/80 — strona logowania)
 
 name: netdoc-lab
 
@@ -30,11 +30,12 @@ networks:
 services:
 
   # ── Siemens S7-1200 PLC (Modbus/502 + SNMP/161) ─────────────────────────────
-  lab-plc-s7:
+  netdoc-lab-plc-s7:
     build:
       context: ./config/lab/plc
       dockerfile: Dockerfile
-    container_name: lab-plc-s7
+    image: netdoc-lab-plc-s7
+    container_name: netdoc-lab-plc-s7
     restart: unless-stopped
     environment:
       PLC_NAME: "S7-1200"
@@ -48,11 +49,12 @@ services:
       - "15502:502"  # Modbus TCP
 
   # ── Schneider Modicon M340 PLC (licznik energii) ────────────────────────────
-  lab-plc-meter:
+  netdoc-lab-plc-meter:
     build:
       context: ./config/lab/plc
       dockerfile: Dockerfile
-    container_name: lab-plc-meter
+    image: netdoc-lab-plc-meter
+    container_name: netdoc-lab-plc-meter
     restart: unless-stopped
     environment:
       PLC_NAME: "Modicon-M340"
@@ -66,11 +68,12 @@ services:
       - "15503:502"  # Modbus TCP
 
   # ── ABB AC500 PLC (zbiornik/magazyn) ───────────────────────────────────────
-  lab-plc-fuel:
+  netdoc-lab-plc-fuel:
     build:
       context: ./config/lab/plc
       dockerfile: Dockerfile
-    container_name: lab-plc-fuel
+    image: netdoc-lab-plc-fuel
+    container_name: netdoc-lab-plc-fuel
     restart: unless-stopped
     environment:
       PLC_NAME: "ABB-AC500"
@@ -84,11 +87,12 @@ services:
       - "15504:502"  # Modbus TCP
 
   # ── MikroTik RB750 router (SNMP + Telnet) ──────────────────────────────────
-  lab-router:
+  netdoc-lab-router:
     build:
       context: ./config/lab/router
       dockerfile: Dockerfile
-    container_name: lab-router
+    image: netdoc-lab-router
+    container_name: netdoc-lab-router
     restart: unless-stopped
     networks:
       lab:
@@ -97,11 +101,12 @@ services:
       - "15123:23"   # Telnet routera
 
   # ── Cisco-like switch (SSH ze slabymi haslami) ─────────────────────────────
-  lab-ssh:
+  netdoc-lab-ssh:
     build:
       context: ./config/lab/ssh
       dockerfile: Dockerfile
-    container_name: lab-ssh
+    image: netdoc-lab-ssh
+    container_name: netdoc-lab-ssh
     restart: unless-stopped
     networks:
       lab:
@@ -110,9 +115,9 @@ services:
       - "15022:22"   # SSH (lokal: port 15022)
 
   # ── Panel HMI WebServer (HTTP z formularzem logowania) ────────────────────
-  lab-hmi:
+  netdoc-lab-hmi:
     image: nginx:alpine
-    container_name: lab-hmi
+    container_name: netdoc-lab-hmi
     restart: unless-stopped
     volumes:
       - ./config/lab/hmi:/usr/share/nginx/html:ro

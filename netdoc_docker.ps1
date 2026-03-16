@@ -167,7 +167,7 @@ function Invoke-Tests {
 
 function Connect-LabNetwork {
     # Podlacza workery do sieci lab jesli lab jest uruchomiony
-    $labRunning = docker ps --filter "name=lab-" --format "{{.Names}}" 2>&1
+    $labRunning = docker ps --filter "name=netdoc-lab-" --format "{{.Names}}" 2>&1
     if ($labRunning) {
         Write-Host "  Podlaczam workery do sieci lab (netdoc_lab)..." -ForegroundColor Cyan
         foreach ($w in @("netdoc-ping", "netdoc-snmp", "netdoc-cred", "netdoc-vuln")) {

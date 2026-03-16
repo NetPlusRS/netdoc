@@ -252,8 +252,8 @@ try {
 }
 
 if ($labMonitoringEnabled) {
-    $labRunning = @(docker ps   --filter "name=lab-" --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" })
-    $labAll     = @(docker ps -a --filter "name=lab-" --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" })
+    $labRunning = @(docker ps   --filter "name=netdoc-lab-" --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" })
+    $labAll     = @(docker ps -a --filter "name=netdoc-lab-" --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" })
 
     if ($labAll.Count -eq 0) {
         # Kontenery nie zostaly jeszcze zbudowane
@@ -267,7 +267,7 @@ if ($labMonitoringEnabled) {
             if ($LASTEXITCODE -eq 0) {
                 Write-Log "Lab: uruchomiono pomyslnie."
                 Start-Sleep -Seconds 5
-                $labRunning = @(docker ps --filter "name=lab-" --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" })
+                $labRunning = @(docker ps --filter "name=netdoc-lab-" --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" })
             } else {
                 Write-Log "BLAD Lab: docker compose up -d nieudane: $($labOut | Select-Object -First 3 | Out-String)" "ERROR"
             }

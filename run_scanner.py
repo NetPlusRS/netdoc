@@ -1759,7 +1759,7 @@ _LAB_DEVICES = [
     ("172.28.0.12", "ABB-AC500-Tank", "iot",     "ABB",               "AC500 PLC v3.0 Tank Control",         "Lab / Zbiornik paliwa / Sekcja B"),
     ("172.28.0.20", "MikroTik-RB750", "router",  "MikroTik",          "RouterOS 6.49.10 (stable) RB750Gr3",  "Lab / Server Room A / Rack 2"),
     ("172.28.0.30", "lab-switch",     "switch",  "Cisco",             "IOS 15.2(7)E",                        "Lab / Switch room"),
-    ("172.28.0.40", "lab-hmi",        "unknown", None,                "SCADA HMI WebServer",                 "Lab / Panel HMI"),
+    ("172.28.0.40", "netdoc-lab-hmi",  "unknown", None,                "SCADA HMI WebServer",                 "Lab / Panel HMI"),
 ]
 
 
@@ -1773,10 +1773,10 @@ def seed_lab_devices(db):
     from netdoc.storage.models import Device, DeviceType
     from datetime import datetime as dt
 
-    # Sprawdz czy lab istnieje (kontener lab-plc-s7 musi byc uruchomiony)
+    # Sprawdz czy lab istnieje (kontener netdoc-lab-plc-s7 musi byc uruchomiony)
     try:
         result = subprocess.run(
-            ["docker", "inspect", "--format", "{{.State.Running}}", "lab-plc-s7"],
+            ["docker", "inspect", "--format", "{{.State.Running}}", "netdoc-lab-plc-s7"],
             capture_output=True, text=True, timeout=5,
         )
         if result.stdout.strip() != "true":

@@ -2341,8 +2341,8 @@ def create_app():
     # image_candidates: kolejnosc prob (compose v2 i v1 nazewnictwo)
     _LAB_CONTAINERS = [
         {
-            "name": "lab-plc-s7", "label": "Siemens S7-200 PLC", "ip": "172.28.0.10",
-            "image_candidates": ["netdoc-lab-lab-plc-s7", "netdoc-lab_lab-plc-s7"],
+            "name": "netdoc-lab-plc-s7", "label": "Siemens S7-200 PLC", "ip": "172.28.0.10",
+            "image_candidates": ["netdoc-lab-plc-s7"],
             "ports": {"502/tcp": ("0.0.0.0", 15502)},
             "environment": {
                 "PLC_NAME": "S7-1200", "PLC_SNMP_DESCR": "Siemens SIMATIC S7-1200 PLC v4.5",
@@ -2350,8 +2350,8 @@ def create_app():
             },
         },
         {
-            "name": "lab-plc-meter", "label": "Kamstrup licznik energii", "ip": "172.28.0.11",
-            "image_candidates": ["netdoc-lab-lab-plc-meter", "netdoc-lab_lab-plc-meter"],
+            "name": "netdoc-lab-plc-meter", "label": "Kamstrup licznik energii", "ip": "172.28.0.11",
+            "image_candidates": ["netdoc-lab-plc-meter"],
             "ports": {"502/tcp": ("0.0.0.0", 15503)},
             "environment": {
                 "PLC_NAME": "Modicon-M340", "PLC_SNMP_DESCR": "Schneider Electric Modicon M340 PLC",
@@ -2359,8 +2359,8 @@ def create_app():
             },
         },
         {
-            "name": "lab-plc-fuel", "label": "Guardian AST zbiornik", "ip": "172.28.0.12",
-            "image_candidates": ["netdoc-lab-lab-plc-fuel", "netdoc-lab_lab-plc-fuel"],
+            "name": "netdoc-lab-plc-fuel", "label": "Guardian AST zbiornik", "ip": "172.28.0.12",
+            "image_candidates": ["netdoc-lab-plc-fuel"],
             "ports": {"502/tcp": ("0.0.0.0", 15504)},
             "environment": {
                 "PLC_NAME": "ABB-AC500", "PLC_SNMP_DESCR": "ABB AC500 PLC v3.0 — Tank Control",
@@ -2368,19 +2368,19 @@ def create_app():
             },
         },
         {
-            "name": "lab-router", "label": "MikroTik RB750 router", "ip": "172.28.0.20",
-            "image_candidates": ["netdoc-lab-lab-router", "netdoc-lab_lab-router"],
+            "name": "netdoc-lab-router", "label": "MikroTik RB750 router", "ip": "172.28.0.20",
+            "image_candidates": ["netdoc-lab-router"],
             "ports": {"23/tcp": ("0.0.0.0", 15123)},
             "environment": {},
         },
         {
-            "name": "lab-ssh", "label": "Cisco SSH switch", "ip": "172.28.0.30",
-            "image_candidates": ["netdoc-lab-lab-ssh", "netdoc-lab_lab-ssh"],
+            "name": "netdoc-lab-ssh", "label": "Cisco SSH switch", "ip": "172.28.0.30",
+            "image_candidates": ["netdoc-lab-ssh"],
             "ports": {"22/tcp": ("0.0.0.0", 15022)},
             "environment": {},
         },
         {
-            "name": "lab-hmi", "label": "SCADA HMI WebServer", "ip": "172.28.0.40",
+            "name": "netdoc-lab-hmi", "label": "SCADA HMI WebServer", "ip": "172.28.0.40",
             "image_candidates": ["nginx:alpine"],
             "ports": {"80/tcp": ("0.0.0.0", 15040)},
             "environment": {},
@@ -2488,11 +2488,11 @@ def create_app():
 
         # Konteksty budowania per kontener lab (wzgledne do /app)
         _LAB_BUILD_CONTEXTS = {
-            "lab-plc-s7":    ("config/lab/plc",    "netdoc-lab-lab-plc-s7"),
-            "lab-plc-meter": ("config/lab/plc",    "netdoc-lab-lab-plc-meter"),
-            "lab-plc-fuel":  ("config/lab/plc",    "netdoc-lab-lab-plc-fuel"),
-            "lab-router":    ("config/lab/router",  "netdoc-lab-lab-router"),
-            "lab-ssh":       ("config/lab/ssh",     "netdoc-lab-lab-ssh"),
+            "netdoc-lab-plc-s7":    ("config/lab/plc",    "netdoc-lab-plc-s7"),
+            "netdoc-lab-plc-meter": ("config/lab/plc",    "netdoc-lab-plc-meter"),
+            "netdoc-lab-plc-fuel":  ("config/lab/plc",    "netdoc-lab-plc-fuel"),
+            "netdoc-lab-router":    ("config/lab/router",  "netdoc-lab-router"),
+            "netdoc-lab-ssh":       ("config/lab/ssh",     "netdoc-lab-ssh"),
         }
 
         def _auto_build_and_start(docker_client, missing_names):

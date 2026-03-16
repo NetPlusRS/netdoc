@@ -158,17 +158,17 @@ if ($dockerAvailable) {
     $runningContainers = @(
         @(docker ps --filter "name=netdoc" --filter "status=running" `
                   --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" }) +
-        @(docker ps --filter "name=lab-"   --filter "status=running" `
+        @(docker ps --filter "name=netdoc-lab-"   --filter "status=running" `
                   --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" })
     )
     $allContainers = @(
         @(docker ps -a --filter "name=netdoc" --format "{{.Names}}" 2>&1 |
           Where-Object { $_ -ne "" }) +
-        @(docker ps -a --filter "name=lab-"   --format "{{.Names}}" 2>&1 |
+        @(docker ps -a --filter "name=netdoc-lab-"   --format "{{.Names}}" 2>&1 |
           Where-Object { $_ -ne "" })
     )
     $labAllContainers = @(
-        docker ps -a --filter "name=lab-" --format "{{.Names}}" 2>&1 |
+        docker ps -a --filter "name=netdoc-lab-" --format "{{.Names}}" 2>&1 |
         Where-Object { $_ -ne "" }
     )
     $netdocVolumes = @(
@@ -406,7 +406,7 @@ if ($mode -eq "stop") {
 
         # Zatrzymaj tez kontenery lab (oddzielny projekt Compose)
         $labComposeFile = Join-Path $ProjectDir "docker-compose.lab.yml"
-        $labRunningNow = @(docker ps --filter "name=lab-" --filter "status=running" --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" })
+        $labRunningNow = @(docker ps --filter "name=netdoc-lab-" --filter "status=running" --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" })
         if ($labRunningNow.Count -gt 0) {
             Write-Step "Zatrzymuje kontenery lab ($($labRunningNow.Count))..."
             if (Test-Path $labComposeFile) {
@@ -476,7 +476,7 @@ if ($mode -eq "stop") {
                 docker compose -f $labComposeFile down --rmi all 2>&1 | Out-Host
             }
             # Force-remove jesli compose down nie usunelo (np. brak pliku)
-            $labLeftIds = @(docker ps -aq --filter "name=lab-" 2>&1 | Where-Object { $_ -ne "" })
+            $labLeftIds = @(docker ps -aq --filter "name=netdoc-lab-" 2>&1 | Where-Object { $_ -ne "" })
             foreach ($id in $labLeftIds) {
                 docker rm -f $id 2>&1 | Out-Null
             }
@@ -488,7 +488,7 @@ if ($mode -eq "stop") {
             # Usun siec lab
             docker network rm netdoc_lab 2>&1 | Out-Null
             # Weryfikacja
-            $labStill = @(docker ps -aq --filter "name=lab-" 2>&1 | Where-Object { $_ -ne "" })
+            $labStill = @(docker ps -aq --filter "name=netdoc-lab-" 2>&1 | Where-Object { $_ -ne "" })
             if ($labStill.Count -eq 0) {
                 Write-OK "Kontenery i obrazy lab usuniete."
             } else {
