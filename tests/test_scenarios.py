@@ -81,8 +81,12 @@ class TestFreshInstallScenario:
     def test_setup_opens_browser_only_after_web_ready(self):
         """Przegladarka otwierana dopiero gdy web panel odpowiada."""
         text = SETUP_PS.read_text(encoding="utf-8")
-        web_check_pos    = text.rfind("webReady")
-        browser_open_pos = text.rfind("Start-Process")
+        # Szukamy pierwszego 'if ($webReady)' i Start-Process z URL HTTP (otwarcie przegladarki)
+        # rfind("webReady") trafi na podsumowanie po otwarciu przegladarki — zly wzorzec
+        web_check_pos    = text.find("if ($webReady)")
+        browser_open_pos = text.find('Start-Process "http://')
+        assert web_check_pos != -1,    "Brak 'if ($webReady)' w setup.ps1"
+        assert browser_open_pos != -1, "Brak Start-Process z URL w setup.ps1"
         assert browser_open_pos > web_check_pos
 
     def test_compose_works_without_env_file(self):

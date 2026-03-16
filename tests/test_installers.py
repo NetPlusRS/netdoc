@@ -206,22 +206,29 @@ class TestSetupPs:
         assert "192.168.5." not in text, "Prywatne IP produkcyjne w netdoc-setup.ps1"
 
     def test_setup_ps_waits_for_web_before_browser(self):
-        """Przelgadarka otwierana jest tylko gdy $webReady = $true."""
+        """Przegladarka otwierana jest tylko gdy $webReady = $true."""
         text = SETUP_PS.read_text(encoding="utf-8")
-        # Start-Process musi byc PO sprawdzeniu webReady
-        browser_pos  = text.rfind("Start-Process")
-        webready_pos = text.rfind("$webReady")
-        assert browser_pos > webready_pos, (
-            "Start-Process (przeglądarka) powinien byc po sprawdzeniu $webReady"
+        # Szukamy bloku 'if ($webReady)' a nastepnie 'Start-Process "http://' wewnatrz niego
+        # rfind("Start-Process") trafia na ostatnie uzycie, ktore moze byc inne (np. Docker Desktop)
+        # Precyzyjnie: Start-Process z URL przegladarki musi byc wewnatrz bloku if ($webReady)
+        webready_check = text.find("if ($webReady)")
+        browser_url    = text.find('Start-Process "http://')
+        assert webready_check != -1, "Brak bloku 'if ($webReady)' w netdoc-setup.ps1"
+        assert browser_url != -1,    "Brak Start-Process z URL w netdoc-setup.ps1"
+        assert browser_url > webready_check, (
+            "Start-Process z URL przegladarki powinien byc po 'if ($webReady)'"
         )
 
     def test_setup_ps_checks_containers_before_browser(self):
         """$allUp musi byc sprawdzony przed otwarciem przegladarki."""
         text = SETUP_PS.read_text(encoding="utf-8")
-        browser_pos = text.rfind("Start-Process")
-        allup_pos   = text.rfind("$allUp")
-        assert browser_pos > allup_pos, (
-            "Start-Process (przeglądarka) powinien byc po sprawdzeniu $allUp"
+        # Szukamy pierwszego sprawdzenia $allUp (if/while) i Start-Process z URL
+        allup_check = text.find("$allUp")
+        browser_url = text.find('Start-Process "http://')
+        assert allup_check != -1, "Brak uzywania $allUp w netdoc-setup.ps1"
+        assert browser_url != -1, "Brak Start-Process z URL w netdoc-setup.ps1"
+        assert browser_url > allup_check, (
+            "Start-Process z URL przegladarki powinien byc po sprawdzeniu $allUp"
         )
 
 

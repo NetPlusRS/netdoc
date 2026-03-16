@@ -356,7 +356,7 @@ def _port_scan_one_host_batched(ip: str, port_batches: list,
         try:
             nm.scan(hosts=ip,
                     arguments=f"-p {port_str} -sV --version-intensity {nmap_vi} "
-                               f"-O --min-rate {nmap_rate} --send-ip")
+                               f"-O --min-rate {nmap_rate}")
         except UnicodeDecodeError as exc:
             logger.warning("Batch scan: %s partia %d — encoding error: %s", ip, batch_idx + 1, exc)
         except nmap.PortScannerError as exc:
@@ -1131,7 +1131,7 @@ def port_scan(hosts, _batch_settings: dict | None = None):
         try:
             nm.scan(hosts=" ".join(hosts),
                     arguments=f"-p {TARGET_PORTS} -sV --version-intensity {nmap_vi} "
-                               f"-O --min-rate {nmap_rate} --send-ip")
+                               f"-O --min-rate {nmap_rate}")
         except UnicodeDecodeError as exc:
             logger.warning("Port scan: nmap output encoding error: %s", exc)
             return {}
@@ -1201,8 +1201,8 @@ FULL_SCAN_WORKERS = 4
 FULL_SCAN_BATCH_SIZE = 6  # hostow per worker
 
 
-_NMAP_FULL_ARGS_FAST = "-p 1-65535 --min-rate 2000 --max-retries 1 -T4 --send-ip"
-_NMAP_FULL_ARGS_SAFE = "-p 1-65535 --min-rate 500  --max-retries 1 -T3 --send-ip"
+_NMAP_FULL_ARGS_FAST = "-p 1-65535 --min-rate 2000 --max-retries 1 -T4"
+_NMAP_FULL_ARGS_SAFE = "-p 1-65535 --min-rate 500  --max-retries 1 -T3"
 
 
 def _full_scan_one_group(hosts: list, port_batches: list, batch_pause_s: float = 3.0,
@@ -1249,7 +1249,7 @@ def _full_scan_one_group(hosts: list, port_batches: list, batch_pause_s: float =
         nm = nmap.PortScanner(nmap_search_path=_NMAP_SEARCH_PATH)
         try:
             nm.scan(hosts=" ".join(pending),
-                    arguments=f"-p {port_range} --min-rate 2000 --max-retries 1 -T4 --send-ip")
+                    arguments=f"-p {port_range} --min-rate 2000 --max-retries 1 -T4")
         except Exception as exc:
             exc_str = str(exc)
             if "RTTVAR" in exc_str or exc_str.startswith("b'"):
@@ -1257,7 +1257,7 @@ def _full_scan_one_group(hosts: list, port_batches: list, batch_pause_s: float =
                              port_range, exc_str[:60])
                 try:
                     nm.scan(hosts=" ".join(pending),
-                            arguments=f"-p {port_range} --min-rate 500 --max-retries 1 -T3 --send-ip")
+                            arguments=f"-p {port_range} --min-rate 500 --max-retries 1 -T3")
                 except Exception as exc2:
                     logger.warning("Full scan partia %s: retry nieudany: %s", port_range, exc2)
                     if i < total - 1:

@@ -418,7 +418,8 @@ def _read_method_flags() -> dict:
     db = SessionLocal()
     _ALL_FLAGS = (
         "cred_ssh_enabled", "cred_ftp_enabled", "cred_web_enabled",
-        "cred_rdp_enabled", "cred_mssql_enabled", "cred_mysql_enabled", "cred_postgres_enabled",
+        "cred_rdp_enabled", "cred_vnc_enabled",
+        "cred_mssql_enabled", "cred_mysql_enabled", "cred_postgres_enabled",
     )
     try:
         result = {}
@@ -1540,8 +1541,7 @@ def _reverify_existing_creds(db, device_id: int, ip: str) -> None:
                         break
 
             elif cred.method == CredentialMethod.ssh:
-                ssh_res = _ssh_try(ip, u, p, timeout=8)
-                valid = ssh_res is not None
+                valid = _try_ssh(ip, 22, u, p)
 
             elif cred.method == CredentialMethod.telnet:
                 result = discover_telnet(ip, [(u, p)])
@@ -1874,7 +1874,7 @@ def scan_once() -> None:
         candidates = [
             (d.id, d.ip) for d in db.query(Device).filter(
                 Device.is_active == True,
-                (Device.last_credential_ok_at == None) |
+                (Device.last_credential_ok_at.is_(None)) |
                 (Device.last_credential_ok_at < threshold),
             ).all()
         ]
@@ -1882,7 +1882,7 @@ def scan_once() -> None:
         if method_flags.get("cred_ssh_enabled", True):
             _ssh_db = [(r.username or "", r.password_encrypted or "") for r in
                        db.query(Credential).filter(
-                           Credential.device_id == None,
+                           Credential.device_id.is_(None),
                            Credential.method    == CredentialMethod.ssh,
                        ).order_by(Credential.priority).limit(max_creds).all()]
             ssh_pairs = _ssh_db if _ssh_db else SSH_CREDENTIAL_FALLBACK[:max_creds]
@@ -1893,7 +1893,7 @@ def scan_once() -> None:
         if method_flags.get("cred_web_enabled", True):
             _web_db = [(r.username or "", r.password_encrypted or "") for r in
                        db.query(Credential).filter(
-                           Credential.device_id == None,
+                           Credential.device_id.is_(None),
                            Credential.method    == CredentialMethod.api,
                        ).order_by(Credential.priority).limit(max_creds).all()]
             web_pairs = _web_db if _web_db else API_CREDENTIAL_FALLBACK[:max_creds]
@@ -1904,7 +1904,7 @@ def scan_once() -> None:
         if method_flags.get("cred_ftp_enabled", True):
             _ftp_db = [(r.username or "", r.password_encrypted or "") for r in
                        db.query(Credential).filter(
-                           Credential.device_id == None,
+                           Credential.device_id.is_(None),
                            Credential.method    == CredentialMethod.ftp,
                        ).order_by(Credential.priority).limit(max_creds).all()]
             ftp_pairs = _ftp_db if _ftp_db else FTP_CREDENTIAL_FALLBACK[:max_creds]
@@ -1915,7 +1915,7 @@ def scan_once() -> None:
         if method_flags.get("cred_vnc_enabled", True):
             _vnc_db = [(r.username or "", r.password_encrypted or "") for r in
                        db.query(Credential).filter(
-                           Credential.device_id == None,
+                           Credential.device_id.is_(None),
                            Credential.method    == CredentialMethod.vnc,
                        ).order_by(Credential.priority).limit(max_creds).all()]
             vnc_pairs = _vnc_db if _vnc_db else VNC_CREDENTIAL_FALLBACK[:max_creds]
@@ -1926,7 +1926,7 @@ def scan_once() -> None:
         if method_flags.get("cred_rdp_enabled", True):
             _rdp_db = [(r.username or "", r.password_encrypted or "") for r in
                        db.query(Credential).filter(
-                           Credential.device_id == None,
+                           Credential.device_id.is_(None),
                            Credential.method    == CredentialMethod.rdp,
                        ).order_by(Credential.priority).limit(max_creds).all()]
             rdp_pairs = _rdp_db if _rdp_db else RDP_CREDENTIAL_FALLBACK[:max_creds]
@@ -1937,7 +1937,7 @@ def scan_once() -> None:
         if method_flags.get("cred_mssql_enabled", True):
             _mssql_db = [(r.username or "", r.password_encrypted or "") for r in
                          db.query(Credential).filter(
-                             Credential.device_id == None,
+                             Credential.device_id.is_(None),
                              Credential.method    == CredentialMethod.mssql,
                          ).order_by(Credential.priority).limit(max_creds).all()]
             mssql_pairs = _mssql_db if _mssql_db else MSSQL_CREDENTIAL_FALLBACK[:max_creds]
@@ -1948,7 +1948,7 @@ def scan_once() -> None:
         if method_flags.get("cred_mysql_enabled", True):
             _mysql_db = [(r.username or "", r.password_encrypted or "") for r in
                          db.query(Credential).filter(
-                             Credential.device_id == None,
+                             Credential.device_id.is_(None),
                              Credential.method    == CredentialMethod.mysql,
                          ).order_by(Credential.priority).limit(max_creds).all()]
             mysql_pairs = _mysql_db if _mysql_db else MYSQL_CREDENTIAL_FALLBACK[:max_creds]
@@ -1959,7 +1959,7 @@ def scan_once() -> None:
         if method_flags.get("cred_postgres_enabled", True):
             _postgres_db = [(r.username or "", r.password_encrypted or "") for r in
                             db.query(Credential).filter(
-                                Credential.device_id == None,
+                                Credential.device_id.is_(None),
                                 Credential.method    == CredentialMethod.postgres,
                             ).order_by(Credential.priority).limit(max_creds).all()]
             postgres_pairs = _postgres_db if _postgres_db else POSTGRES_CREDENTIAL_FALLBACK[:max_creds]
@@ -2051,7 +2051,7 @@ def _seed_default_credentials() -> None:
         ]
         for method, fallback in seeds:
             count = db.query(Credential).filter(
-                Credential.device_id == None,
+                Credential.device_id.is_(None),
                 Credential.method == method,
             ).count()
             if count > 0:

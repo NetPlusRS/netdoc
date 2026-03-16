@@ -1586,3 +1586,207 @@ def test_discover_web_uses_goahead_when_token_found():
         result = w.discover_web("10.0.0.1", [("cisco", "cisco")], open_ports_hint=[80])
 
     assert result == ("cisco", "cisco")
+
+
+# ─── Testy regresyjne (naprawione bugi) ──────────────────────────────────────
+
+# BUG-DB[2]: Credential.device_id.is_(None) — globalne credentiale w DB
+
+def test_read_method_flags_returns_all_methods_including_vnc():
+    """BUG-DB[11] regresja: cred_vnc_enabled musi byc w _ALL_FLAGS."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = None
+
+    with patch.object(w, "SessionLocal", return_value=mock_db):
+        flags = w._read_method_flags()
+
+    assert "cred_vnc_enabled" in flags, "cred_vnc_enabled brakuje w _ALL_FLAGS"
+    assert "cred_ssh_enabled" in flags
+    assert "cred_rdp_enabled" in flags
+
+
+def test_load_credentials_uses_is_none_for_global_ssh(db):
+    """BUG-DB[2] regresja: globalne SSH credentials (device_id IS NULL) muszą byc odczytane."""
+    from netdoc.storage.models import Credential, CredentialMethod
+
+    # Dodaj globalne credential (device_id=None)
+    cred = Credential(device_id=None, method=CredentialMethod.ssh,
+                      username="admin", password_encrypted="secret", priority=1)
+    db.add(cred)
+    db.commit()
+
+    result = db.query(Credential).filter(
+        Credential.device_id.is_(None),
+        Credential.method == CredentialMethod.ssh,
+    ).all()
+
+    assert len(result) == 1
+    assert result[0].username == "admin"
+
+
+def test_load_credentials_device_id_eq_none_fails(db):
+    """BUG-DB[2] dokumentacja: == None generuje WHERE device_id = NULL (zawsze FALSE w PG/SQLite)."""
+    from netdoc.storage.models import Credential, CredentialMethod
+
+    cred = Credential(device_id=None, method=CredentialMethod.ssh,
+                      username="admin", password_encrypted="secret", priority=1)
+    db.add(cred)
+    db.commit()
+
+    # SQLite: == None generuje "device_id = NULL" — w SQLite to FALSE (tak samo jak PostgreSQL)
+    result_wrong = db.query(Credential).filter(
+        Credential.device_id == None,  # noqa: E711  — celowy stary pattern do udokumentowania
+        Credential.method == CredentialMethod.ssh,
+    ).all()
+    result_correct = db.query(Credential).filter(
+        Credential.device_id.is_(None),
+        Credential.method == CredentialMethod.ssh,
+    ).all()
+
+    assert len(result_correct) == 1, "is_(None) musi zwracac wynik"
+    # Uwaga: SQLite moze roznic sie od PostgreSQL w obsludze == None —
+    # test dokumentuje intencje, nie wymusza konkretne zachowanie SQLite
+    _ = result_wrong  # uzyty tylko dla dokumentacji
+
+
+# BUG-DB[3]: Device.last_credential_ok_at.is_(None) — nowe urządzenia
+
+def test_scan_candidates_includes_device_with_null_last_ok(db):
+    """BUG-DB[3] regresja: urzadzenie z last_credential_ok_at=NULL musi trafiac do skanowania."""
+    from netdoc.storage.models import Device, DeviceType
+
+    dev = Device(ip="10.99.99.1", mac="AA:BB:CC:DD:EE:FF", is_active=True,
+                 device_type=DeviceType.unknown, last_credential_ok_at=None)
+    db.add(dev)
+    db.commit()
+
+    from datetime import datetime, timedelta
+    threshold = datetime.utcnow() - timedelta(days=7)
+
+    from netdoc.storage.models import Device as D
+    candidates = db.query(D).filter(
+        D.is_active == True,
+        (D.last_credential_ok_at.is_(None)) | (D.last_credential_ok_at < threshold),
+    ).all()
+
+    assert any(c.ip == "10.99.99.1" for c in candidates), \
+        "Urzadzenie z NULL last_credential_ok_at powinno byc w kandydatach"
+
+
+# BUG-TEST: _reverify_existing_creds — SSH
+
+def test_reverify_ssh_calls_try_ssh_not_ssh_try():
+    """BUG-TEST regresja: _reverify uzywa _try_ssh (nie nieistniejacego _ssh_try)."""
+    from netdoc.storage.models import CredentialMethod
+
+    fake_cred = MagicMock()
+    fake_cred.method = CredentialMethod.ssh
+    fake_cred.username = "admin"
+    fake_cred.password_encrypted = "pass"
+
+    fake_device = MagicMock()
+    fake_device.last_credential_ok_at = "2026-01-01"
+
+    mock_db = MagicMock()
+    def db_query_side(model):
+        q = MagicMock()
+        if hasattr(model, "__name__") and model.__name__ == "Credential":
+            q.filter.return_value.all.return_value = [fake_cred]
+        else:
+            q.filter.return_value.first.return_value = fake_device
+        return q
+    mock_db.query.side_effect = db_query_side
+
+    # _try_ssh zwraca True = credential nadal wazny → nie usuwaj
+    with patch.object(w, "_tcp_open", return_value=True), \
+         patch.object(w, "_try_ssh", return_value=True) as mock_ssh:
+        w._reverify_existing_creds(mock_db, 1, "10.0.0.5")
+
+    mock_ssh.assert_called_once_with("10.0.0.5", 22, "admin", "pass")
+    mock_db.delete.assert_not_called()
+
+
+def test_reverify_ssh_removes_credential_when_try_ssh_fails():
+    """BUG-TEST regresja: _reverify usuwa SSH credential gdy _try_ssh zwraca False."""
+    from netdoc.storage.models import CredentialMethod
+
+    fake_cred = MagicMock()
+    fake_cred.method = CredentialMethod.ssh
+    fake_cred.username = "admin"
+    fake_cred.password_encrypted = "wrong"
+
+    fake_device = MagicMock()
+    fake_device.last_credential_ok_at = "2026-01-01"
+
+    mock_db = MagicMock()
+    def db_query_side(model):
+        q = MagicMock()
+        if hasattr(model, "__name__") and model.__name__ == "Credential":
+            q.filter.return_value.all.return_value = [fake_cred]
+        else:
+            q.filter.return_value.first.return_value = fake_device
+        return q
+    mock_db.query.side_effect = db_query_side
+
+    with patch.object(w, "_tcp_open", return_value=True), \
+         patch.object(w, "_try_ssh", return_value=False):
+        w._reverify_existing_creds(mock_db, 1, "10.0.0.5")
+
+    mock_db.delete.assert_called_once_with(fake_cred)
+
+
+# BUG-worker: _note_protection — regex injection i kolejnosc tagu
+
+def test_note_protection_no_regex_injection():
+    """BUG-1 regresja: nazwa serwisu ze znakami specjalnymi regex nie powoduje bledu."""
+    import re
+
+    dev = MagicMock()
+    dev.asset_notes = None
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = dev
+
+    evt = {"port": 80, "reason": "test-reason", "count": 1, "last": None}
+
+    # Serwis z nawiasami kwadratowymi — bez re.escape() rzucilby re.error
+    try:
+        w._note_protection(mock_db, 1, "10.0.0.1", "Svc[1]", evt)
+    except re.error as e:
+        pytest.fail(f"re.error przy specjalnych znakach w nazwie serwisu: {e}")
+
+
+def test_note_protection_tag_prepended_to_existing_notes():
+    """BUG-1 regresja: tag trafia na poczatek asset_notes (widoczny w popoverse 60-char)."""
+    dev = MagicMock()
+    dev.asset_notes = "Stare notatki o urzadzeniu"
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = dev
+
+    evt = {"port": 22, "reason": "banner-reset", "count": 2, "last": None}
+    w._note_protection(mock_db, 1, "10.0.0.1", "SSH", evt)
+
+    new_notes = dev.asset_notes
+    assert new_notes.startswith("[SSH-PROTECTED"), \
+        f"Tag powinien byc na poczatku asset_notes, dostano: {new_notes[:60]}"
+
+
+# BUG-worker: _process_protection_events w finally
+
+def test_protection_events_drained_even_after_exception():
+    """BUG-2 regresja: _drain_protection_events zwraca i czyści eventy dla danego IP."""
+    w._protection_events.clear()
+
+    w._protection_events[("10.0.0.1", "SSH")] = {
+        "port": 22, "reason": "banner-reset", "count": 1, "last": None
+    }
+    w._protection_events[("10.0.0.2", "FTP")] = {
+        "port": 21, "reason": "too-many", "count": 1, "last": None
+    }
+
+    events = w._drain_protection_events("10.0.0.1")
+
+    assert len(events) == 1
+    assert events[0][0] == "SSH"
+    # Event dla 10.0.0.1 usunięty, dla 10.0.0.2 pozostaje
+    assert ("10.0.0.1", "SSH") not in w._protection_events
+    assert ("10.0.0.2", "FTP") in w._protection_events

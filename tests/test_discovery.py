@@ -4057,3 +4057,63 @@ def test_snmp_save_community_creates_new_global_if_none(db):
                            Credential.username == "community123")
                    .first())
     assert global_cred is not None
+
+
+# ─── Testy regresyjne: --send-ip usuniete z argumentow nmap ──────────────────
+# Regresja: na Windows z wieloma wirtualnymi interfejsami (Hyper-V, VPN)
+# flaga --send-ip powoduje "route_loop() failed" — nmap nie moze wyslac pakietow.
+# Fix: usunieto --send-ip ze wszystkich wywolan nmap.PortScanner.scan().
+
+import netdoc.collector.discovery as _disc_module
+
+
+def test_nmap_args_no_send_ip_in_source():
+    """Regresja: --send-ip nie moze pojawiac sie w kodzie zrodlowym discovery.py."""
+    import inspect
+    src = inspect.getsource(_disc_module)
+    assert "--send-ip" not in src, (
+        "Znaleziono --send-ip w discovery.py — powoduje route_loop() failed "
+        "na Windows z Hyper-V/VPN. Usun flage i pozwol nmap auto-wykryc metode."
+    )
+
+
+def test_nmap_full_args_fast_no_send_ip():
+    """Regresja: _NMAP_FULL_ARGS_FAST nie zawiera --send-ip."""
+    assert "--send-ip" not in _disc_module._NMAP_FULL_ARGS_FAST
+
+
+def test_nmap_full_args_safe_no_send_ip():
+    """Regresja: _NMAP_FULL_ARGS_SAFE nie zawiera --send-ip."""
+    assert "--send-ip" not in _disc_module._NMAP_FULL_ARGS_SAFE
+
+
+def test_port_scan_classic_nmap_call_no_send_ip():
+    """Regresja: port_scan (tryb klasyczny) nie przekazuje --send-ip do nmap."""
+    nm_mock = MagicMock()
+    nm_mock.all_hosts.return_value = []
+    classic = {"concurrency": 0, "batch_size": 0, "batch_pause_s": 0, "resume_enabled": False}
+
+    with patch("nmap.PortScanner", return_value=nm_mock):
+        port_scan(["10.0.0.1"], _batch_settings=classic)
+
+    call_args = nm_mock.scan.call_args
+    assert call_args is not None
+    arguments = call_args.kwargs.get("arguments", "") or ""
+    assert "--send-ip" not in arguments, (
+        f"port_scan przekazal --send-ip do nmap: {arguments!r}"
+    )
+
+
+def test_full_scan_one_group_nmap_call_no_send_ip():
+    """Regresja: _full_scan_one_group nie przekazuje --send-ip do nmap."""
+    nm_mock = MagicMock()
+    nm_mock.all_hosts.return_value = []
+
+    with patch("nmap.PortScanner", return_value=nm_mock):
+        _full_scan_one_group(["10.0.0.1"], ["1-1000"])
+
+    for c in nm_mock.scan.call_args_list:
+        arguments = c.kwargs.get("arguments", "") or ""
+        assert "--send-ip" not in arguments, (
+            f"_full_scan_one_group przekazal --send-ip do nmap: {arguments!r}"
+        )
