@@ -2227,7 +2227,8 @@ def create_app():
         return render_template("settings.html", grouped=grouped, worker_cfg=worker_cfg or {},
                                lab_containers=lab_containers,
                                telegram_config=telegram_config,
-                               telegram_active=telegram_active)
+                               telegram_active=telegram_active,
+                               PRO_ENABLED=PRO_ENABLED)
 
     @app.route("/settings/config/<key>", methods=["POST"])
     def settings_config_update(key):
@@ -2550,15 +2551,13 @@ def create_app():
                 except Exception as e:
                     errors.append(f"{ct['name']}: {e}")
 
-            # Jesli wszystkie bledy to brak obrazow — sprobuj auto-budowanie
-            if image_missing_names and not errors and started == 0 and created == 0:
+            # Buduj brakujace obrazy — niezaleznie od liczby juz uruchomionych kontenerow
+            if image_missing_names:
                 app.logger.info(
-                    "lab_start: brak obrazow dla %s — probuje auto-build przez docker compose",
+                    "lab_start: brak obrazow dla %s — probuje auto-build",
                     ", ".join(image_missing_names))
                 build_ok, build_msg = _auto_build_and_start(client, image_missing_names)
                 if build_ok:
-                    # Po buildzie — uruchom kontenery ponownie
-                    started2 = created2 = 0
                     for ct in _LAB_CONTAINERS:
                         if ct["name"] not in image_missing_names:
                             continue
@@ -2566,32 +2565,43 @@ def create_app():
                             c = client.containers.get(ct["name"])
                             if c.status != "running":
                                 c.start()
-                            started2 += 1
-                        except Exception:
-                            ok2, _ = _create_lab_container(client, ct)
+                            started += 1
+                        except _docker_mod.errors.NotFound:
+                            ok2, errmsg2 = _create_lab_container(client, ct)
                             if ok2:
-                                created2 += 1
-                    # Podlacz workersy po udanym buildzie
-                    try:
-                        lab_net = client.networks.get("netdoc_lab")
-                        for wname in ["netdoc-ping", "netdoc-snmp", "netdoc-cred", "netdoc-vuln"]:
-                            try:
-                                lab_net.connect(wname)
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-                    total_built = started2 + created2
-                    return jsonify({"ok": True,
-                                    "message": f"{build_msg} Uruchomiono {total_built}/{len(image_missing_names)} kontenerow.",
-                                    "started": started2, "created": created2})
+                                created += 1
+                            else:
+                                errors.append(f"{ct['name']}: {errmsg2}")
+                        except Exception as e2:
+                            errors.append(f"{ct['name']}: {e2}")
                 else:
-                    return jsonify({"ok": False,
-                                    "message": f"Brak obrazow lab ({len(image_missing_names)} kontenerow). "
-                                               f"Auto-budowanie nie powiodlo sie: {build_msg}. "
-                                               f"Uruchom recznie: docker compose -f docker-compose.lab.yml up -d --build"})
-            elif image_missing_names:
-                errors.append(f"Brak obrazow dla: {', '.join(image_missing_names)} — uruchom: docker compose -f docker-compose.lab.yml up -d --build")
+                    errors.append(
+                        f"Brak obrazow ({', '.join(image_missing_names)}). "
+                        f"Auto-build nie powiodl sie: {build_msg}. "
+                        f"Uruchom recznie: docker compose -f docker-compose.lab.yml up -d --build"
+                    )
+
+            # Retry — poczekaj 2s i sprobuj jeszcze raz kontenery ktore sie nie uruchomily
+            if errors:
+                import time as _time
+                _time.sleep(2)
+                retry_names = set(_e.split(":", 1)[0].strip() for _e in errors if ":" in _e)
+                still_errors = []
+                for ct in _LAB_CONTAINERS:
+                    if ct["name"] not in retry_names:
+                        continue
+                    try:
+                        c = client.containers.get(ct["name"])
+                        if c.status != "running":
+                            c.start()
+                        started += 1
+                    except Exception:
+                        ok_r, err_r = _create_lab_container(client, ct)
+                        if ok_r:
+                            created += 1
+                        else:
+                            still_errors.append(f"{ct['name']}: {err_r}")
+                errors = still_errors
 
             total = started + created
 

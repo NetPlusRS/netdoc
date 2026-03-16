@@ -1299,31 +1299,64 @@ function labAction(action) {
   const result   = document.getElementById("labResult");
   if (btnStart) btnStart.disabled = true;
   if (btnStop)  btnStop.disabled  = true;
-  result.style.display = "none";
+
+  let _pollTimer = null;
+  function _stopPoll() { if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; } }
+  function _pollStatus(reloadWhenDone) {
+    _stopPoll();
+    let ticks = 0;
+    _pollTimer = setInterval(function() {
+      ticks++;
+      if (ticks > 20) { _stopPoll(); if (reloadWhenDone) location.reload(); return; }
+      fetch("/settings/lab/status")
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          const el = document.getElementById("labLiveStatus");
+          if (el) el.textContent = d.running + "/" + d.total + " kontenerów aktywnych";
+          if (reloadWhenDone && d.running >= d.total) {
+            _stopPoll();
+            setTimeout(function() { location.reload(); }, 800);
+          }
+        })
+        .catch(function() {});
+    }, 3000);
+  }
+
+  if (action === "start") {
+    result.style.display = "";
+    result.innerHTML = '<div class="alert alert-secondary py-2 mb-0 small">' +
+      '<span class="spinner-border spinner-border-sm me-2"></span>' +
+      'Uruchamianie kontenerów lab\u2026 <span id="labLiveStatus" class="fw-semibold"></span>' +
+      '</div>';
+    _pollStatus(false);
+  } else {
+    result.style.display = "none";
+  }
 
   fetch("/settings/lab/" + action, {method: "POST", headers: {"X-Requested-With": "XMLHttpRequest"}})
-    .then(r => {
-      if (!r.ok) {
-        return r.text().then(txt => { throw new Error(`HTTP ${r.status}: ${txt.slice(0, 200)}`); });
-      }
+    .then(function(r) {
+      _stopPoll();
+      if (!r.ok) return r.text().then(function(txt) { throw new Error("HTTP " + r.status + ": " + txt.slice(0, 200)); });
       return r.json();
     })
-    .then(data => {
+    .then(function(data) {
       result.style.display = "";
-      result.innerHTML = `<div class="alert ${data.ok ? "alert-success" : "alert-warning"} alert-sm py-2 mb-0 small">
-        <i class="bi bi-${data.ok ? "check-circle" : "exclamation-triangle"} me-1"></i>${data.message}
-        ${data.ok ? '<button class="btn btn-sm btn-outline-secondary ms-2" onclick="location.reload()"><i class="bi bi-arrow-clockwise"></i> Odśwież</button>' : ""}
-      </div>`;
+      result.innerHTML = '<div class="alert ' + (data.ok ? "alert-success" : "alert-warning") + ' py-2 mb-0 small">' +
+        '<i class="bi bi-' + (data.ok ? "check-circle" : "exclamation-triangle") + ' me-1"></i>' +
+        data.message +
+        (data.ok ? ' &nbsp;<span id="labLiveStatus" class="text-muted small"></span>' : "") +
+        '</div>';
       if (data.ok) {
-        setTimeout(() => location.reload(), 2000);
+        _pollStatus(true);
       } else {
         if (btnStart) btnStart.disabled = false;
         if (btnStop)  btnStop.disabled  = false;
       }
     })
-    .catch(err => {
+    .catch(function(err) {
+      _stopPoll();
       result.style.display = "";
-      result.innerHTML = `<div class="alert alert-danger alert-sm py-2 mb-0 small">Błąd połączenia: ${err}</div>`;
+      result.innerHTML = '<div class="alert alert-danger py-2 mb-0 small">Błąd połączenia: ' + err + '</div>';
       if (btnStart) btnStart.disabled = false;
       if (btnStop)  btnStop.disabled  = false;
     });
