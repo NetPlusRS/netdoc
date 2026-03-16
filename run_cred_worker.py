@@ -34,6 +34,7 @@ _LOG_FMT = "%(asctime)s [CRED] %(levelname)s %(message)s"
 logging.basicConfig(level=logging.INFO, format=_LOG_FMT, stream=sys.stdout)
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)    # wycisz INFO o kazdym HTTP request
+logging.getLogger("paramiko").setLevel(logging.CRITICAL)  # wycisz "Error reading SSH protocol banner" i inne wewn. bledy paramiko
 
 # Zapisuj rowniez do pliku (dostepnego przez panel www)
 _LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")
