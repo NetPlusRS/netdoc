@@ -1346,11 +1346,14 @@ function labAction(action) {
     })
     .then(function(data) {
       result.style.display = "";
+      // BUG-GUI5: data.message przez textContent — nie innerHTML (XSS)
       result.innerHTML = '<div class="alert ' + (data.ok ? "alert-success" : "alert-warning") + ' py-2 mb-0 small">' +
         '<i class="bi bi-' + (data.ok ? "check-circle" : "exclamation-triangle") + ' me-1"></i>' +
-        data.message +
+        '<span id="_labMsg"></span>' +
         (data.ok ? ' &nbsp;<span id="labLiveStatus" class="text-muted small"></span>' : "") +
         '</div>';
+      var msgEl = document.getElementById("_labMsg");
+      if (msgEl) msgEl.textContent = data.message;
       if (data.ok) {
         _pollStatus(true);
       } else {
@@ -1415,11 +1418,14 @@ function startDockerNuke() {
   };
 
   es.onerror = function () {
+    // BUG-GUI6: re-enable cancelBtn + dodaj przycisk zamknięcia
+    if (cancelBtn) cancelBtn.disabled = false;
     output.textContent += "\n[Połączenie zerwane — kontener web zatrzymany]\n";
     output.textContent += "Uruchom ponownie: docker compose up -d --build\n";
     es.close();
     footer.innerHTML =
-      '<div class="text-muted small w-100 text-center">' +
+      '<button type="button" class="btn btn-secondary btn-sm me-2" data-bs-dismiss="modal">Zamknij</button>' +
+      '<div class="text-muted small d-inline">' +
       '<code>docker compose up -d --build</code>' +
       '</div>';
   };
@@ -1450,6 +1456,14 @@ function dsAction(mode) {
   footer.innerHTML = '<span class="text-muted small"><span class="spinner-border spinner-border-sm me-1"></span>Trwa operacja…</span>';
   modal.show();
 
+  // BUG-GUI11: safety timeout — jeśli SSE nie wyemituje DONE/ERROR, pokaż przycisk zamknięcia
+  var _dsTimeout = setTimeout(function() {
+    if (footer.querySelector('.spinner-border')) {
+      footer.innerHTML = '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>' +
+        '<span class="text-warning small ms-2">Przekroczono czas oczekiwania</span>';
+    }
+  }, 120000);  // 2 minuty
+
   const url = `/settings/docker/${mode === "rebuild" ? "rebuild" : "restart"}-stream?services=${checks.join(",")}`;
   const es = new EventSource(url);
 
@@ -1459,6 +1473,7 @@ function dsAction(mode) {
 
     if (e.data === "DONE") {
       es.close();
+      clearTimeout(_dsTimeout);
       const webIncluded = checks.includes("web");
       if (webIncluded) {
         footer.innerHTML =
@@ -1474,12 +1489,14 @@ function dsAction(mode) {
       }
     } else if (e.data === "ERROR") {
       es.close();
+      clearTimeout(_dsTimeout);
       footer.innerHTML =
         '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>';
     }
   };
 
   es.onerror = function () {
+    clearTimeout(_dsTimeout);
     if (checks.includes("web")) {
       output.textContent += "\n[Połączenie zerwane — kontener web się restartuje]\n";
       footer.innerHTML = '<div class="text-muted small w-100 text-center">Odświeżam stronę…</div>';
@@ -1498,15 +1515,7 @@ function dsAction(mode) {
   <div class="card-header"><i class="bi bi-database-down me-2 text-info"></i>Backup &amp; Restore bazy danych</div>
   <div class="card-body">
 
-    {# Alerty flash dotyczące backup/restore #}
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% for cat, msg in messages %}
-        <div class="alert alert-{{ 'danger' if cat == 'danger' else ('warning' if cat == 'warning' else 'success') }} alert-dismissible fade show py-2 small" role="alert">
-          {{ msg }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-      {% endfor %}
-    {% endwith %}
+    {# BUG-GUI3: flash messages są już renderowane w base.html — duplikat usunieto #}
 
     <div class="row g-4">
 
