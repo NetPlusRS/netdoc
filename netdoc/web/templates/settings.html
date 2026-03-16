@@ -865,6 +865,429 @@
   </div>
 </div>
 
+{# ══════════════════════════════════════════════════════════════════════════
+   Zaawansowane techniki skanowania nmap
+   ══════════════════════════════════════════════════════════════════════════ #}
+<div class="card mb-4" id="scan-advanced">
+  <div class="card-header d-flex align-items-center gap-2">
+    <i class="bi bi-shield-shaded text-warning"></i>
+    <span>Zaawansowane techniki skanowania</span>
+    <span class="badge bg-secondary ms-1" style="font-size:.7rem">EKSPERYMENTALNE</span>
+    <span class="ms-auto text-muted small">Każda opcja jest domyślnie wyłączona</span>
+  </div>
+  <div class="card-body p-0">
+
+    {# ── Makra ─────────────────────────────────────────────────────────────── #}
+    {#
+      LEGENDA STATUSÓW:
+        planned  = zaimplementujemy w przyszłości (kod częściowy lub brak)
+        pro      = tylko wersja NetDoc Pro (wyszarzone, nieaktywne)
+    #}
+
+    {# ── SEKCJA: Wydajność i ochrona urządzeń ─────────────────────────────── #}
+    <div class="px-3 pt-3 pb-1">
+      <h6 class="text-muted border-bottom pb-1 mb-0 small text-uppercase" style="letter-spacing:.05em">
+        <i class="bi bi-speedometer2 me-1"></i>Wydajność i ochrona urządzeń
+      </h6>
+    </div>
+
+    {# 1. Tryb skanowania (timing preset) #}
+    <div class="border-bottom px-3 py-3">
+      <div class="d-flex align-items-start gap-3">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <i class="bi bi-clock-history text-info"></i>
+            <strong class="small">Tryb skanowania (Timing Preset)</strong>
+            <span class="badge bg-secondary" style="font-size:.65rem">PLANOWANE</span>
+            <code class="text-muted" style="font-size:.68rem">nmap -T[0-4] --max-rate N --scan-delay Nms</code>
+          </div>
+          <p class="small text-muted mb-2">
+            Kontroluje agresywność skanera — ile pakietów wysyła na sekundę i jak długo czeka na odpowiedź.
+            Szybkie skanowanie może przeciążyć lub zawiesić wrażliwe urządzenia przemysłowe (PLC, konwertery
+            RS-485, starsze switche), natomiast wolne tryby są bezpieczniejsze i trudniejsze do wykrycia
+            przez systemy IDS.
+          </p>
+          <div class="row g-2 mb-2" style="max-width:700px">
+            <div class="col-6 col-md-3">
+              <div class="border rounded p-2 text-center bg-body-secondary opacity-50">
+                <div class="small fw-bold text-danger">⚡ Szybkie</div>
+                <div style="font-size:.7rem" class="text-muted">-T4, max-rate 500<br>Serwery, LAN office<br>Może przeciążyć IoT</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="border rounded p-2 text-center bg-body-secondary opacity-50">
+                <div class="small fw-bold text-warning">▶ Normalne</div>
+                <div style="font-size:.7rem" class="text-muted">-T3, max-rate 200<br>Biuro, mieszane sieci<br>Obecny domyślny</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="border rounded p-2 text-center bg-body-secondary opacity-50">
+                <div class="small fw-bold text-info">🛡 Ostrożne</div>
+                <div style="font-size:.7rem" class="text-muted">-T2, max-rate 50<br>Sieci z IoT<br>Bezpieczne dla kamer</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="border rounded p-2 text-center bg-body-secondary opacity-50">
+                <div class="small fw-bold text-success">🏭 Przemysłowe</div>
+                <div style="font-size:.7rem" class="text-muted">-T1, max-rate 5<br>PLC, SCADA, OT<br>1 pakiet naraz</div>
+              </div>
+            </div>
+          </div>
+          <div class="alert alert-secondary py-1 px-2 mb-0 small d-inline-flex align-items-center gap-2">
+            <i class="bi bi-info-circle"></i>
+            <span>Funkcja w przygotowaniu. Planowane w kolejnej wersji NetDoc.</span>
+          </div>
+        </div>
+        <div class="flex-shrink-0">
+          <button class="btn btn-outline-secondary btn-sm" disabled title="Dostępne wkrótce">
+            <i class="bi bi-toggles me-1"></i>Konfiguruj
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {# ── SEKCJA: Wykrywanie hostów ─────────────────────────────────────────── #}
+    <div class="px-3 pt-3 pb-1">
+      <h6 class="text-muted border-bottom pb-1 mb-0 small text-uppercase" style="letter-spacing:.05em">
+        <i class="bi bi-search me-1"></i>Wykrywanie hostów
+      </h6>
+    </div>
+
+    {# 2. Multi-method host discovery #}
+    <div class="border-bottom px-3 py-3">
+      <div class="d-flex align-items-start gap-3">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <i class="bi bi-diagram-3 text-info"></i>
+            <strong class="small">Wielometodowe wykrywanie hostów</strong>
+            <span class="badge bg-secondary" style="font-size:.65rem">PLANOWANE</span>
+            <code class="text-muted" style="font-size:.68rem">nmap -PE -PP -PS80,443 -PA80 -PU161</code>
+          </div>
+          <p class="small text-muted mb-2">
+            Standardowe odkrywanie opiera się wyłącznie na odpowiedzi ICMP (klasycznym "ping"). Problem polega
+            na tym, że wiele urządzeń — kamer IP, kamer Hikvision/Dahua, PLC Siemens, drukarek HP —
+            <strong>blokuje ICMP w firmware lub przez reguły firewalla</strong>. Takie urządzenia "wyglądają"
+            jakby nie istniały, mimo że działają normalnie.
+          </p>
+          <p class="small text-muted mb-2">
+            Wielometodowe wykrywanie próbuje kilka technik naraz:
+          </p>
+          <ul class="small text-muted mb-2" style="padding-left:1.2rem">
+            <li><strong>ICMP Echo</strong> (-PE) — klasyczny ping</li>
+            <li><strong>ICMP Timestamp</strong> (-PP) — alternatywny typ ICMP, omija niektóre firewalle</li>
+            <li><strong>TCP SYN ping</strong> (-PS22,80,443) — "puka" w popularne porty TCP</li>
+            <li><strong>TCP ACK ping</strong> (-PA80) — wygląda jak odpowiedź na istniejące połączenie, trudny do odfiltrowania</li>
+            <li><strong>UDP ping</strong> (-PU161) — dla urządzeń z SNMP (PLC, switche)</li>
+          </ul>
+          <div class="alert alert-warning py-1 px-2 mb-0 small d-inline-flex align-items-center gap-2">
+            <i class="bi bi-exclamation-triangle"></i>
+            <span><strong>Ryzyko:</strong> więcej ruchu sieciowego, dłuższy czas skanowania. Niektóre urządzenia mogą
+            reagować nieprzewidywalnie na TCP SYN do zamkniętych portów (rzadkie).</span>
+          </div>
+          <div class="alert alert-secondary py-1 px-2 mt-2 mb-0 small d-inline-flex align-items-center gap-2">
+            <i class="bi bi-info-circle"></i>
+            <span>Funkcja w przygotowaniu. Może wykryć 15–30% więcej urządzeń w sieciach z filtrowanym ICMP.</span>
+          </div>
+        </div>
+        <div class="flex-shrink-0">
+          <button class="btn btn-outline-secondary btn-sm" disabled title="Dostępne wkrótce">
+            <i class="bi bi-toggles me-1"></i>Włącz
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {# 3. Randomize hosts #}
+    <div class="border-bottom px-3 py-3">
+      <div class="d-flex align-items-start gap-3">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <i class="bi bi-shuffle text-info"></i>
+            <strong class="small">Losowa kolejność skanowania hostów</strong>
+            <span class="badge bg-secondary" style="font-size:.65rem">PLANOWANE</span>
+            <code class="text-muted" style="font-size:.68rem">nmap --randomize-hosts</code>
+          </div>
+          <p class="small text-muted mb-2">
+            Domyślnie nmap skanuje hosty sekwencyjnie (192.168.1.1, .2, .3…). Przy dużych sieciach może to
+            oznaczać, że przez kilkadziesiąt sekund "atakuje" tylko jeden switch lub jeden segment sieci,
+            co może go przeciążyć lub wyzwolić alarmy IDS. Losowa kolejność rozkłada ruch równomiernie.
+          </p>
+          <p class="small text-muted mb-2">
+            Szczególnie przydatne przy sieciach /16 i większych, gdzie sekwencyjne skanowanie obciąża
+            kolejno każdy z dziesiątek przełączników.
+          </p>
+          <div class="alert alert-secondary py-1 px-2 mb-0 small d-inline-flex align-items-center gap-2">
+            <i class="bi bi-info-circle"></i>
+            <span>Funkcja w przygotowaniu. Brak ryzyk, zalecane dla sieci powyżej /24.</span>
+          </div>
+        </div>
+        <div class="flex-shrink-0">
+          <button class="btn btn-outline-secondary btn-sm" disabled title="Dostępne wkrótce">
+            <i class="bi bi-toggles me-1"></i>Włącz
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {# ── SEKCJA: Omijanie filtrów i firewalli ─────────────────────────────── #}
+    <div class="px-3 pt-3 pb-1">
+      <h6 class="text-muted border-bottom pb-1 mb-0 small text-uppercase" style="letter-spacing:.05em">
+        <i class="bi bi-shield-x me-1"></i>Omijanie filtrów sieciowych
+      </h6>
+    </div>
+
+    {# 4. Source port spoofing #}
+    <div class="border-bottom px-3 py-3">
+      <div class="d-flex align-items-start gap-3">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <i class="bi bi-arrow-left-right text-warning"></i>
+            <strong class="small">Spoofing portu źródłowego</strong>
+            <span class="badge bg-secondary" style="font-size:.65rem">PLANOWANE</span>
+            <code class="text-muted" style="font-size:.68rem">nmap -g 53</code>
+          </div>
+          <p class="small text-muted mb-2">
+            Reguły firewalla często działają w obie strony: "zablokuj wszystko, ale przepuść ruch z/do
+            portu 53 (DNS)". Wysyłając pakiety skanujące z portu 53 jako źródłowego, skaner "podaje się"
+            za zapytanie DNS — proste firewalle traktują taki ruch jako dozwolony i przepuszczają
+            odpowiedź z badanego hosta.
+          </p>
+          <p class="small text-muted mb-2">
+            Przykładowe "zaufane" porty, które można wskazać: <code>53</code> (DNS), <code>80</code> (HTTP),
+            <code>443</code> (HTTPS), <code>20</code> (FTP data).
+          </p>
+          <div class="alert alert-warning py-1 px-2 mb-0 small d-inline-flex align-items-center gap-2">
+            <i class="bi bi-exclamation-triangle"></i>
+            <span><strong>Ryzyko:</strong> może powodować konflikty z działającymi usługami na tych portach
+            (np. lokalny serwer DNS na porcie 53). Stosować tylko gdy standardowe skanowanie nie daje wyników.</span>
+          </div>
+          <div class="alert alert-secondary py-1 px-2 mt-2 mb-0 small d-inline-flex align-items-center gap-2">
+            <i class="bi bi-info-circle"></i>
+            <span>Funkcja w przygotowaniu. Pomaga odkryć hosty/porty za prostymi regułami ACL.</span>
+          </div>
+        </div>
+        <div class="flex-shrink-0">
+          <button class="btn btn-outline-secondary btn-sm" disabled title="Dostępne wkrótce">
+            <i class="bi bi-toggles me-1"></i>Konfiguruj
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {# 5. Fragmentacja pakietów #}
+    <div class="border-bottom px-3 py-3">
+      <div class="d-flex align-items-start gap-3">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <i class="bi bi-puzzle text-warning"></i>
+            <strong class="small">Fragmentacja pakietów IP</strong>
+            <span class="badge bg-secondary" style="font-size:.65rem">PLANOWANE</span>
+            <code class="text-muted" style="font-size:.68rem">nmap -f</code> &nbsp;
+            <code class="text-muted" style="font-size:.68rem">nmap --mtu 16</code>
+          </div>
+          <p class="small text-muted mb-2">
+            Pakiety TCP są dzielone na małe fragmenty (domyślnie 8 bajtów) przed wysłaniem.
+            Proste systemy Intrusion Detection (IDS) i firewalle z inspekcją pakietów
+            <strong>analizują każdy pakiet osobno</strong> — nie składają fragmentów przed analizą.
+            Dzięki temu fragmentowane skanowanie "prześlizguje się" przez filtry, które normalnie
+            blokowałyby pakiety SYN.
+          </p>
+          <div class="alert alert-danger py-1 px-2 mb-0 small d-inline-flex align-items-center gap-2">
+            <i class="bi bi-exclamation-octagon"></i>
+            <span><strong>Wysokie ryzyko dla urządzeń przemysłowych:</strong> PLC, konwertery przemysłowe
+            i stare switche mogą nie obsługiwać składania fragmentów IP — odbierają niekompletne pakiety
+            i mogą zawiesić się lub zrestartować. Używać tylko w biurowych sieciach IT, nigdy w OT/SCADA.</span>
+          </div>
+          <div class="alert alert-secondary py-1 px-2 mt-2 mb-0 small d-inline-flex align-items-center gap-2">
+            <i class="bi bi-info-circle"></i>
+            <span>Funkcja w przygotowaniu. Wyłączona domyślnie — wymaga świadomego włączenia.</span>
+          </div>
+        </div>
+        <div class="flex-shrink-0">
+          <button class="btn btn-outline-secondary btn-sm" disabled title="Dostępne wkrótce">
+            <i class="bi bi-toggles me-1"></i>Włącz
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {# ── SEKCJA: Analiza bezpieczeństwa sieci ─────────────────────────────── #}
+    <div class="px-3 pt-3 pb-1">
+      <h6 class="text-muted border-bottom pb-1 mb-0 small text-uppercase" style="letter-spacing:.05em">
+        <i class="bi bi-bug me-1"></i>Analiza bezpieczeństwa sieci
+      </h6>
+    </div>
+
+    {# 6. Bad checksum #}
+    <div class="border-bottom px-3 py-3">
+      <div class="d-flex align-items-start gap-3">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <i class="bi bi-calculator text-warning"></i>
+            <strong class="small">Test sum kontrolnych (Bad Checksum)</strong>
+            <span class="badge bg-secondary" style="font-size:.65rem">PLANOWANE</span>
+            <code class="text-muted" style="font-size:.68rem">nmap --badsum</code>
+          </div>
+          <p class="small text-muted mb-2">
+            Wysyła pakiety TCP/UDP z <strong>celowo błędną sumą kontrolną</strong>. Każdy prawidłowo
+            zaimplementowany stos sieciowy powinien je po prostu zignorować — jeśli tak jest, brak
+            odpowiedzi oznacza "prawdziwy" host. Jeśli jednak host lub firewall <em>odpowie</em>,
+            oznacza to poważną lukę: urządzenie nie weryfikuje integralności pakietów, co może
+            być exploitowane przez atakujących.
+          </p>
+          <p class="small text-muted mb-2">
+            Wynik testu trafia jako nowy typ podatności: <code>firewall_no_checksum_validation</code>.
+            Jest to informacja szczególnie ważna dla regulacji NERC CIP i IEC 62443 w środowiskach OT.
+          </p>
+          <div class="alert alert-secondary py-1 px-2 mb-0 small d-inline-flex align-items-center gap-2">
+            <i class="bi bi-info-circle"></i>
+            <span>Funkcja w przygotowaniu. Bezpieczna — nie powoduje efektów ubocznych na urządzeniach.</span>
+          </div>
+        </div>
+        <div class="flex-shrink-0">
+          <button class="btn btn-outline-secondary btn-sm" disabled title="Dostępne wkrótce">
+            <i class="bi bi-toggles me-1"></i>Włącz
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {# ── SEKCJA: NetDoc Pro — zaawansowane techniki steganografii skanowania #}
+    <div class="px-3 pt-3 pb-1">
+      <h6 class="border-bottom pb-1 mb-0 small text-uppercase d-flex align-items-center gap-2" style="letter-spacing:.05em">
+        <i class="bi bi-lock-fill text-warning"></i>
+        <span class="text-warning">Techniki ukrywania skanowania</span>
+        <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem">NETDOC PRO</span>
+      </h6>
+    </div>
+
+    {# 7. Decoy Scan — PRO #}
+    <div class="border-bottom px-3 py-3 opacity-50">
+      <div class="d-flex align-items-start gap-3">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <i class="bi bi-person-bounding-box text-warning"></i>
+            <strong class="small">Skanowanie z wabika (Decoy Scan)</strong>
+            <span class="badge bg-warning text-dark" style="font-size:.65rem">PRO</span>
+            <code class="text-muted" style="font-size:.68rem">nmap -D RND:5,ME</code>
+          </div>
+          <p class="small text-muted mb-2">
+            Do każdego wysyłanego pakietu skanującego dołączane są kopie z fałszywymi adresami IP (wabiki).
+            System monitoringu lub firewall widzi <strong>kilkanaście "skanerów" naraz</strong> — trudno
+            odróżnić, który jest prawdziwy. Przydatne podczas autoryzowanych testów penetracyjnych własnej
+            infrastruktury, gdy chcemy sprawdzić skuteczność systemu wykrywania intruzji (IDS/SIEM) —
+            czy potrafi wyizolować prawdziwe źródło z szumu.
+          </p>
+          <div class="alert alert-warning py-1 px-2 mb-0 small d-inline-flex align-items-center gap-2">
+            <i class="bi bi-exclamation-triangle"></i>
+            <span><strong>Wymaga autoryzacji:</strong> technika może wyzwolić alerty bezpieczeństwa i
+            powinna być stosowana tylko w ramach udokumentowanego testu penetracyjnego. Fałszywe IP
+            muszą być osiągalne w sieci, inaczej technika jest nieskuteczna.</span>
+          </div>
+        </div>
+        <div class="flex-shrink-0">
+          {% if PRO_ENABLED %}
+          <button class="btn btn-outline-warning btn-sm" disabled title="Konfiguracja w przygotowaniu">
+            <i class="bi bi-toggles me-1"></i>Konfiguruj
+          </button>
+          {% else %}
+          <button class="btn btn-outline-warning btn-sm" disabled
+                  title="Dostępne wyłącznie w NetDoc Pro">
+            <i class="bi bi-lock me-1"></i>NetDoc Pro
+          </button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {# 8. MAC Address Spoofing — PRO #}
+    <div class="border-bottom px-3 py-3 opacity-50">
+      <div class="d-flex align-items-start gap-3">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <i class="bi bi-ethernet text-warning"></i>
+            <strong class="small">Spoofing adresu MAC</strong>
+            <span class="badge bg-warning text-dark" style="font-size:.65rem">PRO</span>
+            <code class="text-muted" style="font-size:.68rem">nmap --spoof-mac Cisco</code>
+          </div>
+          <p class="small text-muted mb-2">
+            Skaner wysyła pakiety podszywając się pod adres MAC innego producenta lub konkretnego
+            urządzenia. Używane gdy środowisko sieciowe stosuje <strong>kontrolę dostępu opartą na MAC</strong>
+            (802.1X, MAC-based ACL) — skaner "udaje" zatwierdzone urządzenie i uzyskuje dostęp do
+            segmentów sieci niedostępnych przy standardowym skanie.
+          </p>
+          <p class="small text-muted mb-2">
+            Możliwe tryby: podszywanie się pod producenta (np. <code>Cisco</code>, <code>Dell</code>),
+            losowy MAC (<code>0</code>) lub konkretny adres (<code>AA:BB:CC:DD:EE:FF</code>).
+          </p>
+          <div class="alert alert-warning py-1 px-2 mb-0 small d-inline-flex align-items-center gap-2">
+            <i class="bi bi-exclamation-triangle"></i>
+            <span><strong>Ryzyko:</strong> może zakłócić tablice ARP przełączników i powodować
+            konflikty adresów. Stosować tylko w środowiskach testowych lub przy pełnej autoryzacji.
+            Nieefektywne gdy przełącznik używa Port Security (blokuje nieznane MAC).</span>
+          </div>
+        </div>
+        <div class="flex-shrink-0">
+          {% if PRO_ENABLED %}
+          <button class="btn btn-outline-warning btn-sm" disabled title="Konfiguracja w przygotowaniu">
+            <i class="bi bi-toggles me-1"></i>Konfiguruj
+          </button>
+          {% else %}
+          <button class="btn btn-outline-warning btn-sm" disabled
+                  title="Dostępne wyłącznie w NetDoc Pro">
+            <i class="bi bi-lock me-1"></i>NetDoc Pro
+          </button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {# 9. Zombie / Idle Scan — PRO #}
+    <div class="px-3 py-3 opacity-50">
+      <div class="d-flex align-items-start gap-3">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <i class="bi bi-person-x text-warning"></i>
+            <strong class="small">Skan przez hosta-zombie (Idle/Zombie Scan)</strong>
+            <span class="badge bg-warning text-dark" style="font-size:.65rem">PRO</span>
+            <code class="text-muted" style="font-size:.68rem">nmap -sI [zombie] [cel]</code>
+          </div>
+          <p class="small text-muted mb-2">
+            Najbardziej zaawansowana i "cicha" technika skanowania. Skaner <strong>nigdy nie wysyła pakietów
+            bezpośrednio do celu</strong> — zamiast tego używa trzeciego hosta ("zombie") jako pośrednika.
+            Dzięki temu w logach firewalla celu pojawia się tylko adres IP zombie, nie adres prawdziwego
+            skanera. Technika wymaga znalezienia hosta o niskim ruchu sieciowym i przewidywalnej sekwencji
+            numerów IP (IPID).
+          </p>
+          <p class="small text-muted mb-2">
+            Zastosowanie w NetDoc: weryfikacja co widzi "neutralny" host w sieci — czy firewall blokuje
+            ruch tylko z znanych IP skanerów, czy faktycznie filtruje porty niezależnie od źródła.
+          </p>
+          <div class="alert alert-danger py-1 px-2 mb-0 small d-inline-flex align-items-center gap-2">
+            <i class="bi bi-exclamation-octagon"></i>
+            <span><strong>Tylko do autoryzowanych testów penetracyjnych:</strong> technika jest uznawana
+            za metodę ataku w wielu jurysdykcjach — wymaga pisemnej zgody właściciela sieci. Host zombie
+            musi być urządzeniem własnym lub objętym zakresem audytu.</span>
+          </div>
+        </div>
+        <div class="flex-shrink-0">
+          {% if PRO_ENABLED %}
+          <button class="btn btn-outline-warning btn-sm" disabled title="Konfiguracja w przygotowaniu">
+            <i class="bi bi-toggles me-1"></i>Konfiguruj
+          </button>
+          {% else %}
+          <button class="btn btn-outline-warning btn-sm" disabled
+                  title="Dostępne wyłącznie w NetDoc Pro">
+            <i class="bi bi-lock me-1"></i>NetDoc Pro
+          </button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div>{# /card-body #}
+</div>{# /card #}
+
 {% endblock %}
 
 {% block scripts %}
