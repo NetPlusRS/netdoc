@@ -669,6 +669,16 @@ if (-not (Test-Path $reqFile)) {
     Write-Warn "Python niedostepny w PATH  -  pomijam pip install."
     Write-Info "Uruchom recznie po restarcie: python -m pip install -r requirements.txt"
 } else {
+    # Aktualizuj pip przed instalacja zaleznosci
+    # Stary pip ma wbudowana stara wersje urllib3 ktora koliduje z nowymi pakietami
+    Write-Info "  Aktualizuje pip do najnowszej wersji..."
+    & $PythonExeResolved -m pip install --upgrade pip --quiet 2>&1 | Out-Host
+    if ($LASTEXITCODE -eq 0) {
+        Write-OK "pip zaktualizowany."
+    } else {
+        Write-Warn "Aktualizacja pip nie powiodla sie  -  kontynuuje z biezaca wersja."
+    }
+
     Write-Info "  $PythonExeResolved -m pip install -r requirements.txt"
     # Uzyj --quiet raz (ukrywa postep) ale zachowuje bledy i ostrzezenia
     & $PythonExeResolved -m pip install -r $reqFile --quiet 2>&1 | Out-Host
