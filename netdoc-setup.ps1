@@ -763,7 +763,10 @@ Write-Info "     Docker Desktop na Windows obsluguje to domyslnie  -  jesli ping
 Write-Info "     sprawdz ustawienia izolacji Windows Defender Firewall dla Dockera."
 Write-Host ""
 
-docker compose up -d --build 2>&1 | Out-Host
+# Uwaga: NIE uzywamy "2>&1 | Out-Host" bo PowerShell konwertuje stderr native commandow
+# na ErrorRecord i Start-Transcript zapisuje je jako bledy (NativeCommandError).
+# Docker compose wypisuje output samodzielnie — Transcript i tak go przechwytuje.
+docker compose up -d --build
 
 if ($LASTEXITCODE -ne 0) {
     Write-Fail "docker compose up zakonczyl sie bledem."

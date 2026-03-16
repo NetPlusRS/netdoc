@@ -173,19 +173,26 @@ def _migrate_columns() -> None:
 
 
 def init_db() -> None:
-    """Tworzy wszystkie tabele jesli nie istnieja i migruje ENUM."""
-    _migrate_enum_values()
-    _migrate_columns()
+    """Tworzy wszystkie tabele jesli nie istnieja i migruje ENUM.
+
+    Kolejnosc ma znaczenie: najpierw create_all (tworzy typy i tabele na swiezej bazie),
+    potem migracje (dodaja brakujace wartosci/kolumny przy upgrade ze starszej wersji).
+    Na swiezej instalacji migracje beda no-op (IF NOT EXISTS chroni przed duplikatami).
+    """
+    import time as _time
     try:
         Base.metadata.create_all(bind=engine)
     except Exception as exc:
-        # Race condition: inny kontener mogl juz stworzyc typy ENUM rownoczesnie.
-        # create_all jest idempotentne dla tabel (IF NOT EXISTS), ale PostgreSQL
-        # moze rzucic UniqueViolation dla CREATE TYPE. Ponowiamy po krotkim opoznieniu.
-        import time
+        # Race condition: kilka workerow startuje rownoczesnie i kazdy probuje CREATE TYPE.
+        # PostgreSQL rzuca UniqueViolation gdy typ juz istnieje. Ponowiamy po krotkim opoznieniu.
         logger.warning("create_all nieudane (%s) — ponawiam za 2s", exc)
-        time.sleep(2)
+        _time.sleep(2)
         Base.metadata.create_all(bind=engine)
+    # Migracje po create_all — bezpieczne dzieki IF NOT EXISTS / EXCEPTION WHEN duplicate_object.
+    # Na swiezej bazie wszystkie wartosci juz sa w schemacie wiec migracje sa no-op.
+    # Przy upgrade ze starszej wersji dodaja brakujace wartosci ENUM i kolumny.
+    _migrate_enum_values()
+    _migrate_columns()
     dialect = engine.dialect.name
     logger.info("Baza danych zainicjalizowana (%s)", dialect)
 

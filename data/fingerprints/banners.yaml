@@ -1,0 +1,335 @@
+# Baza sygnatur bannerów do fingerprinting vendora/modelu urządzeń sieciowych.
+#
+# Pola:
+#   pattern  — fragment stringa (case-insensitive), wystarczy podstring
+#   vendor   — nazwa producenta (lub null jeśli nieznany)
+#   model    — model urządzenia (lub null)
+#   device_type — typ: router/switch/ap/firewall/printer/camera/nas/iot/server/workstation/unknown
+#   notes    — komentarz (opcjonalny)
+#
+# Reguły przetwarzane w kolejności; zwracany jest PIERWSZY pasujący wpis.
+
+http_server:
+  # ── Cisco ──────────────────────────────────────────────────────────────────
+  - pattern: "Cisco Small Business"
+    vendor: "Cisco"
+    device_type: "router"
+  - pattern: "cisco-IOS"
+    vendor: "Cisco"
+    device_type: "router"
+  - pattern: "Cisco"
+    vendor: "Cisco"
+    device_type: "router"
+
+  # ── MikroTik ───────────────────────────────────────────────────────────────
+  - pattern: "MikroTik"
+    vendor: "MikroTik"
+    device_type: "router"
+
+  # ── Ubiquiti ───────────────────────────────────────────────────────────────
+  - pattern: "UniFi"
+    vendor: "Ubiquiti"
+    model: "UniFi"
+    device_type: "ap"
+  - pattern: "Ubiquiti"
+    vendor: "Ubiquiti"
+    device_type: "router"
+  - pattern: "airOS"
+    vendor: "Ubiquiti"
+    device_type: "ap"
+
+  # ── Fortinet ───────────────────────────────────────────────────────────────
+  - pattern: "xxxxxxxx"
+    vendor: "Fortinet"
+    device_type: "firewall"
+    notes: "FortiGate nie ujawnia Server: headera — placeholder"
+
+  # ── ZyXEL ──────────────────────────────────────────────────────────────────
+  - pattern: "ZyXEL-RomPager"
+    vendor: "ZyXEL"
+    device_type: "router"
+  - pattern: "ZyXEL"
+    vendor: "ZyXEL"
+    device_type: "router"
+  - pattern: "RomPager"
+    vendor: "ZyXEL"
+    device_type: "router"
+    notes: "RomPager — wbudowany serwer HTTP ZyXEL/Huawei DSL"
+
+  # ── D-Link ─────────────────────────────────────────────────────────────────
+  - pattern: "DCS-"
+    vendor: "D-Link"
+    device_type: "camera"
+    notes: "D-Link kamera IP: DCS-930L, DCS-2136L itp."
+  - pattern: "D-Link"
+    vendor: "D-Link"
+    device_type: "router"
+
+  # ── TP-Link ────────────────────────────────────────────────────────────────
+  - pattern: "TP-Link"
+    vendor: "TP-Link"
+    device_type: "router"
+  - pattern: "TL-"
+    vendor: "TP-Link"
+    device_type: "router"
+    notes: "TL-WR841N, TL-SG108E itp."
+
+  # ── Netgear ────────────────────────────────────────────────────────────────
+  - pattern: "Netgear"
+    vendor: "Netgear"
+    device_type: "router"
+  - pattern: "ReadyNAS"
+    vendor: "Netgear"
+    model: "ReadyNAS"
+    device_type: "nas"
+
+  # ── ASUS ───────────────────────────────────────────────────────────────────
+  - pattern: "ASUSWRT"
+    vendor: "ASUS"
+    device_type: "router"
+  - pattern: "RT-"
+    vendor: "ASUS"
+    device_type: "router"
+    notes: "RT-AC68U, RT-AX88U itp. — uwaga: może kolidować z innymi"
+
+  # ── Synology ───────────────────────────────────────────────────────────────
+  - pattern: "Synology"
+    vendor: "Synology"
+    device_type: "nas"
+  - pattern: "DiskStation"
+    vendor: "Synology"
+    model: "DiskStation"
+    device_type: "nas"
+  - pattern: "DSM"
+    vendor: "Synology"
+    device_type: "nas"
+    notes: "Synology DSM — uważaj, może być fałszywie dodatni"
+
+  # ── QNAP ───────────────────────────────────────────────────────────────────
+  - pattern: "QNAP"
+    vendor: "QNAP"
+    device_type: "nas"
+
+  # ── HP / HPE ───────────────────────────────────────────────────────────────
+  - pattern: "HP HTTP Server"
+    vendor: "HP"
+    device_type: "printer"
+    notes: "HP LaserJet, OfficeJet — wbudowany web serwer"
+  - pattern: "hp-ChaiSOE"
+    vendor: "HP"
+    device_type: "printer"
+  - pattern: "Jetdirect"
+    vendor: "HP"
+    model: "Jetdirect"
+    device_type: "printer"
+  - pattern: "HPE iLO"
+    vendor: "HP"
+    model: "iLO"
+    device_type: "server"
+  - pattern: "Hewlett-Packard"
+    vendor: "HP"
+    device_type: "server"
+
+  # ── Canon ──────────────────────────────────────────────────────────────────
+  - pattern: "Canon"
+    vendor: "Canon"
+    device_type: "printer"
+    notes: "Canon PIXMA, imageRUNNER — wbudowany web"
+
+  # ── Epson ──────────────────────────────────────────────────────────────────
+  - pattern: "EPSON"
+    vendor: "Epson"
+    device_type: "printer"
+
+  # ── Ricoh ──────────────────────────────────────────────────────────────────
+  - pattern: "Ricoh"
+    vendor: "Ricoh"
+    device_type: "printer"
+  - pattern: "Web-Server/1.0"
+    vendor: null
+    device_type: null
+    notes: "Zbyt ogólny — nie identyfikuje vendora"
+
+  # ── Hikvision (kamery IP) ──────────────────────────────────────────────────
+  - pattern: "DNVRS-Webs"
+    vendor: "Hikvision"
+    device_type: "camera"
+    notes: "Hikvision DVR/NVR — wbudowany serwer DNVRS"
+  - pattern: "Hikvision"
+    vendor: "Hikvision"
+    device_type: "camera"
+  - pattern: "App-webs"
+    vendor: "Hikvision"
+    device_type: "camera"
+    notes: "Hikvision/Dahua embedded webserver"
+
+  # ── Dahua ──────────────────────────────────────────────────────────────────
+  - pattern: "Dahua"
+    vendor: "Dahua"
+    device_type: "camera"
+
+  # ── Axis Communications ────────────────────────────────────────────────────
+  - pattern: "Boa/0"
+    vendor: "Axis"
+    device_type: "camera"
+    notes: "Axis kamery często używają Boa HTTP"
+  - pattern: "AXIS"
+    vendor: "Axis"
+    device_type: "camera"
+
+  # ── APC / Schneider (UPS) ──────────────────────────────────────────────────
+  - pattern: "APC"
+    vendor: "APC"
+    device_type: "iot"
+    notes: "APC Smart-UPS, PDU"
+  - pattern: "PowerNet"
+    vendor: "APC"
+    model: "PowerNet"
+    device_type: "iot"
+
+  # ── Raritan (PDU/KVM) ─────────────────────────────────────────────────────
+  - pattern: "Raritan"
+    vendor: "Raritan"
+    device_type: "iot"
+
+  # ── Siemens / industrial ──────────────────────────────────────────────────
+  - pattern: "Siemens"
+    vendor: "Siemens"
+    device_type: "iot"
+  - pattern: "SIMATIC"
+    vendor: "Siemens"
+    model: "SIMATIC"
+    device_type: "iot"
+
+  # ── Schneider Electric ────────────────────────────────────────────────────
+  - pattern: "Schneider"
+    vendor: "Schneider Electric"
+    device_type: "iot"
+
+  # ── Palo Alto ─────────────────────────────────────────────────────────────
+  - pattern: "PAN-OS"
+    vendor: "Palo Alto"
+    device_type: "firewall"
+
+  # ── SonicWall ─────────────────────────────────────────────────────────────
+  - pattern: "SonicWall"
+    vendor: "SonicWall"
+    device_type: "firewall"
+  - pattern: "SonicOS"
+    vendor: "SonicWall"
+    device_type: "firewall"
+
+  # ── WatchGuard ────────────────────────────────────────────────────────────
+  - pattern: "WatchGuard"
+    vendor: "WatchGuard"
+    device_type: "firewall"
+
+  # ── pfSense / OPNsense ────────────────────────────────────────────────────
+  - pattern: "pfSense"
+    vendor: "pfSense"
+    device_type: "firewall"
+  - pattern: "OPNsense"
+    vendor: "OPNsense"
+    device_type: "firewall"
+
+  # ── Raspberry Pi / MicroPC ────────────────────────────────────────────────
+  - pattern: "lighttpd"
+    vendor: null
+    device_type: null
+    notes: "Lighttpd — common on Raspberry Pi, cameras, embedded; not vendor-specific"
+
+  # ── Apache / Nginx — ogólne, nie vendor-specific ──────────────────────────
+  - pattern: "Apache"
+    vendor: null
+    device_type: "server"
+    notes: "Generic Apache — nie identyfikuje vendora; sugeruje Linux serwer"
+  - pattern: "nginx"
+    vendor: null
+    device_type: "server"
+    notes: "Generic nginx"
+  - pattern: "Microsoft-IIS"
+    vendor: "Microsoft"
+    device_type: "server"
+
+  # ── Grandstream (VoIP) ────────────────────────────────────────────────────
+  - pattern: "Grandstream"
+    vendor: "Grandstream"
+    device_type: "iot"
+    notes: "VoIP phones / ATAs"
+
+  # ── Yealink (VoIP) ────────────────────────────────────────────────────────
+  - pattern: "Yealink"
+    vendor: "Yealink"
+    device_type: "iot"
+
+  # ── Lantronix ─────────────────────────────────────────────────────────────
+  - pattern: "Lantronix"
+    vendor: "Lantronix"
+    device_type: "iot"
+    notes: "Serial-to-IP device servers"
+
+ssh_banner:
+  # Format SSH bannera: SSH-2.0-{software}-{version}
+  # ── Cisco ──────────────────────────────────────────────────────────────────
+  - pattern: "SSH-2.0-Cisco"
+    vendor: "Cisco"
+    device_type: "router"
+  - pattern: "SSH-1.99-Cisco"
+    vendor: "Cisco"
+    device_type: "router"
+  - pattern: "Cisco-1."
+    vendor: "Cisco"
+    device_type: "router"
+
+  # ── MikroTik ───────────────────────────────────────────────────────────────
+  - pattern: "SSH-2.0-ROSSSH"
+    vendor: "MikroTik"
+    model: "RouterOS"
+    device_type: "router"
+    notes: "RouterOS SSH banner"
+
+  # ── Juniper ────────────────────────────────────────────────────────────────
+  - pattern: "SSH-2.0-OpenSSH_Junos"
+    vendor: "Juniper"
+    device_type: "router"
+  - pattern: "Juniper"
+    vendor: "Juniper"
+    device_type: "router"
+
+  # ── Arista ─────────────────────────────────────────────────────────────────
+  - pattern: "SSH-2.0-OpenSSH"
+    vendor: null
+    device_type: null
+    notes: "OpenSSH generic — Linux lub network OS; nie identyfikuje vendora"
+
+  # ── Fortinet ───────────────────────────────────────────────────────────────
+  - pattern: "SSH-2.0-FortiSSH"
+    vendor: "Fortinet"
+    device_type: "firewall"
+
+  # ── HP / Comware ───────────────────────────────────────────────────────────
+  - pattern: "SSH-2.0-Comware"
+    vendor: "HP"
+    model: "Comware"
+    device_type: "switch"
+
+  # ── Ubiquiti EdgeOS ────────────────────────────────────────────────────────
+  - pattern: "SSH-2.0-OpenSSH"
+    vendor: null
+    device_type: null
+    notes: "EdgeOS używa standardowego OpenSSH — nie identyfikuje"
+
+  # ── Dropbear (embedded Linux) ─────────────────────────────────────────────
+  - pattern: "SSH-2.0-dropbear"
+    vendor: null
+    device_type: "router"
+    notes: "Dropbear — embedded Linux; typowe dla routerów OpenWrt/LEDE/DD-WRT"
+  - pattern: "SSH-2.0-OpenWrt"
+    vendor: null
+    model: "OpenWrt"
+    device_type: "router"
+
+  # ── Brocade ────────────────────────────────────────────────────────────────
+  - pattern: "SSH-2.0-sshd-Brocade"
+    vendor: "Brocade"
+    device_type: "switch"
