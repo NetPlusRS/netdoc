@@ -71,3 +71,28 @@ def test_modbus_driver_not_none():
         "pymodbus nie jest zainstalowany lub ma zly format importu — "
         "sprawdz ze pymodbus>=3.0 jest w requirements.txt i zainstalowany"
     )
+
+
+def test_pysnmp_lextudio_not_in_requirements():
+    """pysnmp-lextudio nie moze byc w requirements.txt — zastapiony przez pysnmp."""
+    from pathlib import Path
+    req = Path("requirements.txt").read_text(encoding="utf-8")
+    assert "pysnmp-lextudio" not in req, (
+        "pysnmp-lextudio znaleziony w requirements.txt — "
+        "uzyj 'pysnmp' zamiast przestarzalego forka lextudio"
+    )
+
+
+def test_pysnmp_not_deprecated():
+    """Importowanie pysnmp nie powinno emitowac RuntimeWarning o przestarzalosci."""
+    import warnings
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", RuntimeWarning)
+        import importlib
+        importlib.import_module("pysnmp")
+    runtime_warns = [str(w.message) for w in caught if issubclass(w.category, RuntimeWarning)]
+    deprecated = [m for m in runtime_warns if "deprecated" in m.lower() and "pysnmp" in m.lower()]
+    assert not deprecated, (
+        f"pysnmp emituje RuntimeWarning o przestarzalosci: {deprecated[0]!r}\n"
+        "Sprawdz ze requirements.txt uzywa 'pysnmp', nie 'pysnmp-lextudio'."
+    )
