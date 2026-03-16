@@ -4344,6 +4344,8 @@ Dla urządzeń nieobsoletes: "replacements": []"""
     @app.route("/devices/<int:device_id>/ai-assess", methods=["POST"])
     def device_ai_assess(device_id):
         """Wywoluje kompleksowa analize AI (bezpieczenstwo + modernizacja) dla jednego urzadzenia."""
+        if not PRO_ENABLED:
+            return jsonify({"error": "Ocena AI urządzenia dostępna wyłącznie w wersji NetDoc Pro."}), 403
         import base64 as _b64
         db = SessionLocal()
         try:

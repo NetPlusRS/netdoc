@@ -415,13 +415,13 @@
               {% else %}
                 {% set _ai_color = "secondary" %}
               {% endif %}
-              <span class="badge bg-{{ _ai_color }} dev-ai-assess-btn"
-                    style="font-size:.65rem;cursor:pointer"
-                    role="button" tabindex="0"
+              <span class="badge bg-{{ _ai_color }}{% if PRO_ENABLED %} dev-ai-assess-btn{% endif %}"
+                    style="font-size:.65rem;{% if PRO_ENABLED %}cursor:pointer{% else %}cursor:default{% endif %}"
+                    {% if PRO_ENABLED %}role="button" tabindex="0"
                     data-device-id="{{ d.id }}"
                     data-device-ip="{{ d.ip }}"
-                    data-device-label="{{ d.hostname or d.ip }}"
-                    title="Ocena AI ({{ _ai.get('assessed_at','') }}): {{ _rl or '?' }}{% if _obs %} · Do wymiany{% endif %}&#10;{{ _ai.get('summary','') }}">
+                    data-device-label="{{ d.hostname or d.ip }}"{% endif %}
+                    title="Ocena AI ({{ _ai.get('assessed_at','') }}): {{ _rl or '?' }}{% if _obs %} · Do wymiany{% endif %}&#10;{{ _ai.get('summary','') }}{% if not PRO_ENABLED %} · Ponowna ocena dostępna w Pro{% endif %}">
                 AI{% if _obs %}&#x26A0;{% endif %}
               </span>
             {% endif %}
@@ -506,12 +506,20 @@
                 {% endif %}
                 {% if ai_assessment_enabled %}
                 <li>
+                  {% if PRO_ENABLED %}
                   <button class="dropdown-item dev-ai-assess-btn"
                     data-device-id="{{ d.id }}"
                     data-device-ip="{{ d.ip }}"
                     data-device-label="{{ d.hostname or d.ip }}">
                     <i class="bi bi-cpu me-2 text-info"></i>Ocena AI
                   </button>
+                  {% else %}
+                  <button class="dropdown-item disabled" disabled
+                    title="Dostępne w NetDoc Pro">
+                    <i class="bi bi-cpu me-2 text-muted"></i>Ocena AI
+                    <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem">PRO</span>
+                  </button>
+                  {% endif %}
                 </li>
                 {% endif %}
                 <li><hr class="dropdown-divider"></li>
