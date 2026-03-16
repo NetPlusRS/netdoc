@@ -572,92 +572,13 @@ LOG_LEVEL=INFO
     Write-OK ".env utworzony z domyslnymi wartosciami."
 }
 
-# ── Windows Defender  -  wyjatki dla bibliotek security ──────────────────────
-#
-# Biblioteka impacket (testowanie credentials RDP/SMB/NTLM) jest czesto
-# blednie blokowana przez antywirus jako "hack tool"  -  jest to znany
-# false positive dla narzedzi bezpieczenstwa sieciowego.
-# Dodajemy wykluczenie dla katalogu pakietow Pythona PRZED pip install,
-# aby Defender nie kwarantannowal biblioteki podczas pobierania.
-
-Write-Step "Konfiguruje wyjatki Windows Defender (impacket false positive)..."
-
-if (-not $pythonPath) {
-    Write-Info "Python niedostepny  -  pomijam konfiguracje Defender."
-} else {
-    $defenderConfigured = $false
-
-    # Pobierz katalog site-packages Pythona
-    $sitePkg = try {
-        (& $PythonExeResolved -c "import site; print(site.getsitepackages()[0])" 2>&1) |
-        Select-Object -First 1
-    } catch { $null }
-
-    # Sprawdz czy Defender jest aktywny
-    $defStatus = Get-MpComputerStatus -ErrorAction SilentlyContinue
-
-    if ($null -eq $defStatus) {
-        Write-Info "Windows Defender niedostepny lub zastapiony innym AV  -  pomijam."
-    } elseif (-not $defStatus.RealTimeProtectionEnabled) {
-        Write-Info "Windows Defender  -  ochrona w czasie rzeczywistym wylaczona  -  pomijam."
-    } elseif (-not $isAdmin) {
-        Write-Warn "Brak uprawnien administratora  -  nie mozna dodac wyjatku Defender."
-        Write-Info "Jesli Defender zablokuje impacket, dodaj recznie wykluczenia folderow:"
-        Write-Info "  Zabezpieczenia Windows -> Ochrona przed wirusami i zagrozeniami"
-        Write-Info "  -> Ustawienia ochrony -> Wykluczenia -> Dodaj wykluczenie -> Folder"
-        if ($sitePkg) { Write-Info "  $sitePkg" }
-        Write-Info "  $env:TEMP  (pip rozpakowuje tu pakiety przed instalacja)"
-        Write-Info "  $ProjectDir"
-        Write-Info "Lub uruchom ponownie instalator: Prawy klik -> Uruchom jako administrator"
-    } else {
-        # Lista sciezek do wykluczenia:
-        # 1. site-packages  -  docelowy katalog instalacji pip
-        # 2. TEMP biezacego uzytkownika  -  pip rozpakowuje tu przed instalacja
-        # 3. TEMP sesji (moze roznic sie od LOCALAPPDATA\Temp przy uruchomieniu jako admin)
-        # 4. pip cache  -  wheel cache w LOCALAPPDATA\pip
-        # 5. Katalog projektu  -  run_scanner.py importuje impacket bezposrednio
-        $excludePaths = [System.Collections.Generic.List[string]]::new()
-
-        if ($sitePkg -and (Test-Path $sitePkg)) {
-            $excludePaths.Add($sitePkg)
-        } else {
-            Write-Info "Nie mozna ustalic katalogu site-packages."
-        }
-
-        # Temp: [System.IO.Path]::GetTempPath() zwraca temp aktualnej sesji
-        $tempPath = [System.IO.Path]::GetTempPath().TrimEnd('\')
-        if ($tempPath) { $excludePaths.Add($tempPath) }
-
-        # Temp z env (moze byc inny niz GetTempPath gdy uruchomiony jako admin)
-        if ($env:TEMP -and $env:TEMP -ne $tempPath) {
-            $excludePaths.Add($env:TEMP)
-        }
-
-        # pip wheel cache
-        $pipCache = Join-Path $env:LOCALAPPDATA "pip\Cache"
-        if (Test-Path $pipCache) { $excludePaths.Add($pipCache) }
-
-        # Katalog projektu
-        $excludePaths.Add($ProjectDir)
-
-        foreach ($path in $excludePaths) {
-            Add-MpPreference -ExclusionPath $path -ErrorAction SilentlyContinue
-            if ($?) {
-                Write-OK "Wyjatek Defender: $path"
-                $defenderConfigured = $true
-            } else {
-                Write-Warn "Nie udalo sie dodac wyjatku: $path"
-            }
-        }
-
-        if ($defenderConfigured) {
-            Write-Info "Impacket (testy credentials RDP/SMB) nie bedzie blokowany przez Defender."
-            Write-Info "Wykluczenia dotycza tylko powyzszych folderow  -  reszta systemu chroniona."
-        }
-    }
-}
-
 # ── Python requirements (host-side) ───────────────────────────────────────────
+#
+# Strategia Defender: najpierw probuj zainstalowac bez zmian w konfiguracji AV.
+# Jesli pip zakonczy sie bledem I Defender jest aktywny I mamy uprawnienia admina
+# - dopiero wtedy dodajemy wykluczenia i ponawiamy probe.
+# Dzieki temu nie ingerujemy w ustawienia AV na systemach gdzie nie ma problemu
+# (np. AV wylaczony, inny produkt, uzytkownik ma juz wykluczenia).
 
 Write-Step "Instaluje zaleznosci Python (dla skanera na hoscie)..."
 Write-Info "  (kontenery Docker dzialaja niezaleznie  -  ta sekcja dotyczy tylko hosta)"
@@ -673,25 +594,78 @@ if (-not (Test-Path $reqFile)) {
     # Stary pip ma wbudowana stara wersje urllib3 ktora koliduje z nowymi pakietami
     Write-Info "  Aktualizuje pip do najnowszej wersji..."
     & $PythonExeResolved -m pip install --upgrade pip --quiet 2>&1 | Out-Host
-    if ($LASTEXITCODE -eq 0) {
-        Write-OK "pip zaktualizowany."
-    } else {
+    if ($LASTEXITCODE -ne 0) {
         Write-Warn "Aktualizacja pip nie powiodla sie  -  kontynuuje z biezaca wersja."
     }
 
-    Write-Info "  $PythonExeResolved -m pip install -r requirements.txt"
-    # Uzyj --quiet raz (ukrywa postep) ale zachowuje bledy i ostrzezenia
+    Write-Info "  Instaluje: $PythonExeResolved -m pip install -r requirements.txt"
     & $PythonExeResolved -m pip install -r $reqFile --quiet 2>&1 | Out-Host
-    if ($LASTEXITCODE -eq 0) {
+    $pipExitCode = $LASTEXITCODE
+
+    if ($pipExitCode -eq 0) {
         Write-OK "Zaleznosci zainstalowane."
     } else {
-        Write-Warn "pip install zakonczyl sie z bledem (kod: $LASTEXITCODE)."
-        Write-Info "Sprawdz komunikaty powyzej. Typowe przyczyny:"
-        Write-Info "  - Defender zablokował impacket  -  sprawdz Kwarantanne Defendera"
-        Write-Info "  - Brak nmap.exe w PATH (wymagany przez python-nmap)"
-        Write-Info "  - Brak Visual C++ Build Tools (wymagane przez niektore pakiety)"
-        Write-Info "  - Brak dostepu do internetu (pip.pypa.io)"
-        Write-Info "Mozesz sprobowac recznie: $PythonExeResolved -m pip install -r requirements.txt"
+        Write-Warn "pip install zakonczyl sie bledem (kod: $pipExitCode)."
+
+        # Sprawdz czy Defender moze byc przyczyna i czy mozemy cos zrobic
+        $defStatus = Get-MpComputerStatus -ErrorAction SilentlyContinue
+        $defActive = ($null -ne $defStatus) -and $defStatus.RealTimeProtectionEnabled
+
+        if ($defActive -and $isAdmin) {
+            Write-Info "Wykryto aktywny Windows Defender  -  probuje dodac wykluczenia i powtorzyc..."
+
+            $sitePkg = try {
+                (& $PythonExeResolved -c "import site; print(site.getsitepackages()[0])" 2>&1) |
+                Select-Object -First 1
+            } catch { $null }
+
+            $excludePaths = [System.Collections.Generic.List[string]]::new()
+            if ($sitePkg -and (Test-Path $sitePkg)) { $excludePaths.Add($sitePkg) }
+            $tempPath = [System.IO.Path]::GetTempPath().TrimEnd('\')
+            if ($tempPath) { $excludePaths.Add($tempPath) }
+            if ($env:TEMP -and $env:TEMP -ne $tempPath) { $excludePaths.Add($env:TEMP) }
+            $pipCache = Join-Path $env:LOCALAPPDATA "pip\Cache"
+            if (Test-Path $pipCache) { $excludePaths.Add($pipCache) }
+            $excludePaths.Add($ProjectDir)
+
+            $addedAny = $false
+            foreach ($path in $excludePaths) {
+                Add-MpPreference -ExclusionPath $path -ErrorAction SilentlyContinue
+                if ($?) {
+                    Write-OK "Wyjatek Defender: $path"
+                    $addedAny = $true
+                }
+            }
+
+            if ($addedAny) {
+                Write-Info "Powtarzam instalacje po dodaniu wyjatkow..."
+                & $PythonExeResolved -m pip install -r $reqFile --quiet 2>&1 | Out-Host
+                if ($LASTEXITCODE -eq 0) {
+                    Write-OK "Zaleznosci zainstalowane po dodaniu wyjatkow Defender."
+                } else {
+                    Write-Warn "pip install nadal konczy sie bledem."
+                    Write-Info "Sprawdz Kwarantanne Defendera i logi powyzej."
+                }
+            }
+        } elseif ($defActive -and -not $isAdmin) {
+            Write-Warn "Aktywny Defender i brak uprawnien admina  -  nie mozna dodac wyjatkow."
+            Write-Info "Jesli Defender zablokuje impacket, uruchom instalator jako Administrator"
+            Write-Info "lub dodaj reczne wykluczenia:"
+            $sitePkg2 = try {
+                (& $PythonExeResolved -c "import site; print(site.getsitepackages()[0])" 2>&1) |
+                Select-Object -First 1
+            } catch { $null }
+            if ($sitePkg2) { Write-Info "  $sitePkg2" }
+            Write-Info "  $env:TEMP"
+            Write-Info "  $ProjectDir"
+        } else {
+            Write-Info "Sprawdz komunikaty powyzej. Typowe przyczyny:"
+            Write-Info "  - Inny AV zablokował impacket (sprawdz Kwarantanne)"
+            Write-Info "  - Brak Visual C++ Build Tools (wymagane przez niektore pakiety)"
+            Write-Info "  - Brak dostepu do internetu (pip.pypa.io)"
+            Write-Info "Mozesz sprobowac recznie: $PythonExeResolved -m pip install -r requirements.txt"
+        }
+
         Write-Info "Kontenery Docker zostana uruchomione niezaleznie od tego bledu."
     }
 }

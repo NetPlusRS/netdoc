@@ -1,7 +1,7 @@
-"""Generic SNMP driver — SNMP v2c GET, kompatybilny z pysnmp-lextudio 6.x.
+"""Generic SNMP driver — SNMP v2c GET, pysnmp 6.x.
 
 Uwagi:
-  - Tylko SNMP GET (sysName, sysDescr, sysLocation) — walki sa niestabilne z pysnmp-lextudio 6.x.
+  - Tylko SNMP GET (sysName, sysDescr, sysLocation) — walk przez snmp_walk.py (pure-Python).
   - Fail-fast: jesli sysName nie odpowiada, pomijamy dalsze OID.
   - Timeout: 2 sekundy, bez retry.
 """
@@ -20,7 +20,7 @@ from netdoc.collector.normalizer import DeviceData, InterfaceData, NeighborData
 from netdoc.storage.models import Credential
 
 logger = logging.getLogger(__name__)
-# pysnmp-lextudio 6.x zostawia pending asyncio tasks — suppress ERROR-level noise
+# pysnmp 6.x zostawia pending asyncio tasks — suppress ERROR-level noise
 logging.getLogger("asyncio").setLevel(logging.CRITICAL)
 
 OID_SYSNAME     = "1.3.6.1.2.1.1.5.0"
@@ -38,7 +38,7 @@ OID_LLDP_REM_SYSNAME = "1.0.8802.1.1.2.1.4.1.1.9"
 
 
 async def _async_get(ip: str, community: str, oid: str, timeout: int = 2) -> Optional[str]:
-    """Pojedyncze zapytanie SNMP GET z hard timeout (pysnmp 6.x moze ignorowac wewnetrzny timeout)."""
+    """Pojedyncze zapytanie SNMP GET z hard timeout."""
     try:
         coro = getCmd(
             SnmpEngine(),
@@ -61,7 +61,7 @@ async def _async_get(ip: str, community: str, oid: str, timeout: int = 2) -> Opt
 def _snmp_get(ip: str, community: str, oid: str, timeout: int = 2) -> Optional[str]:
     """Synchroniczny wrapper dla SNMP GET z absolutnym timeoutem.
 
-    Uzywa daemon thread — gwarantuje powrot nawet jesli pysnmp 6.x blokuje run_until_complete.
+    Uzywa daemon thread — gwarantuje powrot nawet jesli pysnmp blokuje run_until_complete.
     """
     result: list = [None]
 
@@ -82,7 +82,7 @@ def _snmp_get(ip: str, community: str, oid: str, timeout: int = 2) -> Optional[s
 
 
 def _snmp_walk(ip: str, community: str, oid: str, timeout: int = 2) -> dict:
-    """Walk SNMP — placeholder, zwraca {} (nextCmd niestabilny w pysnmp-lextudio 6.x)."""
+    """Walk SNMP — uzywaj snmp_walk.py (pure-Python), nie pysnmp."""
     return {}
 
 
