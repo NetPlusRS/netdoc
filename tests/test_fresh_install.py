@@ -435,7 +435,8 @@ class TestInstallerDebugLog:
         """Zmienna $LogFile musi byc zdefiniowana PRZED wywolaniem Start-Transcript."""
         text = SETUP_PS.read_text(encoding="utf-8")
         log_pos        = text.find("$LogFile")
-        transcript_pos = text.find("Start-Transcript")
+        # Szukaj wywolania (nie komentarza) — "Start-Transcript -Path" to rzeczywiste wywolanie
+        transcript_pos = text.find("Start-Transcript -Path")
         assert log_pos < transcript_pos, (
             "$LogFile musi byc zdefiniowany przed Start-Transcript"
         )

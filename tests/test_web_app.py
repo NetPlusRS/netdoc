@@ -1377,26 +1377,29 @@ def test_devices_uncertain_not_shown_for_down_device():
 
 
 def test_devices_monitoring_stale_banner_always_starts_hidden():
-    """Banner zawsze zaczyna jako display:none — widocznosc kontroluje JS po live-status poll.
-    Dotyczy takze sytuacji gdy last_seen jest bardzo stary (60 min temu)."""
+    """Gdy monitoring NIE jest stale — baner ma klase d-none (ukryty).
+    Gdy jest stale — baner NIE ma d-none (widoczny od razu, JS moze go glosic/ukryc).
+    """
     from datetime import datetime, timedelta
     import re
-    dev = _mock_dev(1, ip="10.1.0.5", is_active=True)
-    dev.last_seen = datetime.utcnow() - timedelta(minutes=60)  # 60 min temu — stale
 
-    app, ctx, req = _make_devices_client(devices=[dev])
+    # Scenariusz: monitoring STALE (last_seen 60 min temu)
+    dev_stale = _mock_dev(1, ip="10.1.0.5", is_active=True)
+    dev_stale.last_seen = datetime.utcnow() - timedelta(minutes=60)
+
+    app, ctx, req = _make_devices_client(devices=[dev_stale])
     with ctx, req as mr:
         _setup_mock_api(mr, {})
         with app.test_client() as c:
-            html = c.get("/devices").data.decode()
+            html_stale = c.get("/devices").data.decode()
 
-    assert "Ping-worker moze nie dzialac" in html, "Tekst baneru musi byc w HTML"
-    assert "ping-worker" in html, "Baner musi wspominac ping-workera"
-    assert 'id="monitoring-stale-banner"' in html, "Banner musi miec ID"
-    # Banner ZAWSZE zaczyna ukryty — JS go pokazuje po potwierdzeniu stanu przez API
-    banner_match = re.search(r'id="monitoring-stale-banner"[^>]*>', html)
-    assert banner_match, "Baner musi byc w HTML"
-    assert 'display:none' in banner_match.group(0), "Banner zawsze zaczyna z display:none (JS kontroluje widocznosc)"
+    assert "Ping-worker moze nie dzialac" in html_stale, "Tekst baneru musi byc w HTML"
+    assert 'id="monitoring-stale-banner"' in html_stale, "Banner musi miec ID"
+    banner_stale = re.search(r'id="monitoring-stale-banner"[^>]*>', html_stale)
+    assert banner_stale, "Baner musi byc w HTML"
+    # Stale: baner widoczny (brak d-none) — serwer renderuje widoczny gdy monitoring stale
+    assert 'd-none' not in banner_stale.group(0), \
+        "Przy stale=True baner powinien byc widoczny (brak d-none)"
 
 
 def test_devices_monitoring_stale_banner_not_shown_when_last_seen_fresh():
@@ -2629,6 +2632,7 @@ def test_kb_ports_unaccepted_device_shows_bg_danger(db_engine):
 
 import pathlib as _pathlib
 _DEVICES_TPL = _pathlib.Path("netdoc/web/templates/devices.html").read_text(encoding="utf-8")
+_DEVICE_ROW_TPL = _pathlib.Path("netdoc/web/templates/_device_row.html").read_text(encoding="utf-8")
 
 
 def _get_devices_html_with_device():
@@ -2651,12 +2655,12 @@ def test_screenshot_trigger_class_in_template():
 
 def test_screenshot_trigger_has_data_device_id_in_template():
     """Szablon zawiera atrybut data-device-id — JS pobiera screenshot dla konkretnego urządzenia."""
-    assert "data-device-id=" in _DEVICES_TPL
+    assert "data-device-id=" in _DEVICE_ROW_TPL
 
 
 def test_screenshot_trigger_has_data_ip_in_template():
     """Szablon zawiera atrybut data-ip — JS wyświetla IP w tooltipie."""
-    assert "data-ip=" in _DEVICES_TPL
+    assert "data-ip=" in _DEVICE_ROW_TPL
 
 
 def test_screenshot_js_cache_map_present():
@@ -2989,31 +2993,31 @@ def test_devices_tpl_top_ports_anchor_link():
     """JS updateAlerts generuje kotwice do wierszy urządzeń (#row-)."""
     # Kotwice są teraz generowane w JS (updateAlerts), nie w Jinja2
     assert "updateAlerts" in _DEVICES_TPL
-    assert "data-ports" in _DEVICES_TPL  # <tr> musi miec data-ports dla JS
+    assert "data-ports" in _DEVICE_ROW_TPL  # <tr> musi miec data-ports dla JS
 
 
 def test_devices_tpl_port_count_column():
     """Kolumna liczby portów używa display_port_count z device_stats."""
-    assert "display_port_count" in _DEVICES_TPL
+    assert "display_port_count" in _DEVICE_ROW_TPL
 
 
 def test_devices_tpl_port_count_dash_when_none():
     """Brak danych o portach → wyświetlane jest '—' zamiast liczby."""
-    assert "is not none" in _DEVICES_TPL
+    assert "is not none" in _DEVICE_ROW_TPL
 
 
 def test_devices_tpl_port_count_color_thresholds():
     """Szablon zawiera wszystkie progi kolorowania portów."""
-    assert ">= 500" in _DEVICES_TPL
-    assert ">= 100" in _DEVICES_TPL
-    assert ">= 50" in _DEVICES_TPL
-    assert ">= 20" in _DEVICES_TPL
-    assert ">= 6" in _DEVICES_TPL
+    assert ">= 500" in _DEVICE_ROW_TPL
+    assert ">= 100" in _DEVICE_ROW_TPL
+    assert ">= 50" in _DEVICE_ROW_TPL
+    assert ">= 20" in _DEVICE_ROW_TPL
+    assert ">= 6" in _DEVICE_ROW_TPL
 
 
 def test_devices_tpl_row_id_present():
     """Każdy wiersz tabeli zawiera id='row-{{ d.id }}' — wymagane przez kotwice."""
-    assert 'id="row-{{ d.id }}"' in _DEVICES_TPL
+    assert 'id="row-{{ d.id }}"' in _DEVICE_ROW_TPL
 
 
 # ── Devices — dodatkowe testy logiki renderowania ─────────────────────────────
@@ -3706,113 +3710,112 @@ class TestNetworksMalformedCidr:
         """/networks zwraca 200 przy poprawnych CIDR."""
         assert client.get("/networks").status_code == 200
 
-    def test_networks_ok_when_db_has_cidr_without_slash(self, client):
+    def test_networks_ok_when_db_has_cidr_without_slash(self):
         """GET /networks nie crasha gdy w bazie jest rekord z CIDR bez ulamka (np. '[]').
 
         Regresja: n.cidr.split('/')[1] rzucalo UndefinedError gdy cidr='[]'.
         Fix: route handler filtruje nieprawidlowe CIDR przed renderingiem.
+        Uzywa mock networks (nie real DB) — spójny z reszta testow web_app.
         """
-        from netdoc.storage.database import SessionLocal
-        from netdoc.storage.models import DiscoveredNetwork, NetworkSource
-        db = SessionLocal()
-        try:
-            bad = DiscoveredNetwork(cidr="[]", source=NetworkSource.manual)
-            db.add(bad)
-            db.commit()
-            bad_id = bad.id
-        finally:
-            db.close()
+        bad_net = MagicMock()
+        bad_net.id = 99
+        bad_net.cidr = "[]"
+        bad_net.name = None
+        bad_net.is_active = True
+        bad_net.notes = ""
+        app, ms = _build_app(networks=[bad_net])
+        with patch("netdoc.web.app.SessionLocal", return_value=ms):
+            with patch("netdoc.web.app.requests") as mr:
+                _setup_mock_api(mr, {})
+                with app.test_client() as c:
+                    r = c.get("/networks")
+        assert r.status_code == 200, \
+            "GET /networks zwrocilo 500 — sprawdz filtrowanie nieprawidlowych CIDR w route"
+        html = r.data.decode()
+        assert "UndefinedError" not in html
+        assert "jinja2.exceptions" not in html
+        assert ">[]<" not in html
 
-        try:
-            r = client.get("/networks")
-            assert r.status_code == 200, \
-                "GET /networks zwrocilo 500 — sprawdz filtrowanie nieprawidlowych CIDR w route"
-            html = r.data.decode()
-            assert "UndefinedError" not in html
-            assert "jinja2.exceptions" not in html
-            # Zly rekord nie moze sie pokazac w tabeli
-            assert ">[]<" not in html
-        finally:
-            db2 = SessionLocal()
-            try:
-                db2.query(DiscoveredNetwork).filter_by(id=bad_id).delete()
-                db2.commit()
-            finally:
-                db2.close()
-
-    def test_networks_valid_cidrs_still_rendered_after_bad_cidr(self, client):
+    def test_networks_valid_cidrs_still_rendered_after_bad_cidr(self):
         """Prawidlowe sieci sa renderowane nawet gdy w bazie jest zepsuty rekord."""
-        from netdoc.storage.database import SessionLocal
-        from netdoc.storage.models import DiscoveredNetwork, NetworkSource
-        db = SessionLocal()
-        try:
-            good = DiscoveredNetwork(cidr="172.16.0.0/12", source=NetworkSource.manual)
-            bad  = DiscoveredNetwork(cidr="no-slash", source=NetworkSource.manual)
-            db.add_all([good, bad])
-            db.commit()
-            good_id, bad_id = good.id, bad.id
-        finally:
-            db.close()
+        good_net = MagicMock()
+        good_net.id = 1
+        good_net.cidr = "172.16.0.0/12"
+        good_net.name = "TestGood"
+        good_net.is_active = True
+        good_net.notes = ""
 
-        try:
-            r = client.get("/networks")
-            assert r.status_code == 200
-            html = r.data.decode()
-            assert "172.16.0.0/12" in html, "Prawidlowa siec nie jest renderowana"
-            assert "no-slash" not in html, "Nieprawidlowa siec nie powinna byc renderowana"
-        finally:
-            db2 = SessionLocal()
-            try:
-                db2.query(DiscoveredNetwork).filter(
-                    DiscoveredNetwork.id.in_([good_id, bad_id])
-                ).delete(synchronize_session=False)
-                db2.commit()
-            finally:
-                db2.close()
+        bad_net = MagicMock()
+        bad_net.id = 2
+        bad_net.cidr = "no-slash"
+        bad_net.name = None
+        bad_net.is_active = True
+        bad_net.notes = ""
 
-    def test_network_delete_with_devices_removes_devices(self, client):
+        app, ms = _build_app(networks=[good_net, bad_net])
+        with patch("netdoc.web.app.SessionLocal", return_value=ms):
+            with patch("netdoc.web.app.requests") as mr:
+                _setup_mock_api(mr, {})
+                with app.test_client() as c:
+                    r = c.get("/networks")
+        assert r.status_code == 200
+        html = r.data.decode()
+        assert "172.16.0.0/12" in html, "Prawidlowa siec nie jest renderowana"
+        assert "no-slash" not in html, "Nieprawidlowa siec nie powinna byc renderowana"
+
+    def test_network_delete_with_devices_removes_devices(self, db_engine):
         """POST /networks/<id>/delete?delete_devices=1 usuwa urzadzenia z tego zakresu.
 
         Regresja: opcja 'rowniez usun urzadzenia' musi faktycznie usuwac urzadzenia.
+        Uzywa db_engine (SQLite in-memory) — nie dotyka produkcyjnej bazy.
         """
-        from netdoc.storage.database import SessionLocal
-        from netdoc.storage.models import DiscoveredNetwork, NetworkSource, Device
-        db = SessionLocal()
-        try:
-            net = DiscoveredNetwork(cidr="10.77.0.0/24", source=NetworkSource.manual)
-            db.add(net)
-            db.flush()
-            dev1 = Device(ip="10.77.0.1")
-            dev2 = Device(ip="10.77.0.2")
-            dev_other = Device(ip="10.88.0.1")  # inny zakres — nie powinien byc usuniety
-            db.add_all([dev1, dev2, dev_other])
-            db.commit()
-            net_id = net.id
-            dev_other_id = dev_other.id
-        finally:
-            db.close()
+        from sqlalchemy.orm import sessionmaker
+        from netdoc.storage.models import DiscoveredNetwork, NetworkSource, Device, DeviceType
+        from netdoc.web.app import create_app
+        from datetime import datetime
 
-        r = client.post(f"/networks/{net_id}/delete", data={"delete_devices": "1"})
+        Session = sessionmaker(bind=db_engine)
+        db = Session()
+        net = DiscoveredNetwork(cidr="10.77.0.0/24", source=NetworkSource.manual)
+        db.add(net)
+        db.flush()
+        dev1 = Device(ip="10.77.0.1", device_type=DeviceType.unknown,
+                      first_seen=datetime.utcnow(), last_seen=datetime.utcnow())
+        dev2 = Device(ip="10.77.0.2", device_type=DeviceType.unknown,
+                      first_seen=datetime.utcnow(), last_seen=datetime.utcnow())
+        dev_other = Device(ip="10.88.0.1", device_type=DeviceType.unknown,
+                           first_seen=datetime.utcnow(), last_seen=datetime.utcnow())
+        db.add_all([dev1, dev2, dev_other])
+        db.commit()
+        db.refresh(dev_other)
+        net_id = net.id
+        dev_other_id = dev_other.id
+        db.close()
+
+        app2 = create_app()
+        app2.config["TESTING"] = True
+        RealSession = sessionmaker(bind=db_engine)
+        with patch("netdoc.web.app.SessionLocal", side_effect=RealSession):
+            with patch("netdoc.web.app.requests") as mr:
+                _setup_mock_api(mr, {})
+                with app2.test_client() as c:
+                    r = c.post(f"/networks/{net_id}/delete", data={"delete_devices": "1"})
+
         assert r.status_code in (302, 200), f"Nieoczekiwany status: {r.status_code}"
 
-        db3 = SessionLocal()
-        try:
-            remaining_in_range = db3.query(Device).filter(
-                Device.ip.in_(["10.77.0.1", "10.77.0.2"])
-            ).count()
-            other_device_exists = db3.query(Device).filter_by(id=dev_other_id).first()
-            assert remaining_in_range == 0, \
-                f"Po usunieciu sieci z delete_devices=1 pozostaly {remaining_in_range} urzadzenia z tego zakresu"
-            assert other_device_exists is not None, \
-                "Urzadzenie spoza zakresu zostalo blednie usuniete"
-            # Siec tez powinna byc usunieta
-            net_exists = db3.query(DiscoveredNetwork).filter_by(id=net_id).first()
-            assert net_exists is None, "Siec nie zostala usunieta mimo POST /delete"
-        finally:
-            # Cleanup
-            db3.query(Device).filter_by(id=dev_other_id).delete()
-            db3.commit()
-            db3.close()
+        db3 = Session()
+        remaining_in_range = db3.query(Device).filter(
+            Device.ip.in_(["10.77.0.1", "10.77.0.2"])
+        ).count()
+        other_device_exists = db3.query(Device).filter_by(id=dev_other_id).first()
+        net_exists = db3.query(DiscoveredNetwork).filter_by(id=net_id).first()
+        db3.close()
+
+        assert remaining_in_range == 0, \
+            f"Po usunieciu sieci z delete_devices=1 pozostaly {remaining_in_range} urzadzenia"
+        assert other_device_exists is not None, \
+            "Urzadzenie spoza zakresu zostalo blednie usuniete"
+        assert net_exists is None, "Siec nie zostala usunieta mimo POST /delete"
 
 
 # ─── Regresja struktury strony /inventory ─────────────────────────────────────
@@ -4741,19 +4744,16 @@ class TestDeviceFullScan:
             f"IP 10.5.0.99 musi byc w kolejce, got: {ip_val}"
 
     def test_full_scan_template_has_button(self):
-        """devices.html zawiera przycisk Pelny skan portow (1-65535)."""
-        import pathlib
-        tmpl = pathlib.Path("netdoc/web/templates/devices.html").read_text(encoding="utf-8")
-        assert "full-scan" in tmpl
-        assert "1-65535" in tmpl
+        """Szablon wiersza urzadzenia zawiera przycisk Pelny skan portow (1-65535)."""
+        # Przycisk full-scan jest w _device_row.html (wyodrebniony partial)
+        assert "full-scan" in _DEVICE_ROW_TPL
+        assert "1-65535" in _DEVICE_ROW_TPL
 
     def test_full_scan_template_form_method_post(self):
         """Przycisk pelnego skanu uzywa formularza POST."""
-        import pathlib
-        tmpl = pathlib.Path("netdoc/web/templates/devices.html").read_text(encoding="utf-8")
-        # Formularz z /full-scan i method post
-        assert 'action="/devices/' in tmpl or "full-scan" in tmpl
-        assert 'method="post"' in tmpl.lower() or 'method=post' in tmpl.lower()
+        # Formularz z /full-scan i method post jest w _device_row.html
+        assert 'action="/devices/' in _DEVICE_ROW_TPL or "full-scan" in _DEVICE_ROW_TPL
+        assert 'method="post"' in _DEVICE_ROW_TPL.lower() or 'method=post' in _DEVICE_ROW_TPL.lower()
 
 
 # ── Testy: roadmap w ustawieniach ────────────────────────────────────────────
