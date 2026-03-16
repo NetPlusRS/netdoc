@@ -1049,6 +1049,14 @@ def _tcp_sweep_fallback(network_range: str) -> list:
     except ValueError:
         return []
 
+    # Sprawdz rozmiar sieci przed budowaniem listy IP (unikamy spiku pamieci dla /8-/16)
+    if net.num_addresses > 2050:
+        logger.warning(
+            "TCP sweep fallback: siec %s zbyt duza (%d adresow) — pomijam.",
+            network_range, net.num_addresses
+        )
+        return []
+
     all_ips = [str(ip) for ip in net.hosts()]
     if len(all_ips) > 2048:
         logger.warning(

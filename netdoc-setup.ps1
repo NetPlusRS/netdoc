@@ -27,7 +27,7 @@ if (-not $_currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Ad
     try {
         Start-Process powershell.exe `
             -Verb RunAs `
-            -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`"" `
+            -ArgumentList @("-ExecutionPolicy", "Bypass", "-File", $scriptPath) `
             -WorkingDirectory $ProjectDir `
             -ErrorAction Stop
     } catch {

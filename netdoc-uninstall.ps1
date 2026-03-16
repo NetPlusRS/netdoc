@@ -30,7 +30,7 @@ if (-not $_currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Ad
     try {
         Start-Process powershell.exe `
             -Verb RunAs `
-            -ArgumentList "-ExecutionPolicy Bypass -File `"$PSCommandPath`"" `
+            -ArgumentList @("-ExecutionPolicy", "Bypass", "-File", $PSCommandPath) `
             -WorkingDirectory $ProjectDir `
             -ErrorAction Stop
     } catch {
@@ -92,8 +92,14 @@ function Show-Pause([string]$msg = "Nacisnij Enter aby kontynuowac...") {
 function Wait-WithCountdown {
     # Odlicza $Seconds sekund. Zwraca $true jesli czas uplynal (kontynuuj), $false jesli klawisz wcisniety (anuluj).
     param([int]$Seconds = 30)
+    $nonInteractive = $false   # flaga: stdin niedostepny — pominac wewnetrzna petle
     for ($i = $Seconds; $i -gt 0; $i--) {
         Write-Host "`r  Odliczanie: $i s... (wcisnij dowolny klawisz aby anulowac)   " -NoNewline -ForegroundColor Yellow
+        if ($nonInteractive) {
+            # stdin niedostepny — nie sprawdzaj klawiszy, po prostu odliczaj
+            Start-Sleep -Milliseconds 1000
+            continue
+        }
         $startTime = [DateTime]::Now
         while (([DateTime]::Now - $startTime).TotalMilliseconds -lt 1000) {
             try {
@@ -104,10 +110,12 @@ function Wait-WithCountdown {
                     return $false
                 }
             } catch [System.InvalidOperationException] {
-                # stdin nie jest interaktywny (potok/CI/ISE) — pomijaj caly countdown
+                # stdin nie jest interaktywny (potok/CI/ISE) — ustaw flage, pominij kolejne sprawdzenia
+                $nonInteractive = $true
                 break
             } catch [System.IO.IOException] {
-                break   # uchwyt stdin niedostepny
+                $nonInteractive = $true   # uchwyt stdin niedostepny
+                break
             }
             Start-Sleep -Milliseconds 100
         }
@@ -475,10 +483,20 @@ if ($mode -eq "stop") {
                 Write-Info "Sprobuj recznie: docker rmi --force $(docker images --filter 'reference=*netdoc*' -q)"
             }
 
-            # Usun dangling images (warstwy po rebuildach) — nie usuwane przez --rmi all
-            Write-Info "Czyszcze warstwy posrednie (dangling images)..."
-            docker image prune -f 2>&1 | Out-Null
-            Write-OK "Warstwy posrednie wyczyszczone."
+            # Usun dangling images oznaczone jako nalezoce do netdoc (warstwy po rebuildach)
+            # UWAGA: "docker image prune -f" bez filtra usunelby WSZYSTKIE dangling images systemowe.
+            #        Zamiast tego recznie usuwamy tylko te z labelem projektu netdoc.
+            $danglingNetdoc = @(
+                docker images -f "dangling=true" -f "label=com.docker.compose.project=netdoc" `
+                              --format "{{.ID}}" 2>&1 | Where-Object { $_ -ne "" }
+            )
+            if ($danglingNetdoc.Count -gt 0) {
+                Write-Info "Czyszcze $($danglingNetdoc.Count) warstw(y) posrednie NetDoc..."
+                foreach ($img in $danglingNetdoc) {
+                    docker rmi -f $img 2>&1 | Out-Null
+                }
+                Write-OK "Warstwy posrednie NetDoc wyczyszczone."
+            }
         }
     }
 
