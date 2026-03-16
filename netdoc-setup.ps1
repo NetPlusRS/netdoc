@@ -877,6 +877,10 @@ Write-Host ""
 
 if ($webReady) {
     Write-OK "Panel Web dostepny!"
+    Write-Host ""
+    Write-Host "  Otwieram karte Urzadzenia w przegladarce..." -ForegroundColor Cyan
+    Write-Info "  (urzadzenia pojawia sie automatycznie po zakonczeniu pierwszego skanu)"
+    Start-Process "http://localhost:5000/devices"
 } else {
     Write-Warn "Panel Web nie odpowiada po $maxWait sekundach."
     Write-Info "Sprawdz logi: docker logs netdoc-web"
@@ -988,20 +992,6 @@ if (Test-Path $watchdogScript) {
     Write-Warn "Nie znaleziono install_watchdog.ps1  -  pomijam rejestracje watchdoga."
 }
 
-# ── Otworz przegladarke  -  tylko gdy kontenery i web sa OK ────────────────────
-
-if ($allUp -and $webReady) {
-    Write-Host ""
-    Write-Host "  Otwieram karte Urzadzenia w domyslnej przegladarce..." -ForegroundColor Cyan
-    Start-Process "http://localhost:5000/devices"
-} elseif ($webReady) {
-    Write-Host ""
-    Write-Host "  Otwieram karte Urzadzenia (nie wszystkie kontenery dzialaja)..." -ForegroundColor Yellow
-    Start-Process "http://localhost:5000/devices"
-} else {
-    Write-Warn "Przegladarki nie otwieram  -  Panel Web niedostepny."
-    Write-Info "Sprawdz logi i sprobuj recznie: http://localhost:5000/devices"
-}
 
 Write-Host ""
 Write-Host "  Log debugowania zapisany w:" -ForegroundColor DarkGray
