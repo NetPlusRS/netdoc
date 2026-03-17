@@ -2,8 +2,13 @@
 take_final.py — Zrzuty ekranu NetDoc w jasnym motywie.
 """
 import asyncio
+import sys
 from pathlib import Path
 from playwright.async_api import async_playwright
+
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 FLASK = "http://localhost:5000"
 GRAFANA = "http://localhost:3000"
@@ -33,6 +38,14 @@ async def go(page, url, wait_ms=2500):
         var s = document.createElement('style');
         s.textContent = {repr(FONT_BLOCK_CSS)};
         document.head.appendChild(s);
+        // Ukryj banner beta
+        var b = document.getElementById('betaBanner');
+        if (b) b.remove();
+        // Rozwij quick panel w AI chat
+        var qb = document.getElementById('quick-btns');
+        var qt = document.getElementById('quick-toggle');
+        if (qb) {{ qb.style.display = 'flex'; }}
+        if (qt) {{ qt.classList.add('open'); }}
     }}""")
     await page.wait_for_timeout(800)
 
@@ -149,40 +162,37 @@ async def ai_chat():
 
 
 async def grafana():
+    import base64
     print("\n=== Grafana ===")
+    auth = "Basic " + base64.b64encode(b"admin:netdoc").decode()
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=make_browser_args())
+        browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
         ctx = await browser.new_context(viewport=VIEWPORT)
-        ctx.set_default_timeout(30000)
+        ctx.set_default_timeout(15000)
         page = await ctx.new_page()
-        await page.route("**/*", block_fonts)
 
-        # Login
+        # Login przez formularz
+        print("  Logowanie...")
         await page.goto(f"{GRAFANA}/login", wait_until="commit", timeout=15000)
-        await page.wait_for_timeout(2000)
-        try:
-            await page.fill("input[name='user']", "admin")
-            await page.fill("input[name='password']", "netdoc")
-            await page.click("button[type='submit']")
-            await page.wait_for_timeout(3000)
-            skip = page.locator("button:has-text('Skip'), a:has-text('Skip')")
-            if await skip.count() > 0:
-                await skip.first.click()
-                await page.wait_for_timeout(1500)
-        except Exception as e:
-            print(f"  [WARN] login: {e}")
+        await page.wait_for_timeout(1500)
+        await page.fill("input[name='user']", "admin")
+        await page.fill("input[name='password']", "netdoc")
+        await page.click("button[type='submit']")
+        await page.wait_for_timeout(3000)
 
-        # Lista dashboardów przez Grafana API
+        # Lista dashboardow przez API (z auth header)
         resp = await page.request.get(
             f"{GRAFANA}/api/search?type=dash-db&limit=50",
-            headers={"Accept": "application/json"},
-            timeout=15000
+            headers={"Accept": "application/json", "Authorization": auth},
+            timeout=15000,
         )
         try:
             dashboards = await resp.json()
+            if not isinstance(dashboards, list):
+                dashboards = []
         except Exception:
             dashboards = []
-        print(f"  Dashboardy: {[d.get('title') for d in dashboards]}")
+        print(f"  Znaleziono {len(dashboards)} dashboardow")
 
         name_map = {
             "siec": "grafana_main", "network": "grafana_main",
@@ -190,7 +200,7 @@ async def grafana():
             "bezpiecze": "grafana_security", "security": "grafana_security",
             "worker": "grafana_workers",
             "internet": "grafana_internet", "wan": "grafana_internet",
-            "syslog": "grafana_syslog",
+            "syslog": "grafana_syslog", "logi": "grafana_syslog", "log": "grafana_syslog",
         }
 
         taken = set()
@@ -206,16 +216,13 @@ async def grafana():
             if not fname:
                 continue
             url = f"{GRAFANA}{url_path}?kiosk=1"
-            print(f"  '{dash['title']}' → {fname}.png")
+            print(f"  '{dash.get('title')}' -> {fname}.png")
             try:
                 await page.goto(url, wait_until="commit", timeout=15000)
-                await page.wait_for_timeout(6000)
-                await page.screenshot(
-                    path=str(OUT / f"{fname}.png"),
-                    full_page=False,
-                    timeout=60000
-                )
-                size = (OUT / f"{fname}.png").stat().st_size // 1024
+                await page.wait_for_timeout(7000)
+                path = str(OUT / f"{fname}.png")
+                await page.screenshot(path=path, full_page=False, timeout=60000)
+                size = Path(path).stat().st_size // 1024
                 print(f"    [OK] {fname}.png ({size} KB)")
             except Exception as e:
                 print(f"    [WARN] {fname}: {e}")
