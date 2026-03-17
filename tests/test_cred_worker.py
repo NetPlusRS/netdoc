@@ -1790,3 +1790,47 @@ def test_protection_events_drained_even_after_exception():
     # Event dla 10.0.0.1 usunięty, dla 10.0.0.2 pozostaje
     assert ("10.0.0.1", "SSH") not in w._protection_events
     assert ("10.0.0.2", "FTP") in w._protection_events
+
+
+# ─── BUG-DB-4: _reverify_existing_creds — jeden commit zamiast dwóch ─────────
+
+def test_reverify_single_commit_covers_deletion_and_sentinel_reset(db):
+    """BUG-DB-4 regresja: _reverify_existing_creds wykonuje dokładnie jeden commit
+    obejmujący zarówno usunięcia credentials jak i reset last_credential_ok_at.
+    Poprzednio dwa osobne commit() tworzyły okno race condition."""
+    from datetime import datetime
+    from netdoc.storage.models import Device, Credential, CredentialMethod
+
+    dev = Device(ip="10.5.5.5", mac="aa:bb:cc:dd:ee:01", is_active=True,
+                 last_credential_ok_at=datetime.utcnow())
+    db.add(dev)
+    db.flush()
+
+    # Dodaj credential dla urządzenia
+    cred = Credential(device_id=dev.id, method=CredentialMethod.ssh,
+                      username="admin", password_encrypted="wrong",
+                      priority=10)
+    db.add(cred)
+    db.commit()
+
+    commit_calls = []
+    original_commit = db.commit
+
+    def counting_commit():
+        commit_calls.append(1)
+        original_commit()
+
+    # SSH fail → credential usunięty + sentinel zresetowany = jeden commit
+    with patch.object(db, "commit", side_effect=counting_commit):
+        with patch.object(w, "_try_ssh", return_value=False):
+            w._reverify_existing_creds(db, dev.id, "10.5.5.5")
+
+    assert len(commit_calls) == 1, (
+        f"Oczekiwano dokładnie 1 commit (bez race condition), "
+        f"ale było: {len(commit_calls)}"
+    )
+
+    db.expire_all()
+    updated_dev = db.query(Device).filter(Device.id == dev.id).first()
+    assert updated_dev.last_credential_ok_at is None, \
+        "Sentinel last_credential_ok_at powinien być zresetowany"

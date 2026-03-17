@@ -34,6 +34,8 @@ g_resolved = Gauge("netdoc_vuln_resolved",   "Rozwiazane od startu")
 g_duration = Gauge("netdoc_vuln_duration_s", "Czas cyklu [s]")
 _total_new = 0
 _total_resolved = 0
+# PERF-06: cache credentials per-cycle, loaded once before thread pool
+_global_creds_cache: dict = {}
 
 # ── Filtrowanie skanowania wg typu urządzenia ────────────────────────────────
 # Drukarki: TCP connect do portu 9100 (JetDirect) może wysłać losowe bajty
@@ -449,15 +451,19 @@ def check_mysql(ip: str):
     if not _tcp_open(ip, 3306, timeout=2):
         return None
     DEFAULT_USERS = ["root", "admin", "mysql"]
-    db = SessionLocal()
-    try:
-        db_creds = db.query(Credential).filter(
-            Credential.method == CredentialMethod.mysql,
-            Credential.device_id.is_(None),
-        ).order_by(Credential.priority.desc()).all()
-        users = [cr.username for cr in db_creds if cr.username] or DEFAULT_USERS
-    finally:
-        db.close()
+    cached = _global_creds_cache.get(CredentialMethod.mysql)
+    if cached is not None:
+        users = [u for u, _ in cached if u] or DEFAULT_USERS
+    else:
+        db = SessionLocal()
+        try:
+            db_creds = db.query(Credential).filter(
+                Credential.method == CredentialMethod.mysql,
+                Credential.device_id.is_(None),
+            ).order_by(Credential.priority.desc()).all()
+            users = [cr.username for cr in db_creds if cr.username] or DEFAULT_USERS
+        finally:
+            db.close()
     try:
         import struct as _s
         for user in users:
@@ -569,15 +575,19 @@ def check_postgres_weak(ip: str):
         return None
     import psycopg2
     DEFAULT_CREDS = [('postgres', 'postgres'), ('postgres', ''), ('postgres', 'password'), ('postgres', 'postgres123'), ('postgres', 'secret'), ('postgres', 'changeme'), ('admin', 'admin'), ('root', 'root')]
-    db = SessionLocal()
-    try:
-        db_creds = db.query(Credential).filter(
-            Credential.method == CredentialMethod.postgres,
-            Credential.device_id.is_(None),
-        ).order_by(Credential.priority.desc()).all()
-        CREDS = [(cr.username or "", cr.password_encrypted or "") for cr in db_creds] or DEFAULT_CREDS
-    finally:
-        db.close()
+    cached = _global_creds_cache.get(CredentialMethod.postgres)
+    if cached is not None:
+        CREDS = cached or DEFAULT_CREDS
+    else:
+        db = SessionLocal()
+        try:
+            db_creds = db.query(Credential).filter(
+                Credential.method == CredentialMethod.postgres,
+                Credential.device_id.is_(None),
+            ).order_by(Credential.priority.desc()).all()
+            CREDS = [(cr.username or "", cr.password_encrypted or "") for cr in db_creds] or DEFAULT_CREDS
+        finally:
+            db.close()
     for user, pwd in CREDS:
         try:
             conn = psycopg2.connect(
@@ -611,15 +621,19 @@ def check_mssql_weak(ip: str):
         ('sa', 'Symfonia1'),                           # Sage Symfonia
         ('admin', 'admin'), ('admin', ''),
     ]
-    db = SessionLocal()
-    try:
-        db_creds = db.query(Credential).filter(
-            Credential.method == CredentialMethod.mssql,
-            Credential.device_id.is_(None),
-        ).order_by(Credential.priority.desc()).all()
-        CREDS = [(cr.username or "", cr.password_encrypted or "") for cr in db_creds] or DEFAULT_CREDS
-    finally:
-        db.close()
+    cached = _global_creds_cache.get(CredentialMethod.mssql)
+    if cached is not None:
+        CREDS = cached or DEFAULT_CREDS
+    else:
+        db = SessionLocal()
+        try:
+            db_creds = db.query(Credential).filter(
+                Credential.method == CredentialMethod.mssql,
+                Credential.device_id.is_(None),
+            ).order_by(Credential.priority.desc()).all()
+            CREDS = [(cr.username or "", cr.password_encrypted or "") for cr in db_creds] or DEFAULT_CREDS
+        finally:
+            db.close()
     try:
         from impacket.tds import MSSQL
         for user, pwd in CREDS:
@@ -661,15 +675,19 @@ def check_vnc_weak(ip: str):
     DEFAULT_PWD = ["password", "1234", "12345", "admin", "vnc", "root",
                    "raspberry", "alpine", "toor", "qwerty", "letmein",
                    "123456", "pass", "secret", "changeme", "test"]
-    db = SessionLocal()
-    try:
-        db_creds = db.query(Credential).filter(
-            Credential.method == CredentialMethod.vnc,
-            Credential.device_id.is_(None),
-        ).order_by(Credential.priority.desc()).all()
-        WEAK_PWD = [c.password_encrypted for c in db_creds if c.password_encrypted] or DEFAULT_PWD
-    finally:
-        db.close()
+    cached = _global_creds_cache.get(CredentialMethod.vnc)
+    if cached is not None:
+        WEAK_PWD = [pwd for _, pwd in cached if pwd] or DEFAULT_PWD
+    else:
+        db = SessionLocal()
+        try:
+            db_creds = db.query(Credential).filter(
+                Credential.method == CredentialMethod.vnc,
+                Credential.device_id.is_(None),
+            ).order_by(Credential.priority.desc()).all()
+            WEAK_PWD = [c.password_encrypted for c in db_creds if c.password_encrypted] or DEFAULT_PWD
+        finally:
+            db.close()
     import struct as _s
     for pwd in WEAK_PWD:
         try:
@@ -757,15 +775,19 @@ def check_rtsp_weak(ip: str):
         return None
 
     DEFAULT_CREDS = [('admin', 'admin'), ('admin', ''), ('admin', '12345'), ('admin', '123456'), ('admin', 'password'), ('admin', '1234'), ('admin', 'admin123'), ('root', 'root'), ('root', ''), ('user', 'user'), ('admin', 'Admin1234'), ('admin', '888888'), ('admin', '666666')]
-    db = SessionLocal()
-    try:
-        db_creds = db.query(Credential).filter(
-            Credential.method == CredentialMethod.rtsp,
-            Credential.device_id.is_(None),
-        ).order_by(Credential.priority.desc()).all()
-        CREDS = [(cr.username or "", cr.password_encrypted or "") for cr in db_creds] or DEFAULT_CREDS
-    finally:
-        db.close()
+    cached = _global_creds_cache.get(CredentialMethod.rtsp)
+    if cached is not None:
+        CREDS = cached or DEFAULT_CREDS
+    else:
+        db = SessionLocal()
+        try:
+            db_creds = db.query(Credential).filter(
+                Credential.method == CredentialMethod.rtsp,
+                Credential.device_id.is_(None),
+            ).order_by(Credential.priority.desc()).all()
+            CREDS = [(cr.username or "", cr.password_encrypted or "") for cr in db_creds] or DEFAULT_CREDS
+        finally:
+            db.close()
     for user, pwd in CREDS:
         try:
             auth = base64.b64encode(f"{user}:{pwd}".encode()).decode()
@@ -1512,8 +1534,26 @@ def _scan_device(device_id: int, ip: str, device_type, close_after: int = 3,
     return {"found": len(found), "new": new_count, "closed": closed_count}
 
 
+def _preload_global_creds(db) -> dict:
+    """PERF-06: Wczytaj globalne credentials raz przed pula watkow."""
+    _methods = [
+        CredentialMethod.mysql, CredentialMethod.postgres, CredentialMethod.mssql,
+        CredentialMethod.vnc, CredentialMethod.rtsp,
+    ]
+    rows = db.query(Credential).filter(
+        Credential.device_id.is_(None),
+        Credential.method.in_(_methods),
+    ).order_by(Credential.method, Credential.priority.desc()).all()
+    result: dict = {}
+    for cr in rows:
+        result.setdefault(cr.method, []).append(
+            (cr.username or "", cr.password_encrypted or "")
+        )
+    return result
+
+
 def scan_once() -> None:
-    global _total_new, _total_resolved
+    global _total_new, _total_resolved, _global_creds_cache
     _, workers, close_after, skip_printers, limit_ap_iot, tcp_timeout, http_timeout = _read_settings()
     global _TCP_TIMEOUT, _HTTP_TIMEOUT
     _TCP_TIMEOUT  = tcp_timeout
@@ -1523,6 +1563,7 @@ def scan_once() -> None:
     try:
         dev_list = [(d.id, d.ip, d.device_type)
                     for d in db.query(Device).filter(Device.is_active == True).all()]
+        _global_creds_cache = _preload_global_creds(db)
     finally:
         db.close()
     if not dev_list:

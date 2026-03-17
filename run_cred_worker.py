@@ -1574,9 +1574,8 @@ def _reverify_existing_creds(db, device_id: int, ip: str) -> None:
         else:
             any_valid = True
 
-    db.commit()
-
-    # Jesli wszystkie credentials zostaly usuniete → resetuj sentinel
+    # BUG-DB-4: jeden commit obejmuje oba zmiany (usuniecia + reset sentinela)
+    # zamiast dwoch osobnych commitow z oknem race condition miedzy nimi
     if not any_valid and saved:
         dev = db.query(Device).filter(Device.id == device_id).first()
         if dev and dev.last_credential_ok_at:
@@ -1585,7 +1584,7 @@ def _reverify_existing_creds(db, device_id: int, ip: str) -> None:
                 ip,
             )
             dev.last_credential_ok_at = None
-            db.commit()
+    db.commit()
 
 
 def _save_cred(db, device_id: int, method: CredentialMethod, u: str, p: str) -> None:
