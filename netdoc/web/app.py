@@ -775,31 +775,31 @@ def create_app():
                   .all()
             )
 
-            # Ostatni szybki skan nmap per urzadzenie (porty + czas skanu)
-            # Tylko scan_type == "nmap" — nmap_full trafia do last_full_scans ponizej
+            # PERF-07: uzyj subquery GROUP BY zamiast ladowania calej tabeli ScanResult
+            # (przy 200 urz. * 365 dni = ~73k rekordow; starszy wzorzec ladowal wszystkie)
             from netdoc.storage.models import ScanResult
-            last_scans: dict = {}
-            for sr in (
-                db.query(ScanResult)
-                  .filter(ScanResult.device_id.isnot(None),
-                          ScanResult.scan_type == "nmap")
-                  .order_by(ScanResult.scan_time.desc())
-                  .all()
-            ):
-                if sr.device_id not in last_scans:
-                    last_scans[sr.device_id] = sr
+            from sqlalchemy import func as _sqlfunc
 
-            # Ostatni pelny skan (nmap_full, 1-65535) per urzadzenie
-            last_full_scans: dict = {}
-            for sr in (
-                db.query(ScanResult)
-                  .filter(ScanResult.scan_type == "nmap_full",
-                          ScanResult.device_id.isnot(None))
-                  .order_by(ScanResult.scan_time.desc())
-                  .all()
-            ):
-                if sr.device_id not in last_full_scans:
-                    last_full_scans[sr.device_id] = sr
+            def _latest_scan_per_device(scan_type: str) -> dict:
+                subq = (
+                    db.query(ScanResult.device_id,
+                             _sqlfunc.max(ScanResult.scan_time).label("max_st"))
+                    .filter(ScanResult.device_id.isnot(None),
+                            ScanResult.scan_type == scan_type)
+                    .group_by(ScanResult.device_id)
+                    .subquery()
+                )
+                rows = (
+                    db.query(ScanResult)
+                    .join(subq,
+                          (ScanResult.device_id == subq.c.device_id) &
+                          (ScanResult.scan_time  == subq.c.max_st))
+                    .all()
+                )
+                return {sr.device_id: sr for sr in rows}
+
+            last_scans: dict      = _latest_scan_per_device("nmap")
+            last_full_scans: dict = _latest_scan_per_device("nmap_full")
 
             # Ostatni czas DOWN i ostatni czas UP (z ostatnich 30 dni)
             last_down = {}
