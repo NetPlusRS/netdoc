@@ -634,3 +634,51 @@ def test_snmp_main_uses_next_run_sleep_pattern():
         "PERF-02: main() musi używać wzorca next_run = time.monotonic() + interval"
     assert "max(0" in source or "max(0." in source, \
         "PERF-02: main() musi używać max(0.0, next_run - time.monotonic())"
+
+
+# ─── TEST-2: PERF-03 regresja — scan_once przekazuje primitives, nie ORM ─────
+
+def test_scan_once_passes_device_primitives_not_orm(db):
+    """PERF-03 regresja: scan_once() przekazuje (id, ip, community, hostname,
+    os_version, location) bezposrednio do _poll_device — nie przekazuje obiektu ORM
+    (ktory wymagalby dodatkowego SELECT per watek)."""
+    from run_snmp_worker import scan_once
+    from netdoc.storage.models import Device
+
+    dev = Device(ip="10.5.0.1", snmp_community="public", is_active=True,
+                 hostname="router-test", os_version="RouterOS", location="rack1")
+    db.add(dev)
+    db.commit()
+    db.refresh(dev)
+
+    calls = []
+
+    def fake_poll(dev_id, dev_ip, community, hostname, os_version, location, snmp_timeout=2):
+        calls.append({"id": dev_id, "ip": dev_ip, "community": community,
+                      "hostname": hostname, "os_version": os_version})
+        return {"device_id": dev_id, "success": False, "community": community}
+
+    with _patch_session(db)[0]:
+        with patch("run_snmp_worker._poll_device", side_effect=fake_poll):
+            scan_once()
+
+    assert len(calls) == 1, f"Oczekiwano 1 wywolanie _poll_device, bylo: {len(calls)}"
+    c = calls[0]
+    assert isinstance(c["id"], int),    "PERF-03: id musi byc int (nie ORM Device)"
+    assert isinstance(c["ip"], str),    "PERF-03: ip musi byc str (nie ORM Device)"
+    assert c["community"] == "public"
+    assert c["hostname"] == "router-test"
+
+
+# ─── WRK-01: try/except w main() SNMP ────────────────────────────────────────
+
+def test_snmp_main_has_try_except_in_loop():
+    """WRK-01 regresja: main() w snmp_worker opakowuje scan_once() w try/except
+    — nieobsluzony wyjatek nie zatrzymuje workera."""
+    import inspect
+    import run_snmp_worker as m
+
+    source = inspect.getsource(m.main)
+    assert "try:" in source, "WRK-01: main() musi miec try/except wokol scan_once()"
+    assert "except Exception" in source, \
+        "WRK-01: main() musi lapac Exception w petli while True"

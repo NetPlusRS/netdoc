@@ -1866,3 +1866,68 @@ def test_reverify_single_commit_covers_deletion_and_sentinel_reset(db):
     updated_dev = db.query(Device).filter(Device.id == dev.id).first()
     assert updated_dev.last_credential_ok_at is None, \
         "Sentinel last_credential_ok_at powinien być zresetowany"
+
+
+# ─── TEST-1: PERF-09 regresja — _process_device używa 1 sesji DB ─────────────
+
+def test_process_device_uses_single_session():
+    """PERF-09 regresja: _process_device() otwiera dokładnie 1 SessionLocal()
+    zamiast 5-8 osobnych sesji (jedna na każdą funkcję pomocniczą)."""
+    session_open_count = []
+
+    def counting_session_local():
+        session_open_count.append(1)
+        mock_db = MagicMock()
+        # _reverify_existing_creds potrzebuje query().filter()
+        mock_row = MagicMock()
+        mock_row.value = "{}"
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+        mock_db.query.return_value.filter.return_value.all.return_value = []
+        return mock_db
+
+    with patch("run_cred_worker.SessionLocal", side_effect=counting_session_local), \
+         patch.object(w, "_reverify_existing_creds"), \
+         patch.object(w, "_load_tried", return_value={}), \
+         patch.object(w, "_get_device_open_ports", return_value={}), \
+         patch.object(w, "_mark_checked"), \
+         patch.object(w, "_clear_tried"), \
+         patch.object(w, "_process_protection_events"):
+        w._process_device(1, "10.0.0.1", [], [], [], pairs_per_cycle=1)
+
+    assert session_open_count == [1], (
+        f"PERF-09: otworzono {len(session_open_count)} sesji zamiast 1"
+    )
+
+
+# ─── WRK-03/12: try/except w main() i scan_once() cred worker ────────────────
+
+def test_cred_main_has_try_except_in_loop():
+    """WRK-03 regresja: main() w cred_worker opakowuje scan_once() w try/except."""
+    import inspect
+    source = inspect.getsource(w.main)
+    assert "try:" in source, "WRK-03: main() musi miec try/except wokol scan_once()"
+    assert "except Exception" in source, \
+        "WRK-03: main() musi lapac Exception w petli while True"
+
+
+def test_scan_once_fut_result_has_try_except():
+    """WRK-12 regresja: scan_once() w cred_worker ma try/except przy fut.result()
+    — jeden blad watku nie przerywa petli for fut in as_completed."""
+    import inspect
+    # Sprawdz ze w scan_once jest try/except wokol fut.result()
+    source = inspect.getsource(w.scan_once)
+    assert "fut.result()" in source, "scan_once musi wywolywac fut.result()"
+    assert "except Exception" in source, \
+        "WRK-12: scan_once musi miec try/except przy fut.result()"
+
+
+# ─── WRK-17: cred worker filtruje last_seen ──────────────────────────────────
+
+def test_scan_once_filters_by_last_seen():
+    """WRK-17 regresja: scan_once() pomija urzadzenia bez last_seen w ostatnich 10 min."""
+    import inspect
+    source = inspect.getsource(w.scan_once)
+    assert "last_seen" in source, \
+        "WRK-17: scan_once musi filtrowac Device.last_seen >= recent_seen"
+    assert "recent_seen" in source or "timedelta(minutes=10)" in source, \
+        "WRK-17: filtr oparty na 10 minutach"

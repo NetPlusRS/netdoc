@@ -1410,3 +1410,44 @@ class TestPollOnceDevicePortsIntegration:
 
         # Nie powinno rzucac wyjatku, _check wywolany
         assert len(check_calls) >= 1
+
+
+# ─── TEST-13: PERF-14 regresja — _read_settings używa WHERE IN ───────────────
+
+def test_ping_read_settings_uses_single_query(db):
+    """TEST-13 / PERF-14 regresja: run_ping._read_settings() wykonuje 1 query
+    WHERE key IN (...) zamiast N osobnych SELECT per klucz."""
+    from netdoc.storage.models import SystemStatus
+
+    db.add(SystemStatus(key="ping_interval_s", value="30", category="config"))
+    db.add(SystemStatus(key="ping_workers",    value="16", category="config"))
+    db.commit()
+
+    query_count = []
+    original_query = db.query
+
+    def counting_query(model):
+        if hasattr(model, "__tablename__") and model.__tablename__ == "system_status":
+            query_count.append(1)
+        return original_query(model)
+
+    with patch("run_ping.SessionLocal", return_value=db), \
+         patch.object(db, "query", side_effect=counting_query):
+        result = run_ping._read_settings()
+
+    assert len(query_count) == 1, (
+        f"PERF-14: oczekiwano 1 query do system_status, bylo: {len(query_count)}"
+    )
+    assert result[0] == 30   # ping_interval_s
+    assert result[1] == 16   # ping_workers
+
+
+# ─── WRK-02: try/except w main() ping ────────────────────────────────────────
+
+def test_ping_main_has_try_except_in_loop():
+    """WRK-02 regresja: main() w run_ping opakowuje poll_once() w try/except."""
+    import inspect
+    source = inspect.getsource(run_ping.main)
+    assert "try:" in source, "WRK-02: main() musi miec try/except wokol poll_once()"
+    assert "except Exception" in source, \
+        "WRK-02: main() musi lapac Exception w petli while True"
