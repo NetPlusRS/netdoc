@@ -43,8 +43,21 @@ _stdout_handler = logging.StreamHandler(sys.stdout)
 _stdout_handler.setFormatter(_log_fmt)
 
 # Handler plik (rotacja 1MB × 1 kopia)
-from logging.handlers import RotatingFileHandler
-_file_handler = RotatingFileHandler(LOG_FILE, maxBytes=1 * 1024 * 1024, backupCount=1, encoding="utf-8")
+# _WinSafeRotatingFileHandler: na Windows os.rename() failuje gdy OneDrive lub inny
+# proces trzyma plik otwarty (PermissionError WinError 32). Ignorujemy PermissionError
+# przy rotacji — plik przekroczy chwilowo limit, ale nie crashuje skanera.
+from logging.handlers import RotatingFileHandler as _RFH
+
+
+class _WinSafeRotatingFileHandler(_RFH):
+    def doRollover(self):
+        try:
+            super().doRollover()
+        except PermissionError:
+            pass  # OneDrive / inny proces blokuje plik — pomijamy rotacje
+
+
+_file_handler = _WinSafeRotatingFileHandler(LOG_FILE, maxBytes=1 * 1024 * 1024, backupCount=1, encoding="utf-8")
 _file_handler.setFormatter(_log_fmt)
 
 logging.basicConfig(level=logging.INFO, handlers=[_stdout_handler, _file_handler])

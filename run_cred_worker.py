@@ -66,7 +66,18 @@ def _drain_protection_events(ip: str) -> list:
 _LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")
 os.makedirs(_LOG_DIR, exist_ok=True)
 from logging.handlers import RotatingFileHandler as _RotatingFileHandler
-_file_handler = _RotatingFileHandler(
+
+
+class _WinSafeRotatingFileHandler(_RotatingFileHandler):
+    """Ignoruje PermissionError przy rotacji (Windows: OneDrive/AV blokuje plik)."""
+    def doRollover(self):
+        try:
+            super().doRollover()
+        except PermissionError:
+            pass
+
+
+_file_handler = _WinSafeRotatingFileHandler(
     os.path.join(_LOG_DIR, "cred.log"), encoding="utf-8",
     maxBytes=1 * 1024 * 1024, backupCount=1,  # 1MB × 1 kopia
 )

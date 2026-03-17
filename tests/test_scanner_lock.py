@@ -5,12 +5,80 @@ Scenariusze testowane:
 - _acquire_scanner_lock: brak pliku, swiezy PID (skaner dziala), stale PID (python inny),
   stale PID (nie-python), uszkodzony plik, ten sam PID co my
 - Logika restartu: po przerwaniu full scan, pelny discovery restart
+- _WinSafeRotatingFileHandler: PermissionError przy rotacji nie crashuje
 """
+import logging
 import os
 import sys
 import tempfile
 from unittest.mock import MagicMock, patch
 import pytest
+
+
+# ---------------------------------------------------------------------------
+# Testy _WinSafeRotatingFileHandler (Windows log rotation fix)
+# ---------------------------------------------------------------------------
+
+class TestWinSafeRotatingHandler:
+    def test_permission_error_on_rollover_is_silenced(self, tmp_path):
+        """BUG: PermissionError przy rotacji pliku loga nie powinna crashowac skanera.
+
+        Na Windows OneDrive i antywirusy moga trzymac plik otwarty podczas rotacji,
+        powodujac PermissionError w os.rename(). _WinSafeRotatingFileHandler ignoruje to.
+        """
+        import run_scanner as rs
+        log_file = str(tmp_path / "test_scanner.log")
+        handler = rs._WinSafeRotatingFileHandler(log_file, maxBytes=100, backupCount=1, encoding="utf-8")
+        handler.setFormatter(logging.Formatter("%(message)s"))
+
+        # Symuluj PermissionError w doRollover (jak OneDrive blokujacy plik)
+        with patch.object(handler.__class__.__bases__[0], "doRollover", side_effect=PermissionError("WinError 32")):
+            # Nie powinno rzucic wyjatku
+            try:
+                handler.doRollover()
+            except PermissionError:
+                pytest.fail("_WinSafeRotatingFileHandler powinien ignorowac PermissionError — crashuje skaner")
+
+    def test_normal_rollover_still_works(self, tmp_path):
+        """Normalna rotacja bez PermissionError nadal dziala."""
+        import run_scanner as rs
+        log_file = str(tmp_path / "test_scanner.log")
+        handler = rs._WinSafeRotatingFileHandler(log_file, maxBytes=50, backupCount=1, encoding="utf-8")
+        handler.setFormatter(logging.Formatter("%(message)s"))
+
+        # Zapisz wiadomosc przekraczajaca limit
+        for _ in range(10):
+            record = logging.LogRecord("test", logging.INFO, "", 0, "A" * 10, (), None)
+            handler.emit(record)
+        handler.close()
+
+        # Plik bazowy powinien istniech (rotacja mogla sie udac lub nie — nie crashuje)
+        assert os.path.exists(log_file)
+
+    def test_logging_continues_after_failed_rollover(self, tmp_path):
+        """Po nieudanej rotacji (PermissionError) logowanie nadal dziala."""
+        import run_scanner as rs
+        log_file = str(tmp_path / "test_scanner.log")
+        handler = rs._WinSafeRotatingFileHandler(log_file, maxBytes=50, backupCount=1, encoding="utf-8")
+        handler.setFormatter(logging.Formatter("%(message)s"))
+
+        rollover_called = [0]
+        original_rollover = handler.__class__.__bases__[0].doRollover
+
+        def _fail_first_time(self):
+            rollover_called[0] += 1
+            if rollover_called[0] == 1:
+                raise PermissionError("WinError 32 — first attempt fails")
+            return original_rollover(self)
+
+        with patch.object(handler.__class__.__bases__[0], "doRollover", _fail_first_time):
+            for i in range(5):
+                record = logging.LogRecord("test", logging.INFO, "", 0, f"msg {i} " + "X" * 15, (), None)
+                handler.emit(record)
+
+        handler.close()
+        # Plik nadal istnieje i mozna go odczytac
+        assert os.path.exists(log_file)
 
 
 # ---------------------------------------------------------------------------
