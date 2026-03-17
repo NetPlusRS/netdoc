@@ -215,7 +215,11 @@ def poll_once() -> int:
                 for d in devices
             }
             for fut in as_completed(futures):
-                results[futures[fut]] = fut.result()
+                try:
+                    results[futures[fut]] = fut.result()
+                except Exception as exc:
+                    logger.debug("Blad watku ping device_id=%s: %s", futures[fut], exc)
+                    results[futures[fut]] = None  # traktuj jak timeout, nie DOWN (chroni _FAIL_THRESHOLD)
 
         up = down = 0
         up_lines = []   # "IP(RTT ms)"
@@ -310,7 +314,10 @@ def main() -> None:
     interval = _DEFAULT_INTERVAL
     while True:
         next_run = time.monotonic() + interval
-        interval = poll_once() or interval
+        try:
+            interval = poll_once() or interval
+        except Exception as exc:
+            logger.exception("Nieobsluzony wyjatek w poll_once: %s", exc)
         time.sleep(max(0.0, next_run - time.monotonic()))
 
 

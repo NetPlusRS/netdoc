@@ -1533,7 +1533,7 @@ def _scan_device(device_id: int, ip: str, device_type, close_after: int = 3,
                 details={"resolved_count": closed_count}))
         db.commit()
     except Exception as exc:
-        logger.debug("DB error device=%s: %s", device_id, exc)
+        logger.warning("DB error device=%s: %s", device_id, exc)
         db.rollback()
     finally:
         db.close()
@@ -1550,9 +1550,12 @@ def _preload_global_creds(db) -> dict:
         Credential.device_id.is_(None),
         Credential.method.in_(_methods),
     ).order_by(Credential.method, Credential.priority.desc()).all()
-    result: dict = {}
+    # WRK-13: inicjalizuj kazda metode jako [] — bez tego brak wpisow w DB
+    # powoduje ze check_mysql/check_vnc_weak/etc otwieraja wlasna sesje DB
+    # per watek (potencjalnie 1600+ sesji przy 100 urzadzeniach i 16 workerach)
+    result: dict = {m: [] for m in _methods}
     for cr in rows:
-        result.setdefault(cr.method, []).append(
+        result[cr.method].append(
             (cr.username or "", cr.password_encrypted or "")
         )
     return result
@@ -1587,7 +1590,7 @@ def scan_once() -> None:
                 r = fut.result()
                 total_found += r["found"]; new_t += r["new"]; closed_t += r["closed"]
             except Exception as exc:
-                logger.debug("future error: %s", exc)
+                logger.warning("future error: %s", exc)
     _total_new += new_t; _total_resolved += closed_t
     db = SessionLocal()
     try:
@@ -1611,7 +1614,10 @@ def main() -> None:
     interval = _DEFAULT_INTERVAL
     while True:
         next_run = time.monotonic() + interval
-        scan_once()
+        try:
+            scan_once()
+        except Exception as exc:
+            logger.exception("Nieobsluzony wyjatek w scan_once (vuln): %s", exc)
         interval, *_ = _read_settings()
         time.sleep(max(0.0, next_run - time.monotonic()))
 

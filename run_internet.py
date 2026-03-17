@@ -284,19 +284,24 @@ def main() -> None:
     last_speed = -SPEED_INTERVAL_S   # uruchom test predkosci od razu przy starcie
     last_wan   = -WAN_INTERVAL_S     # pobierz WAN IP od razu przy starcie
 
+    # WRK-04/05: try/except + sleep-until-next-run (identyczny wzorzec jak inne workery)
     while True:
-        run_checks()
+        next_run = time.monotonic() + CHECK_INTERVAL_S
+        try:
+            run_checks()
 
-        now_mono = time.monotonic()
-        if now_mono - last_speed >= SPEED_INTERVAL_S:
-            run_speed_test()
-            last_speed = now_mono
+            now_mono = time.monotonic()
+            if now_mono - last_speed >= SPEED_INTERVAL_S:
+                run_speed_test()
+                last_speed = now_mono
 
-        if now_mono - last_wan >= WAN_INTERVAL_S:
-            run_wan_check()
-            last_wan = now_mono
+            if now_mono - last_wan >= WAN_INTERVAL_S:
+                run_wan_check()
+                last_wan = now_mono
+        except Exception as exc:
+            logger.exception("Nieobsluzony wyjatek w glownej petli internet: %s", exc)
 
-        time.sleep(CHECK_INTERVAL_S)
+        time.sleep(max(0.0, next_run - time.monotonic()))
 
 
 if __name__ == "__main__":

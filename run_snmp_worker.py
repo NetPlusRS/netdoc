@@ -101,7 +101,7 @@ def _poll_device(device_id: int, ip: str, community: str,
         db.commit()  # jeden atomowy commit: device + credential razem
 
     except Exception as exc:
-        logger.debug("SNMP poll error device_id=%s: %s", device_id, exc)
+        logger.warning("SNMP poll error device_id=%s: %s", device_id, exc)
         db.rollback()
     finally:
         db.close()
@@ -215,7 +215,10 @@ def main() -> None:
     interval = _DEFAULT_SNMP_INTERVAL
     while True:
         next_run = time.monotonic() + interval
-        scan_once()
+        try:
+            scan_once()
+        except Exception as exc:
+            logger.exception("Nieobsluzony wyjatek w scan_once: %s", exc)
         interval, *_ = _read_snmp_settings()
         time.sleep(max(0.0, next_run - time.monotonic()))
 

@@ -1283,20 +1283,25 @@ def _ports_hash(ports: dict) -> str:
     return hashlib.md5(_json.dumps(sorted(ports.keys())).encode()).hexdigest()[:12]
 
 
-def _get_port_hash(device_id: int) -> str:
+def _get_port_hash(device_id: int, db=None) -> str:
     from netdoc.storage.models import SystemStatus
-    db = SessionLocal()
+    _own = db is None
+    if _own:
+        db = SessionLocal()
     try:
         r = db.query(SystemStatus).filter(
             SystemStatus.key == f"portcred_{device_id}_hash").first()
         return r.value if r else ""
     finally:
-        db.close()
+        if _own:
+            db.close()
 
 
-def _set_port_hash(device_id: int, h: str) -> None:
+def _set_port_hash(device_id: int, h: str, db=None) -> None:
     from netdoc.storage.models import SystemStatus
-    db = SessionLocal()
+    _own = db is None
+    if _own:
+        db = SessionLocal()
     try:
         r = db.query(SystemStatus).filter(
             SystemStatus.key == f"portcred_{device_id}_hash").first()
@@ -1305,11 +1310,14 @@ def _set_port_hash(device_id: int, h: str) -> None:
         else:
             db.add(SystemStatus(key=f"portcred_{device_id}_hash",
                                 category="portcred", value=h))
-        db.commit()
+        if _own:
+            db.commit()
     except Exception:
-        db.rollback()
+        if _own:
+            db.rollback()
     finally:
-        db.close()
+        if _own:
+            db.close()
 
 
 def _services_to_try(service_name: str, banner: Optional[bytes] = None) -> list:
@@ -1825,13 +1833,13 @@ def _process_device(device_id: int, ip: str,
         # Niestandardowe porty — probujemy jesli lista portow sie zmienila
         if open_ports:
             cur_hash = _ports_hash(open_ports)
-            if cur_hash != _get_port_hash(device_id):
+            if cur_hash != _get_port_hash(device_id, db=db):
                 port_hits = _probe_nonstandard_ports(
                     ip, open_ports, ssh_pairs[:8], web_pairs[:8], rdp_pairs[:8])
                 for method, u, p in port_hits:
                     _save_cred(db, device_id, method, u, p)
                     res["new"] += 1
-                _set_port_hash(device_id, cur_hash)
+                _set_port_hash(device_id, cur_hash, db=db)
                 if port_hits:
                     logger.info("Nonstandard ports %s: +%d creds", ip, len(port_hits))
 
@@ -1843,7 +1851,7 @@ def _process_device(device_id: int, ip: str,
             _save_tried(device_id, tried)
 
     except Exception as exc:
-        logger.debug("Blad device_id=%s ip=%s: %s", device_id, ip, exc)
+        logger.warning("Blad device_id=%s ip=%s: %s", device_id, ip, exc)
         db.rollback()
     finally:
         # Zawsze drenuj zdarzenia ochrony — nawet gdy wystąpił wyjątek wcześniej.
@@ -1908,10 +1916,15 @@ def scan_once() -> None:
     db = SessionLocal()
     try:
         threshold  = datetime.utcnow() - timedelta(days=retry_days)
+        # WRK-17: pomijaj urzadzenia ktore nie odpowiadaly przez ostatnie 10 minut
+        # (is_active flaga zmienia sie z opoznieniem do 5 min — dodatkowe zabezpieczenie
+        # przed credential testing na offline urzadzeniach i ryzykiem AD lockout)
+        recent_seen = datetime.utcnow() - timedelta(minutes=10)
         # Wyciagnij (id, ip) przed zamknieciem sesji — ORM obiekty staja sie detached po db.close()
         candidates = [
             (d.id, d.ip) for d in db.query(Device).filter(
                 Device.is_active == True,
+                Device.last_seen >= recent_seen,
                 (Device.last_credential_ok_at.is_(None)) |
                 (Device.last_credential_ok_at < threshold),
             ).all()
@@ -2057,7 +2070,11 @@ def scan_once() -> None:
                 delay = 0.0
             futures[pool.submit(_run, dev_id, dev_ip, delay)] = dev_ip
         for fut in as_completed(futures):
-            r = fut.result()
+            try:
+                r = fut.result()
+            except Exception as exc:
+                logger.warning("Blad watku cred dla %s: %s", futures[fut], exc)
+                continue
             if r["ssh"]:           ssh_ok      += 1
             if r.get("telnet"):    telnet_ok   += 1
             if r["web"]:           web_ok      += 1
@@ -2128,7 +2145,10 @@ def main() -> None:
     interval = _DEFAULT_INTERVAL
     while True:
         next_run = time.monotonic() + interval
-        scan_once()
+        try:
+            scan_once()
+        except Exception as exc:
+            logger.exception("Nieobsluzony wyjatek w scan_once (cred): %s", exc)
         interval, *_ = _read_settings()
         time.sleep(max(0.0, next_run - time.monotonic()))
 

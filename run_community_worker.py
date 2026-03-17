@@ -44,23 +44,32 @@ g_total_q   = Gauge("netdoc_comm_total_q",   "Liczba community w bazie w ostatni
 g_duration  = Gauge("netdoc_comm_duration_s","Czas trwania ostatniego cyklu [s]")
 
 
+_SETTINGS_KEYS = (
+    "community_interval_s", "community_workers", "snmp_community_delay_s",
+    "community_recheck_days", "snmp_timeout_s",
+)
+
 def _get_settings() -> tuple:
-    """Czyta ustawienia z system_status (skutek w nastepnym cyklu)."""
+    """Czyta ustawienia z system_status jednym zapytaniem WHERE key IN (...)."""
     from netdoc.storage.models import SystemStatus
     db = SessionLocal()
     try:
+        rows = db.query(SystemStatus).filter(SystemStatus.key.in_(_SETTINGS_KEYS)).all()
+        vals = {r.key: r.value for r in rows}
+
         def _i(key, default):
-            row = db.query(SystemStatus).filter(SystemStatus.key == key).first()
+            v = vals.get(key)
             try:
-                return int(row.value) if (row and row.value not in (None, "")) else default
+                return int(v) if (v not in (None, "")) else default
             except (ValueError, TypeError):
                 return default
+
         return (
-            max(60,  _i("community_interval_s",       _DEFAULT_INTERVAL)),
-            max(1,   _i("community_workers",           _DEFAULT_WORKERS)),
-            max(0,   _i("snmp_community_delay_s",      3)),
-            max(1,   _i("community_recheck_days",       7)),
-            max(1,   _i("snmp_timeout_s",         _DEFAULT_SNMP_TIMEOUT)),
+            max(60,  _i("community_interval_s",   _DEFAULT_INTERVAL)),
+            max(1,   _i("community_workers",       _DEFAULT_WORKERS)),
+            max(0,   _i("snmp_community_delay_s",  3)),
+            max(1,   _i("community_recheck_days",  7)),
+            max(1,   _i("snmp_timeout_s",          _DEFAULT_SNMP_TIMEOUT)),
         )
     except Exception:
         return _DEFAULT_INTERVAL, _DEFAULT_WORKERS, 3, 7, _DEFAULT_SNMP_TIMEOUT
@@ -207,7 +216,7 @@ def scan_once() -> None:
 
     if not device_map:
         logger.info("Brak urzadzen do sprawdzenia (wszystkie maja aktualna community)")
-        g_scanned.set(0); g_found.set(0); g_stale.set(stale_count if 'stale_count' in dir() else 0)
+        g_scanned.set(0); g_found.set(0); g_stale.set(stale_count if 'stale_count' in locals() else 0)
         return
 
     logger.info(
@@ -292,7 +301,10 @@ def main() -> None:
     interval = _DEFAULT_INTERVAL
     while True:
         next_run = time.monotonic() + interval
-        scan_once()
+        try:
+            scan_once()
+        except Exception as exc:
+            logger.exception("Nieobsluzony wyjatek w scan_once (community): %s", exc)
         interval, *_ = _get_settings()
         sleep_time = max(0.0, next_run - time.monotonic())
         logger.info("Nastepny cykl za %.0fs", sleep_time)
