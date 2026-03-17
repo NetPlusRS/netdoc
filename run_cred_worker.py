@@ -450,10 +450,14 @@ def _tried_db_key(device_id: int) -> str:
     return f"tried_{device_id}"
 
 
-def _load_tried(device_id: int) -> dict:
-    """Wczytuje juz probowane pary {method_key: set("user:pass")} z SystemStatus."""
+def _load_tried(device_id: int, db=None) -> dict:
+    """Wczytuje juz probowane pary {method_key: set("user:pass")} z SystemStatus.
+    PERF-09: opcjonalny parametr db — gdy podany, nie otwiera własnej sesji.
+    """
     from netdoc.storage.models import SystemStatus
-    db = SessionLocal()
+    _own_db = db is None
+    if _own_db:
+        db = SessionLocal()
     try:
         row = db.query(SystemStatus).filter(
             SystemStatus.key == _tried_db_key(device_id)).first()
@@ -465,7 +469,8 @@ def _load_tried(device_id: int) -> dict:
     except Exception:
         return {}
     finally:
-        db.close()
+        if _own_db:
+            db.close()
 
 
 def _save_tried(device_id: int, tried: dict) -> None:
@@ -490,20 +495,27 @@ def _save_tried(device_id: int, tried: dict) -> None:
         db.close()
 
 
-def _clear_tried(device_id: int) -> None:
-    """Resetuje rotacje — nastepny cykl zaczyna od poczatku listy."""
+def _clear_tried(device_id: int, db=None) -> None:
+    """Resetuje rotacje — nastepny cykl zaczyna od poczatku listy.
+    PERF-09: opcjonalny parametr db — gdy podany, nie otwiera własnej sesji (nie commituje).
+    """
     from netdoc.storage.models import SystemStatus
-    db = SessionLocal()
+    _own_db = db is None
+    if _own_db:
+        db = SessionLocal()
     try:
         row = db.query(SystemStatus).filter(
             SystemStatus.key == _tried_db_key(device_id)).first()
         if row:
             db.delete(row)
-            db.commit()
+            if _own_db:
+                db.commit()
     except Exception:
-        db.rollback()
+        if _own_db:
+            db.rollback()
     finally:
-        db.close()
+        if _own_db:
+            db.close()
 
 
 def _filter_untried(pairs: list, tried: set, n: int) -> list:
@@ -1247,10 +1259,14 @@ def discover_rdp(ip: str, pairs: list) -> Optional[tuple]:
 
 
 # Non-standard port discovery ------------------------------------------------
-def _get_device_open_ports(device_id: int) -> dict:
-    """Zwraca {int_port: info_dict} z ostatniego ScanResult urzadzenia."""
+def _get_device_open_ports(device_id: int, db=None) -> dict:
+    """Zwraca {int_port: info_dict} z ostatniego ScanResult urzadzenia.
+    PERF-09: opcjonalny parametr db — gdy podany, nie otwiera własnej sesji.
+    """
     from netdoc.storage.models import ScanResult
-    db = SessionLocal()
+    _own_db = db is None
+    if _own_db:
+        db = SessionLocal()
     try:
         sr = (db.query(ScanResult)
               .filter(ScanResult.device_id == device_id)
@@ -1259,7 +1275,8 @@ def _get_device_open_ports(device_id: int) -> dict:
             return {int(p): v for p, v in sr.open_ports.items()}
         return {}
     finally:
-        db.close()
+        if _own_db:
+            db.close()
 
 
 def _ports_hash(ports: dict) -> str:
@@ -1635,43 +1652,37 @@ def _process_device(device_id: int, ip: str,
            "rdp": False, "vnc": False,
            "mssql": False, "mysql": False, "postgres": False, "new": 0}
 
-    # Re-weryfikuj istniejace credentials (wykrywa false positive i zmiany hasel)
-    rev_db = SessionLocal()
-    try:
-        _reverify_existing_creds(rev_db, device_id, ip)
-    finally:
-        rev_db.close()
-
-    # Wczytaj juz probowane pary dla tego urzadzenia
-    tried = _load_tried(device_id)
-
-    # Wyfiltruj do nieprobowanych (max pairs_per_cycle per protokol)
-    ssh_to_try      = _filter_untried(ssh_pairs,      tried.get("ssh",      set()), pairs_per_cycle)
-    telnet_to_try   = _filter_untried(ssh_pairs,      tried.get("telnet",   set()), pairs_per_cycle)
-    web_to_try      = _filter_untried(web_pairs,      tried.get("api",      set()), pairs_per_cycle)
-    ftp_to_try      = _filter_untried(ftp_pairs,      tried.get("ftp",      set()), pairs_per_cycle)
-    rdp_to_try      = _filter_untried(rdp_pairs,      tried.get("rdp",      set()), pairs_per_cycle)
-    vnc_to_try      = _filter_untried(vnc_pairs,      tried.get("vnc",      set()), pairs_per_cycle)
-    mssql_to_try    = _filter_untried(mssql_pairs,    tried.get("mssql",    set()), pairs_per_cycle)
-    mysql_to_try    = _filter_untried(mysql_pairs,    tried.get("mysql",    set()), pairs_per_cycle)
-    postgres_to_try = _filter_untried(postgres_pairs, tried.get("postgres", set()), pairs_per_cycle)
-
-    if not any([ssh_to_try, telnet_to_try, web_to_try, ftp_to_try, rdp_to_try, vnc_to_try,
-                mssql_to_try, mysql_to_try, postgres_to_try]):
-        # Wszystkie pary wyczerpane — czekamy retry_days i resetujemy rotacje
-        logger.info("WYCZERPANO %-18s wszystkie pary — reset rotacji po retry_days", ip)
-        db = SessionLocal()
-        try:
-            _mark_checked(db, device_id)
-        finally:
-            db.close()
-        _clear_tried(device_id)
-        return res
-
+    # PERF-09: jedna sesja przez całe _process_device zamiast 5-8 osobnych SessionLocal()
     db = SessionLocal()
     try:
+        # Re-weryfikuj istniejace credentials (wykrywa false positive i zmiany hasel)
+        _reverify_existing_creds(db, device_id, ip)
+
+        # Wczytaj juz probowane pary dla tego urzadzenia
+        tried = _load_tried(device_id, db=db)
+
+        # Wyfiltruj do nieprobowanych (max pairs_per_cycle per protokol)
+        ssh_to_try      = _filter_untried(ssh_pairs,      tried.get("ssh",      set()), pairs_per_cycle)
+        telnet_to_try   = _filter_untried(ssh_pairs,      tried.get("telnet",   set()), pairs_per_cycle)
+        web_to_try      = _filter_untried(web_pairs,      tried.get("api",      set()), pairs_per_cycle)
+        ftp_to_try      = _filter_untried(ftp_pairs,      tried.get("ftp",      set()), pairs_per_cycle)
+        rdp_to_try      = _filter_untried(rdp_pairs,      tried.get("rdp",      set()), pairs_per_cycle)
+        vnc_to_try      = _filter_untried(vnc_pairs,      tried.get("vnc",      set()), pairs_per_cycle)
+        mssql_to_try    = _filter_untried(mssql_pairs,    tried.get("mssql",    set()), pairs_per_cycle)
+        mysql_to_try    = _filter_untried(mysql_pairs,    tried.get("mysql",    set()), pairs_per_cycle)
+        postgres_to_try = _filter_untried(postgres_pairs, tried.get("postgres", set()), pairs_per_cycle)
+
+        if not any([ssh_to_try, telnet_to_try, web_to_try, ftp_to_try, rdp_to_try, vnc_to_try,
+                    mssql_to_try, mysql_to_try, postgres_to_try]):
+            # Wszystkie pary wyczerpane — czekamy retry_days i resetujemy rotacje
+            logger.info("WYCZERPANO %-18s wszystkie pary — reset rotacji po retry_days", ip)
+            _mark_checked(db, device_id)
+            _clear_tried(device_id, db=db)
+            db.commit()
+            return res
+
         # Pobierz otwarte porty raz — uzywane przez SSH i nonstandard port probe
-        open_ports = _get_device_open_ports(device_id)
+        open_ports = _get_device_open_ports(device_id, db=db)
 
         if ssh_to_try:
             _open_ssh = [p for p in _SSH_PORTS
