@@ -55,26 +55,30 @@ def _patch_session(db):
 
 class TestSnmpWorkerPollDevice:
 
+    def _pd(self, dev, snmp_timeout=2):
+        """Helper: wywołuje _poll_device z nowymi parametrami (PERF-03 sygnatura)."""
+        from run_snmp_worker import _poll_device
+        return _poll_device(dev.id, dev.ip, dev.snmp_community,
+                            dev.hostname, dev.os_version, dev.location, snmp_timeout)
+
     def test_poll_skips_device_without_community(self, db):
         """Urzadzenie bez snmp_community jest pomijane — zwraca success=False."""
-        from run_snmp_worker import _poll_device
         dev = _dev(db, "10.1.0.1", community=None)
 
         with _patch_session(db)[0]:
-            result = _poll_device(dev.id)
+            result = self._pd(dev)
 
         assert result["success"] is False
         assert result["community"] is None
 
     def test_poll_success_updates_snmp_ok_at(self, db):
         """Udany poll odswierza snmp_ok_at."""
-        from run_snmp_worker import _poll_device
         old_time = datetime(2026, 1, 1, 0, 0, 0)
         dev = _dev(db, "10.1.0.2", community="public", snmp_ok_at=old_time)
 
         with _patch_session(db)[0]:
             with patch("netdoc.collector.drivers.snmp._snmp_get", return_value="router-01"):
-                result = _poll_device(dev.id)
+                result = self._pd(dev)
 
         assert result["success"] is True
         db.refresh(dev)
@@ -82,7 +86,6 @@ class TestSnmpWorkerPollDevice:
 
     def test_poll_success_fills_empty_hostname(self, db):
         """Udany poll uzupelnia hostname jesli brak."""
-        from run_snmp_worker import _poll_device
         dev = _dev(db, "10.1.0.3", community="public", hostname=None)
 
         def _fake_get(ip, community, oid, timeout=2):
@@ -91,52 +94,38 @@ class TestSnmpWorkerPollDevice:
 
         with _patch_session(db)[0]:
             with patch("netdoc.collector.drivers.snmp._snmp_get", side_effect=_fake_get):
-                _poll_device(dev.id)
+                self._pd(dev)
 
         db.refresh(dev)
         assert dev.hostname == "router-main"
 
     def test_poll_does_not_overwrite_existing_hostname(self, db):
         """Udany poll NIE nadpisuje hostname jesli juz ustawiony."""
-        from run_snmp_worker import _poll_device
         dev = _dev(db, "10.1.0.4", community="public", hostname="istniejaca-nazwa")
 
         with _patch_session(db)[0]:
             with patch("netdoc.collector.drivers.snmp._snmp_get", return_value="nowa-nazwa"):
-                _poll_device(dev.id)
+                self._pd(dev)
 
         db.refresh(dev)
         assert dev.hostname == "istniejaca-nazwa"
 
     def test_factory_reset_clears_community(self, db):
-        """Po factory reset urzadzenia stara community przestaje dzialac.
-
-        Scenariusz: admin resetuje switch do ustawien fabrycznych.
-        Stara community 'private' nie odpowiada.
-        snmp-worker powinien wyczysc snmp_community aby community-worker
-        mogl znalezc nowa (domyslnie 'public').
-        """
-        from run_snmp_worker import _poll_device
+        """Po factory reset urzadzenia stara community przestaje dzialac."""
         dev = _dev(db, "10.1.0.5", community="private",
                    snmp_ok_at=datetime(2026, 3, 10, 12, 0, 0))
 
         with _patch_session(db)[0]:
             with patch("netdoc.collector.drivers.snmp._snmp_get", return_value=None):
-                result = _poll_device(dev.id)
+                result = self._pd(dev)
 
         assert result["success"] is False
         db.refresh(dev)
-        assert dev.snmp_community is None   # wyczyszczone — community-worker znajdzie nowe
+        assert dev.snmp_community is None
         assert dev.snmp_ok_at is None
 
     def test_community_rotation_clears_all_stale(self, db):
-        """Rotacja community w calej sieci: stare community przestaja dzialac.
-
-        IT zmienia community ze 'stare-haslo' na 'nowe-haslo2026'.
-        snmp-worker resetuje wszystkie urzadzenia — community-worker
-        nastepnie znajdzie 'nowe-haslo2026' (musi byc w DB).
-        """
-        from run_snmp_worker import _poll_device
+        """Rotacja community w calej sieci: stare community przestaja dzialac."""
         devices = [
             _dev(db, f"10.2.0.{i}", community="stare-haslo",
                  snmp_ok_at=datetime(2026, 3, 12, 12, 0, 0))
@@ -146,58 +135,46 @@ class TestSnmpWorkerPollDevice:
         with _patch_session(db)[0]:
             with patch("netdoc.collector.drivers.snmp._snmp_get", return_value=None):
                 for dev in devices:
-                    _poll_device(dev.id)
+                    self._pd(dev)
 
         for dev in devices:
             db.refresh(dev)
             assert dev.snmp_community is None
 
     def test_temporary_disconnect_clears_community(self, db):
-        """Tymczasowe zerwanie polaczenia (maintenance) — community wyczyszczone.
-
-        Po powrocie urzadzenia community-worker wykryje community ponownie.
-        """
-        from run_snmp_worker import _poll_device
+        """Tymczasowe zerwanie polaczenia (maintenance) — community wyczyszczone."""
         dev = _dev(db, "10.1.0.6", community="public",
                    snmp_ok_at=datetime(2026, 3, 12, 10, 0, 0))
 
-        # Symulacja: urzadzenie niedostepne (maintenance window)
         with _patch_session(db)[0]:
             with patch("netdoc.collector.drivers.snmp._snmp_get", return_value=None):
-                _poll_device(dev.id)
+                self._pd(dev)
 
         db.refresh(dev)
-        assert dev.snmp_community is None  # gotowe do ponownego odkrycia
+        assert dev.snmp_community is None
 
     def test_poll_exception_does_not_corrupt_community(self, db):
-        """Wyjątek w trakcie pollu nie niszczy snmp_community — rollback zachowuje stan.
-
-        Scenariusz: błąd sieciowy (nie brak odpowiedzi, ale wyjątek).
-        Community powinna pozostac niezmieniona az do potwierdzenia braku odpowiedzi.
-        """
-        from run_snmp_worker import _poll_device
+        """Wyjątek w trakcie pollu nie niszczy snmp_community — rollback zachowuje stan."""
         dev = _dev(db, "10.1.0.7", community="public",
                    snmp_ok_at=datetime(2026, 3, 12, 12, 0, 0))
 
         with _patch_session(db)[0]:
             with patch("netdoc.collector.drivers.snmp._snmp_get",
                        side_effect=RuntimeError("socket error")):
-                result = _poll_device(dev.id)
+                result = self._pd(dev)
 
         assert result["success"] is False
         db.refresh(dev)
-        # Community NIE powinna byc wyczyszczona po wyjatku — tylko po None odpowiedzi
         assert dev.snmp_community == "public"
 
     def test_poll_updates_credential_last_success_at(self, db):
         """Udany poll aktualizuje last_success_at na globalnym credentiale."""
-        from run_snmp_worker import _poll_device
         dev = _dev(db, "10.1.0.8", community="public")
-        cred = _cred(db, "public")  # global credential
+        cred = _cred(db, "public")
 
         with _patch_session(db)[0]:
             with patch("netdoc.collector.drivers.snmp._snmp_get", return_value="switch-01"):
-                _poll_device(dev.id)
+                self._pd(dev)
 
         db.refresh(cred)
         assert cred.last_success_at is not None
@@ -205,13 +182,12 @@ class TestSnmpWorkerPollDevice:
 
     def test_poll_updates_per_device_credential(self, db):
         """Udany poll aktualizuje per-device credential jesli istnieje."""
-        from run_snmp_worker import _poll_device
         dev = _dev(db, "10.1.0.9", community="per-device-comm")
         cred = _cred(db, "per-device-comm", device_id=dev.id, priority=10)
 
         with _patch_session(db)[0]:
             with patch("netdoc.collector.drivers.snmp._snmp_get", return_value="ap-01"):
-                _poll_device(dev.id)
+                self._pd(dev)
 
         db.refresh(cred)
         assert cred.last_success_at is not None
@@ -221,14 +197,13 @@ class TestSnmpWorkerPollDevice:
         from run_snmp_worker import _poll_device
 
         with _patch_session(db)[0]:
-            result = _poll_device(99999)
+            result = _poll_device(99999, "10.1.0.99", "public", None, None, None)
 
         assert result["success"] is False
 
     def test_poll_fills_os_version_from_sysdescr(self, db):
         """Poll uzupelnia os_version z sysDescr jesli jest puste."""
-        from run_snmp_worker import _poll_device
-        from netdoc.collector.drivers.snmp import OID_SYSNAME, OID_SYSDESCR, OID_SYSLOCATION
+        from netdoc.collector.drivers.snmp import OID_SYSNAME, OID_SYSDESCR
         dev = _dev(db, "10.1.0.10", community="public", os_version=None)
 
         def _fake_get(ip, community, oid, timeout=2):
@@ -238,15 +213,14 @@ class TestSnmpWorkerPollDevice:
 
         with _patch_session(db)[0]:
             with patch("netdoc.collector.drivers.snmp._snmp_get", side_effect=_fake_get):
-                _poll_device(dev.id)
+                self._pd(dev)
 
         db.refresh(dev)
         assert dev.os_version == "Cisco IOS 15.2"
 
     def test_poll_fills_location_from_syslocation(self, db):
         """Poll uzupelnia location z sysLocation jesli jest puste."""
-        from run_snmp_worker import _poll_device
-        from netdoc.collector.drivers.snmp import OID_SYSNAME, OID_SYSDESCR, OID_SYSLOCATION
+        from netdoc.collector.drivers.snmp import OID_SYSNAME, OID_SYSLOCATION
         dev = _dev(db, "10.1.0.11", community="public", location=None)
 
         def _fake_get(ip, community, oid, timeout=2):
@@ -256,7 +230,7 @@ class TestSnmpWorkerPollDevice:
 
         with _patch_session(db)[0]:
             with patch("netdoc.collector.drivers.snmp._snmp_get", side_effect=_fake_get):
-                _poll_device(dev.id)
+                self._pd(dev)
 
         db.refresh(dev)
         assert dev.location == "Serwerownia A / Rack 3"
@@ -502,7 +476,8 @@ class TestFactoryResetIntegration:
         # Krok 1: snmp-worker — 'private' przestalo dzialac (factory reset)
         with _patch_session(db)[0]:
             with patch("netdoc.collector.drivers.snmp._snmp_get", return_value=None):
-                poll_result = _poll_device(dev.id)
+                poll_result = _poll_device(dev.id, dev.ip, dev.snmp_community,
+                                           dev.hostname, dev.os_version, dev.location)
 
         assert poll_result["success"] is False
         db.refresh(dev)
@@ -544,7 +519,8 @@ class TestFactoryResetIntegration:
         with _patch_session(db)[0]:
             with patch("netdoc.collector.drivers.snmp._snmp_get", return_value=None):
                 for dev in devices:
-                    _poll_device(dev.id)
+                    _poll_device(dev.id, dev.ip, dev.snmp_community,
+                                 dev.hostname, dev.os_version, dev.location)
 
         for dev in devices:
             db.refresh(dev)
@@ -582,7 +558,8 @@ class TestFactoryResetIntegration:
         # Maintenance: urzadzenie offline — poll failuje
         with _patch_session(db)[0]:
             with patch("netdoc.collector.drivers.snmp._snmp_get", return_value=None):
-                _poll_device(dev.id)
+                _poll_device(dev.id, dev.ip, dev.snmp_community,
+                             dev.hostname, dev.os_version, dev.location)
 
         db.refresh(dev)
         assert dev.snmp_community is None

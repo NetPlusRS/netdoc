@@ -40,23 +40,33 @@ g_duration = Gauge("netdoc_snmp_duration_s","Czas trwania ostatniego cyklu [s]")
 
 
 
-def _poll_device(device_id: int, snmp_timeout: int = 2) -> dict:
-    """Odpytuje urzadzenie ze ZNANA community — bez autodiscovery."""
+def _poll_device(device_id: int, ip: str, community: str,
+                 hostname: str | None, os_version: str | None, location: str | None,
+                 snmp_timeout: int = 2) -> dict:
+    """Odpytuje urzadzenie ze ZNANA community — bez autodiscovery.
+    PERF-03: dane device przekazane bezposrednio (nie re-query per watek).
+    Otwiera DB tylko do zapisu wyniku, nie do odczytu device.
+    """
     from netdoc.collector.drivers.snmp import _snmp_get, OID_SYSNAME, OID_SYSDESCR, OID_SYSLOCATION
 
     result = {"device_id": device_id, "success": False, "community": None}
+    if not community:
+        return result  # scan_once() filtruje community=None, ale na wszelki wypadek
+    try:
+        sysname = _snmp_get(ip, community, OID_SYSNAME, timeout=snmp_timeout)
+    except Exception as exc:
+        logger.debug("SNMP get error %s: %s", ip, exc)
+        return result  # wyjątek sieci — nie dotykamy DB, community pozostaje nienaruszone
+
     db = SessionLocal()
     try:
         device = db.query(Device).filter(Device.id == device_id).first()
-        if not device or not device.snmp_community:
+        if not device:
             return result
 
-        community = device.snmp_community
-
-        sysname = _snmp_get(device.ip, community, OID_SYSNAME, timeout=snmp_timeout)
         if not sysname:
             # Community przestalo dzialac — wyczysc, community-worker znajdzie nowe
-            logger.info("Community '%s' nie odpowiada dla %s — resetowanie", community, device.ip)
+            logger.info("Community '%s' nie odpowiada dla %s — resetowanie", community, ip)
             device.snmp_community = None
             device.snmp_ok_at     = None
             db.commit()
@@ -65,18 +75,18 @@ def _poll_device(device_id: int, snmp_timeout: int = 2) -> dict:
         result["success"]   = True
         result["community"] = community
 
-        sysdescr = _snmp_get(device.ip, community, OID_SYSDESCR,   timeout=snmp_timeout)
-        sysloc   = _snmp_get(device.ip, community, OID_SYSLOCATION, timeout=snmp_timeout)
+        sysdescr = _snmp_get(ip, community, OID_SYSDESCR,   timeout=snmp_timeout)
+        sysloc   = _snmp_get(ip, community, OID_SYSLOCATION, timeout=snmp_timeout)
 
-        if sysname  and not device.hostname:   device.hostname    = sysname
-        if sysdescr and not device.os_version: device.os_version  = sysdescr[:120]
-        if sysloc   and not device.location:   device.location    = sysloc
+        if sysname  and not hostname:   device.hostname    = sysname
+        if sysdescr and not os_version: device.os_version  = sysdescr[:120]
+        if sysloc   and not location:   device.location    = sysloc
         device.snmp_ok_at = datetime.utcnow()
 
         # Zaktualizuj last_success_at na credentialu jesli istnieje
         existing = (
             db.query(Credential)
-            .filter(Credential.device_id == device.id, Credential.method == CredentialMethod.snmp)
+            .filter(Credential.device_id == device_id, Credential.method == CredentialMethod.snmp)
             .first()
         ) or (
             db.query(Credential)
@@ -151,7 +161,14 @@ def scan_once() -> None:
 
     polled = success = failed = 0
     with ThreadPoolExecutor(max_workers=min(workers, len(devices))) as pool:
-        futures = {pool.submit(_poll_device, d.id, snmp_timeout): d.id for d in devices}
+        # PERF-03: przekazujemy dane device bezposrednio — eliminuje N re-query per watek
+        futures = {
+            pool.submit(
+                _poll_device, d.id, d.ip, d.snmp_community,
+                d.hostname, d.os_version, d.location, snmp_timeout
+            ): d.id
+            for d in devices
+        }
         for fut in as_completed(futures):
             try:
                 res = fut.result()
