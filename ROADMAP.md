@@ -2,6 +2,12 @@
 
 > Publiczna mapa rozwoju projektu. Szczegółowy backlog dostępny dla kontrybutorów po kontakcie.
 
+## Zrealizowane (v0.2.x)
+
+- Syslog pipeline — rsyslog → Vector → ClickHouse (archiwizacja logów sieciowych)
+- Dashboard Grafana Syslog (severity, top urządzenia, top programy, tabela logów)
+- Filtrowanie logów po severity, urządzeniu, programie, czasie i treści
+
 ## Aktualnie w trakcie (v0.2.x)
 
 - SNMP Walk — pobieranie tablic ARP, routing, LLDP z routerów i switchy
@@ -13,6 +19,8 @@
 
 - Alerty email (SMTP) + webhook forwarding
 - Eksport raportów PDF
+- **NetFlow / sFlow** — analiza ruchu sieciowego, wykrywanie anomalii (eksfiltracja, lateral movement)
+- **NIS2 / DORA Compliance Pack** — retencja logów 12 mies., raporty compliance, export dla audytorów
 - Integracja z Zabbix — auto-provisioning wykrytych urządzeń
 - Mapa topologii w UI
 
@@ -29,7 +37,6 @@
 - Notatki per urządzenie
 - Architektura SaaS / multi-tenant
 - Integracja z Suricatą (IP reputation snapshot)
-- NetFlow/sFlow analiza ruchu
 
 ## Demo Lab
 
