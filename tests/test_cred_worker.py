@@ -1794,6 +1794,38 @@ def test_protection_events_drained_even_after_exception():
 
 # ─── BUG-DB-4: _reverify_existing_creds — jeden commit zamiast dwóch ─────────
 
+def test_dispatch_delay_moved_to_worker_thread():
+    """PERF-04 regresja: opóźnienie między skanowaniem IP przeniesione do wątku roboczego.
+    Główny wątek nie blokuje się na time.sleep() podczas dispatchu taskow."""
+    import inspect
+    source = inspect.getsource(w.scan_once)
+    # Stary wzorzec: sleep w pętli for przed submit()
+    # Nowy wzorzec: delay przekazany jako parametr do _run(), sleep wewnątrz wątku
+    assert "pool.submit(_run" in source, "_run musi być submitowany do ThreadPoolExecutor"
+    # Upewniamy się że sleep NIE jest między enumerate i pool.submit (blokujący wzorzec)
+    lines = [l.strip() for l in source.splitlines()]
+    submit_idx = next((i for i, l in enumerate(lines) if "pool.submit(_run" in l), None)
+    assert submit_idx is not None
+    # Nie powinno być time.sleep() w liniach bezpośrednio przed submit
+    sleep_before_submit = any(
+        "time.sleep(random.uniform" in lines[i]
+        for i in range(max(0, submit_idx - 3), submit_idx)
+    )
+    assert not sleep_before_submit, \
+        "PERF-04: time.sleep(random.uniform) nie może być bezpośrednio przed pool.submit"
+
+
+def test_read_method_flags_uses_single_query():
+    """PERF-05 regresja: _read_method_flags wykonuje 1 query WHERE key IN (...)
+    zamiast 8 osobnych SELECT per flagę."""
+    import inspect
+    source = inspect.getsource(w._read_method_flags)
+    assert "key.in_(" in source, \
+        "PERF-05: _read_method_flags musi używać .key.in_(...) zamiast pętli per klucz"
+    assert "for key in _ALL_FLAGS" not in source or "filter(SystemStatus.key ==" not in source, \
+        "PERF-05: nie może być oddzielnych query per klucz w pętli"
+
+
 def test_reverify_single_commit_covers_deletion_and_sentinel_reset(db):
     """BUG-DB-4 regresja: _reverify_existing_creds wykonuje dokładnie jeden commit
     obejmujący zarówno usunięcia credentials jak i reset last_credential_ok_at.

@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 logging.getLogger("asyncio").setLevel(logging.CRITICAL)  # pysnmp pending tasks noise
 
 _DEFAULT_SNMP_INTERVAL = int(os.getenv("SNMP_INTERVAL", "300"))
-_DEFAULT_SNMP_WORKERS  = int(os.getenv("SNMP_WORKERS", "10"))
+_DEFAULT_SNMP_WORKERS  = int(os.getenv("SNMP_WORKERS", "32"))  # PERF-12: 10→32 (limit 1600 vs 500 urz.)
 METRICS_PORT  = int(os.getenv("SNMP_METRICS_PORT", "8002"))
 
 g_polled   = Gauge("netdoc_snmp_polled",    "Urzadzenia przeskanowane w ostatnim cyklu")
@@ -103,14 +103,19 @@ _DEFAULT_SNMP_TIMEOUT = int(os.getenv("SNMP_TIMEOUT_S", "2"))
 
 
 def _read_snmp_settings() -> tuple:
-    """Czyta ustawienia z system_status (zmiana skutkuje w nastepnym cyklu)."""
+    """Czyta ustawienia z system_status (zmiana skutkuje w nastepnym cyklu).
+    PERF-14: jedna query WHERE key IN (...) zamiast 4 osobnych SELECT.
+    """
     from netdoc.storage.models import SystemStatus
+    _KEYS = ("snmp_interval_s", "snmp_workers", "snmp_timeout_s", "snmp_community_delay_s")
     db = SessionLocal()
     try:
+        rows = db.query(SystemStatus).filter(SystemStatus.key.in_(_KEYS)).all()
+        vals = {r.key: r.value for r in rows}
         def _i(key, default):
-            row = db.query(SystemStatus).filter(SystemStatus.key == key).first()
+            v = vals.get(key)
             try:
-                return int(row.value) if (row and row.value not in (None, "")) else default
+                return int(v) if (v not in (None, "")) else default
             except (ValueError, TypeError):
                 return default
         return (max(10, _i("snmp_interval_s",        _DEFAULT_SNMP_INTERVAL)),
@@ -189,10 +194,13 @@ def main() -> None:
     init_db()
     start_http_server(METRICS_PORT)
     logger.info("Metryki: http://0.0.0.0:%d/metrics", METRICS_PORT)
+    # PERF-02: sleep-until-next-run zamiast sleep-after-work
+    interval = _DEFAULT_SNMP_INTERVAL
     while True:
+        next_run = time.monotonic() + interval
         scan_once()
         interval, *_ = _read_snmp_settings()
-        time.sleep(interval)
+        time.sleep(max(0.0, next_run - time.monotonic()))
 
 
 if __name__ == "__main__":

@@ -125,20 +125,26 @@ def _check(ip: str, device_ports: list = None):
 
 
 def _read_settings() -> tuple:
-    """Czyta ustawienia z system_status (zmiana skutkuje w nastepnym cyklu)."""
+    """Czyta ustawienia z system_status.
+    PERF-14: jedna query WHERE key IN (...) zamiast 5 osobnych SELECT.
+    """
     from netdoc.storage.models import SystemStatus
+    _KEYS = ("ping_interval_s", "ping_workers", "ping_inactive_after_min",
+             "ping_tcp_timeout", "ping_fail_threshold")
     db = SessionLocal()
     try:
+        rows = db.query(SystemStatus).filter(SystemStatus.key.in_(_KEYS)).all()
+        vals = {r.key: r.value for r in rows}
         def _i(key, default):
-            row = db.query(SystemStatus).filter(SystemStatus.key == key).first()
+            v = vals.get(key)
             try:
-                return int(row.value) if (row and row.value not in (None, "")) else default
+                return int(v) if (v not in (None, "")) else default
             except (ValueError, TypeError):
                 return default
         def _f(key, default):
-            row = db.query(SystemStatus).filter(SystemStatus.key == key).first()
+            v = vals.get(key)
             try:
-                return float(row.value) if (row and row.value not in (None, "")) else default
+                return float(v) if (v not in (None, "")) else default
             except (ValueError, TypeError):
                 return default
         return (max(1,   _i("ping_interval_s",        _DEFAULT_INTERVAL)),
@@ -152,7 +158,8 @@ def _read_settings() -> tuple:
         db.close()
 
 
-def poll_once() -> None:
+def poll_once() -> int:
+    """Wykonaj jeden cykl pollingu. Zwraca interval (sekundy) odczytany z ustawien."""
     global _events_up, _events_down, TCP_TIMEOUT, _FAIL_THRESHOLD
 
     interval, workers, inactive_after, tcp_timeout, fail_threshold = _read_settings()
@@ -288,6 +295,7 @@ def poll_once() -> None:
         db.rollback()
     finally:
         db.close()
+    return interval  # PERF-01: zwracamy interval aby main() nie musialo go odczytywac drugi raz
 
 
 def main() -> None:
@@ -297,10 +305,13 @@ def main() -> None:
     start_http_server(METRICS_PORT)
     logger.info("Metryki: http://0.0.0.0:%d/metrics", METRICS_PORT)
 
+    # PERF-02: sleep-until-next-run zamiast sleep-after-work
+    # PERF-01: poll_once() zwraca interval — eliminuje drugie _read_settings()
+    interval = _DEFAULT_INTERVAL
     while True:
-        poll_once()
-        interval, *_ = _read_settings()
-        time.sleep(interval)
+        next_run = time.monotonic() + interval
+        interval = poll_once() or interval
+        time.sleep(max(0.0, next_run - time.monotonic()))
 
 
 if __name__ == "__main__":

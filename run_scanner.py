@@ -2327,22 +2327,26 @@ def _wait_cooldown(cooldown: int) -> str | None:
     Czeka cooldown sekund między skanami.
     Co 5s sprawdza flagę scan_requested — jeśli jest ustawiona, przerywa cooldown wcześniej.
     Zwraca typ skanu z flagi (lub None jeśli normalny koniec cooldownu).
+    PERF-10: jedna sesja DB przez cały cooldown zamiast nowej co 5s.
     """
     from netdoc.storage.database import SessionLocal
     logger.info("Cooldown %ds przed następnym skanem...", cooldown)
     deadline = time.monotonic() + cooldown
-    while time.monotonic() < deadline:
-        time.sleep(min(5, max(0.1, deadline - time.monotonic())))
-        try:
-            with SessionLocal() as db:
-                req = _get_status(db, "scan_requested")
-                if req and req not in ("-", ""):
-                    logger.info("Przerwanie cooldown — trigger: %s", req)
-                    with SessionLocal() as db2:
-                        _set_status(db2, {"scan_requested": "-"})
-                    return req if req in ("full", "discovery", "full_single") else "discovery"
-        except Exception:
-            pass
+    try:
+        with SessionLocal() as db:
+            while time.monotonic() < deadline:
+                time.sleep(min(5, max(0.1, deadline - time.monotonic())))
+                try:
+                    req = _get_status(db, "scan_requested")
+                    if req and req not in ("-", ""):
+                        logger.info("Przerwanie cooldown — trigger: %s", req)
+                        _set_status(db, {"scan_requested": "-"})
+                        db.commit()
+                        return req if req in ("full", "discovery", "full_single") else "discovery"
+                except Exception:
+                    pass
+    except Exception:
+        pass
     return None
 
 

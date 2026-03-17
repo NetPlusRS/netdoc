@@ -288,11 +288,15 @@ def main() -> None:
     init_db()
     start_http_server(METRICS_PORT)
     logger.info("Metryki: http://0.0.0.0:%d/metrics", METRICS_PORT)
+    # PERF-02: sleep-until-next-run zamiast sleep-after-work
+    interval = _DEFAULT_INTERVAL
     while True:
+        next_run = time.monotonic() + interval
         scan_once()
         interval, *_ = _get_settings()
-        logger.info("Nastepny cykl za %ds", interval)
-        time.sleep(interval)
+        sleep_time = max(0.0, next_run - time.monotonic())
+        logger.info("Nastepny cykl za %.0fs", sleep_time)
+        time.sleep(sleep_time)
 
 
 if __name__ == "__main__":

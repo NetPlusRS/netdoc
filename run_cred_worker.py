@@ -425,19 +425,19 @@ def _read_settings() -> tuple:
 
 
 def _read_method_flags() -> dict:
-    """Odczytuje flagi wlaczenia/wylaczenia metod testowania (SSH/FTP/Web/RDP/DB) z DB."""
-    db = SessionLocal()
+    """Odczytuje flagi wlaczenia/wylaczenia metod testowania (SSH/FTP/Web/RDP/DB) z DB.
+    PERF-05: jedna query WHERE key IN (...) zamiast 8 osobnych SELECT.
+    """
     _ALL_FLAGS = (
         "cred_ssh_enabled", "cred_ftp_enabled", "cred_web_enabled",
         "cred_rdp_enabled", "cred_vnc_enabled",
         "cred_mssql_enabled", "cred_mysql_enabled", "cred_postgres_enabled",
     )
+    db = SessionLocal()
     try:
-        result = {}
-        for key in _ALL_FLAGS:
-            row = db.query(SystemStatus).filter(SystemStatus.key == key).first()
-            result[key] = (row.value if row else "1") != "0"
-        return result
+        rows = db.query(SystemStatus).filter(SystemStatus.key.in_(_ALL_FLAGS)).all()
+        vals = {r.key: r.value for r in rows}
+        return {k: (vals.get(k, "1") or "1") != "0" for k in _ALL_FLAGS}
     except Exception:
         return {k: True for k in _ALL_FLAGS}
     finally:
@@ -2022,7 +2022,10 @@ def scan_once() -> None:
     # Rownolegle testowanie ROZNYCH IP jednoczesnie (kazde IP dostaje max pairs_per_cycle par).
     # Brak ryzyka lockoutu — kazde IP odpytywane 1x per cykl,
     # a kolejny cykl dopiero po interval_s (np. 60s).
-    def _run(dev_id, dev_ip):
+    def _run(dev_id, dev_ip, start_delay: float = 0.0):
+        # PERF-04: delay przeniesiony DO watku — main thread nie jest blokowany
+        if start_delay > 0:
+            time.sleep(start_delay)
         return _process_device_with_timeout(
             dev_timeout, dev_id, dev_ip,
             ssh_pairs, web_pairs, ftp_pairs, rdp_pairs, vnc_pairs,
@@ -2030,13 +2033,18 @@ def scan_once() -> None:
         )
 
     with ThreadPoolExecutor(max_workers=min(ssh_w, len(candidates))) as pool:
-        # min_delay/max_delay: rozkladamy starty skanowania poszczegolnych IP w czasie
-        # (zapobiega jednoczesnym nieudanym logowaniom -> lockout AD / IDS rate-limit)
+        # PERF-04: rozkladamy starty w czasie przez delay wewnatrz watku (nie sleep w main)
+        # Zapobiega jednoczesnym logowaniom -> lockout AD / IDS rate-limit
+        # Dispatch wszystkich taskow natychmiast, kazdy watek sam czeka swoj czas startu
         futures = {}
+        n = len(candidates)
         for i, (dev_id, dev_ip) in enumerate(candidates):
-            futures[pool.submit(_run, dev_id, dev_ip)] = dev_ip
-            if min_delay > 0 and i < len(candidates) - 1:
-                time.sleep(random.uniform(min_delay, max_delay))
+            if min_delay > 0 and n > 1:
+                # Delay rozlozony rowno w oknie [0, max_delay * (n-1)/n]
+                delay = random.uniform(min_delay, max_delay) * i / n
+            else:
+                delay = 0.0
+            futures[pool.submit(_run, dev_id, dev_ip, delay)] = dev_ip
         for fut in as_completed(futures):
             r = fut.result()
             if r["ssh"]:           ssh_ok      += 1
@@ -2105,10 +2113,13 @@ def main() -> None:
     _seed_default_credentials()
     start_http_server(METRICS_PORT)
     logger.info("Metryki: http://0.0.0.0:%d/metrics", METRICS_PORT)
+    # PERF-02: sleep-until-next-run zamiast sleep-after-work
+    interval = _DEFAULT_INTERVAL
     while True:
+        next_run = time.monotonic() + interval
         scan_once()
         interval, *_ = _read_settings()
-        time.sleep(interval)
+        time.sleep(max(0.0, next_run - time.monotonic()))
 
 
 if __name__ == "__main__":

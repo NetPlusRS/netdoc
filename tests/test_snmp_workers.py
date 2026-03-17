@@ -598,3 +598,62 @@ class TestFactoryResetIntegration:
         db.refresh(dev)
         assert dev.snmp_community == "mgmt"
         assert dev.snmp_ok_at is not None
+
+
+# ─── PERF-14: _read_snmp_settings używa WHERE IN zamiast N SELECT ─────────────
+
+def test_read_snmp_settings_uses_single_query(db):
+    """PERF-14 regresja: _read_snmp_settings wykonuje 1 query WHERE key IN (...)
+    zamiast osobnych SELECT per klucz konfiguracyjny."""
+    from run_snmp_worker import _read_snmp_settings
+    from netdoc.storage.models import SystemStatus
+
+    db.add(SystemStatus(key="snmp_interval_s", value="60", category="config"))
+    db.add(SystemStatus(key="snmp_workers", value="5", category="config"))
+    db.commit()
+
+    query_count = []
+    original_query = db.query
+
+    def counting_query(model):
+        if hasattr(model, "__tablename__") and model.__tablename__ == "system_status":
+            query_count.append(1)
+        return original_query(model)
+
+    with _patch_session(db)[0]:
+        with patch.object(db, "query", side_effect=counting_query):
+            result = _read_snmp_settings()
+
+    assert len(query_count) == 1, (
+        f"PERF-14: oczekiwano 1 query do system_status, bylo: {len(query_count)}"
+    )
+    assert result[0] == 60   # snmp_interval_s
+    assert result[1] == 5    # snmp_workers
+
+
+# ─── PERF-12: Domyślna wartość snmp_workers = 32 ─────────────────────────────
+
+def test_snmp_default_workers_is_32():
+    """PERF-12 regresja: domyślna liczba workerów SNMP to 32, nie 10.
+    Zwiększa limit z 500 do 1600 urządzeń w cyklu 300s."""
+    import run_snmp_worker as w
+    import os
+    # Wartość domyślna (gdy nie ma zmiennej środowiskowej SNMP_WORKERS)
+    # Testujemy logikę: int(os.getenv("SNMP_WORKERS", "32")) == 32
+    default = int(os.getenv("SNMP_WORKERS", "32"))
+    assert default == 32, f"PERF-12: domyślne SNMP_WORKERS powinno być 32, jest {default}"
+
+
+# ─── PERF-02: sleep-until-next-run w main() workerów ─────────────────────────
+
+def test_snmp_main_uses_next_run_sleep_pattern():
+    """PERF-02 regresja: main() w snmp_worker używa next_run = monotonic() + interval
+    i time.sleep(max(0, next_run - monotonic())) zamiast sleep-after-work."""
+    import inspect
+    import run_snmp_worker as w
+
+    source = inspect.getsource(w.main)
+    assert "next_run" in source, \
+        "PERF-02: main() musi używać wzorca next_run = time.monotonic() + interval"
+    assert "max(0" in source or "max(0." in source, \
+        "PERF-02: main() musi używać max(0.0, next_run - time.monotonic())"

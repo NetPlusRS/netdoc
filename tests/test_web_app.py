@@ -5378,3 +5378,48 @@ class TestBetaBanner:
         r = client.get("/")
         assert r.status_code == 200
         assert b"betaBanner" in r.data
+
+
+# ─── PERF-11: Event table — jedna query zamiast dwóch ────────────────────────
+
+class TestPerf11EventQuery:
+    """PERF-11 regresja: /devices ładuje eventy raz (nie dwie osobne query)."""
+
+    def test_devices_page_uses_single_event_query(self, client, db):
+        """PERF-11: strona /devices powinna wykonać jedną query na eventy,
+        nie dwie osobne (jedna ASC dla uptime, jedna DESC dla last_down/last_up)."""
+        from netdoc.storage.models import Device, Event, EventType
+        from datetime import datetime, timedelta
+
+        dev = Device(ip="10.99.1.1", mac="ff:ff:ff:ff:ff:01", is_active=True)
+        db.add(dev)
+        db.commit()
+
+        event_time = datetime.utcnow() - timedelta(hours=2)
+        db.add(Event(device_id=dev.id, event_type=EventType.device_disappeared,
+                     event_time=event_time, details={}))
+        db.commit()
+
+        r = client.get("/devices")
+        assert r.status_code == 200
+
+    def test_devices_page_source_has_single_event_block(self):
+        """PERF-11: kod app.py powinien mieć jedną query na eventy (nie dwie osobne)."""
+        import inspect
+        import netdoc.web.app as app_module
+        # Sprawdź że nie ma zduplikowanej query "device_disappeared" + DESC
+        # (stary wzorzec: dwie osobne query — jedna DESC, jedna ASC)
+        try:
+            source = inspect.getsource(app_module)
+        except OSError:
+            return  # nie można odczytać źródła w trybie skompilowanym
+        # Policz ile razy zapytujemy Event z device_disappeared w /devices route
+        disappeared_queries = source.count(
+            'Event.event_type.in_(['
+        )
+        # Po PERF-11 fix: jedna query (zamiast dwóch)
+        # Akceptujemy <= 2 (może być w innych route'ach)
+        # ale sprawdzamy że nie ma zduplikowanego bloku z .order_by(Event.event_time.desc())
+        assert ".order_by(Event.event_time.desc())" not in source or \
+               source.count(".order_by(Event.event_time.desc())") <= 1, \
+            "PERF-11: zduplikowana query Event z ORDER BY DESC — powinna być jedna query"

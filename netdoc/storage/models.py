@@ -2,7 +2,7 @@ from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime, Float,
     ForeignKey, Text, JSON, Enum as SAEnum, LargeBinary,
-    Numeric, Date, UniqueConstraint,
+    Numeric, Date, UniqueConstraint, Index,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 import enum
@@ -254,6 +254,12 @@ class ScanResult(Base):
     open_ports = Column(JSON, nullable=True)
     vulnerabilities = Column(JSON, nullable=True)
     risk_score = Column(Float, nullable=True)
+
+    # PERF-13: indeks złożony dla GROUP BY w /devices (device_id, scan_type, scan_time)
+    # Eliminuje Seq Scan + Sort przy dużej tabeli (minuty → milisekundy przy 10M rekordach)
+    __table_args__ = (
+        Index("ix_scanresult_device_type_time", "device_id", "scan_type", "scan_time"),
+    )
 
     device = relationship("Device", back_populates="scan_results")
 

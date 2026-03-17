@@ -58,27 +58,33 @@ _INFRA_CHECKS_NAMES = frozenset({
 
 
 def _read_settings() -> tuple:
+    """PERF-14: jedna query WHERE key IN (...) zamiast 7 osobnych SELECT."""
     from netdoc.storage.models import SystemStatus
+    _KEYS = ("vuln_interval_s", "vuln_workers", "vuln_close_after",
+             "vuln_skip_printers", "vuln_limit_ap_iot",
+             "vuln_tcp_timeout", "vuln_http_timeout")
     db = SessionLocal()
     try:
+        rows = db.query(SystemStatus).filter(SystemStatus.key.in_(_KEYS)).all()
+        vals = {r.key: r.value for r in rows}
         def _i(key, default):
-            row = db.query(SystemStatus).filter(SystemStatus.key == key).first()
+            v = vals.get(key)
             try:
-                return int(row.value) if (row and row.value not in (None, "")) else default
+                return int(v) if (v not in (None, "")) else default
             except (ValueError, TypeError):
                 return default
         def _f(key, default):
-            row = db.query(SystemStatus).filter(SystemStatus.key == key).first()
+            v = vals.get(key)
             try:
-                return float(row.value) if (row and row.value not in (None, "")) else default
+                return float(v) if (v not in (None, "")) else default
             except (ValueError, TypeError):
                 return default
         return (
             max(10,  _i("vuln_interval_s",    _DEFAULT_INTERVAL)),
             max(1,   _i("vuln_workers",       _DEFAULT_WORKERS)),
             max(1,   _i("vuln_close_after",   3)),
-            bool(    _i("vuln_skip_printers", 1)),   # domyslnie: pomijaj drukarki
-            bool(    _i("vuln_limit_ap_iot",  1)),   # domyslnie: ogranicz AP/kamery/IoT
+            bool(    _i("vuln_skip_printers", 1)),
+            bool(    _i("vuln_limit_ap_iot",  1)),
             max(0.5, _f("vuln_tcp_timeout",   _TCP_TIMEOUT)),
             max(0.5, _f("vuln_http_timeout",  _HTTP_TIMEOUT)),
         )
@@ -1601,10 +1607,13 @@ def main() -> None:
     init_db()
     start_http_server(METRICS_PORT)
     logger.info("Metryki: http://0.0.0.0:%d/metrics", METRICS_PORT)
+    # PERF-02: sleep-until-next-run zamiast sleep-after-work
+    interval = _DEFAULT_INTERVAL
     while True:
+        next_run = time.monotonic() + interval
         scan_once()
         interval, *_ = _read_settings()
-        time.sleep(interval)
+        time.sleep(max(0.0, next_run - time.monotonic()))
 
 
 if __name__ == "__main__":

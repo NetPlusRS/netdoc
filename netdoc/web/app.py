@@ -801,28 +801,9 @@ def create_app():
             last_scans: dict      = _latest_scan_per_device("nmap")
             last_full_scans: dict = _latest_scan_per_device("nmap_full")
 
-            # Ostatni czas DOWN i ostatni czas UP (z ostatnich 30 dni)
-            last_down = {}
-            last_up   = {}
-            for e in db.query(Event).filter(
-                Event.event_type.in_([
-                    EventType.device_disappeared,
-                    EventType.device_appeared,
-                ]),
-                Event.event_time >= month_ago,
-                Event.device_id.isnot(None),
-            ).order_by(Event.event_time.desc()).all():
-                et = e.event_type.value if hasattr(e.event_type, "value") else str(e.event_type)
-                if et == "device_disappeared" and e.device_id not in last_down:
-                    last_down[e.device_id] = e.event_time
-                if et == "device_appeared" and e.device_id not in last_up:
-                    last_up[e.device_id] = e.event_time
-
-            # Przyblizone uptime% z ostatnich 30 dni:
-            # zbieramy pary (disappeared, appeared) i liczymy laczny downtime
-            uptime_pct = {}
-            period_sec = 30 * 24 * 3600
-            # Pobierz wszystkie eventy (up/down) per device, posortowane rosnaco
+            # PERF-11: Jedna query zamiast dwóch (last_down/last_up + uptime)
+            # Ten sam zestaw eventów, posortowany ASC — używamy go do obu celów
+            from collections import defaultdict
             all_status_events = db.query(Event).filter(
                 Event.event_type.in_([
                     EventType.device_disappeared,
@@ -832,12 +813,20 @@ def create_app():
                 Event.device_id.isnot(None),
             ).order_by(Event.device_id, Event.event_time.asc()).all()
 
-            # Grupuj per device i oblicz downtime
-            from collections import defaultdict
-            dev_events = defaultdict(list)
+            # Grupuj per device i oblicz: last_down, last_up, uptime%
+            last_down = {}
+            last_up   = {}
+            dev_events: dict = defaultdict(list)
             for e in all_status_events:
                 dev_events[e.device_id].append(e)
+                et = e.event_type.value if hasattr(e.event_type, "value") else str(e.event_type)
+                if et == "device_disappeared":
+                    last_down[e.device_id] = e.event_time  # nadpisuje → ostatni
+                elif et == "device_appeared":
+                    last_up[e.device_id] = e.event_time
 
+            uptime_pct = {}
+            period_sec = 30 * 24 * 3600
             for dev_id, evs in dev_events.items():
                 total_down = 0
                 pending_down = None
@@ -848,7 +837,6 @@ def create_app():
                     elif et == "device_appeared" and pending_down:
                         total_down += (e.event_time - pending_down).total_seconds()
                         pending_down = None
-                # Jesli nadal DOWN — licz do teraz
                 if pending_down:
                     total_down += (now - pending_down).total_seconds()
                 pct = max(0.0, min(100.0, (1 - total_down / period_sec) * 100))
