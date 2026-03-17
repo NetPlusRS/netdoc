@@ -1,0 +1,17 @@
+apiVersion: 1
+
+datasources:
+  - name: NetDoc ClickHouse
+    type: grafana-clickhouse-datasource
+    uid: netdoc_ch
+    url: http://netdoc-clickhouse:8123
+    jsonData:
+      defaultDatabase: netdoc_logs
+      port: 8123
+      server: netdoc-clickhouse
+      username: netdoc
+      tlsSkipVerify: true
+    secureJsonData:
+      password: netdoc
+    editable: true
+    isDefault: false

@@ -1,0 +1,105 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "netdoc_ch" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 20, "lineWidth": 2, "pointSize": 3, "showPoints": "auto" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "ERROR"     }, "properties": [{ "id": "color", "value": { "fixedColor": "#da3633", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "CRITICAL"  }, "properties": [{ "id": "color", "value": { "fixedColor": "#da3633", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "WARNING"   }, "properties": [{ "id": "color", "value": { "fixedColor": "#e3b341", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "INFO"      }, "properties": [{ "id": "color", "value": { "fixedColor": "#238636", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "netdoc_ch" },
+          "rawSql": "SELECT toStartOfMinute(timestamp) AS time, multiIf(severity=0,'EMERGENCY',severity=1,'ALERT',severity=2,'CRITICAL',severity=3,'ERROR',severity=4,'WARNING',severity=5,'NOTICE',severity=6,'INFO','DEBUG') AS level, count() AS cnt FROM netdoc_logs.syslog WHERE timestamp >= $__fromTime AND timestamp <= $__toTime GROUP BY time, level ORDER BY time ASC",
+          "refId": "A"
+        }
+      ],
+      "title": "Logi per poziom ważności",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "netdoc_ch" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 2,
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["sum"] }, "showUnfilled": true },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "netdoc_ch" },
+          "rawSql": "SELECT dictGetOrDefault('netdoc_logs.devices_dict','hostname',src_ip,src_ip) AS host, count() AS cnt FROM netdoc_logs.syslog WHERE timestamp >= $__fromTime AND timestamp <= $__toTime AND severity <= 4 GROUP BY host ORDER BY cnt DESC LIMIT 15",
+          "refId": "A"
+        }
+      ],
+      "title": "Top 15 urządzeń (WARNING+)",
+      "type": "bargauge"
+    },
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "netdoc_ch" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 3,
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["sum"] }, "showUnfilled": true },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "netdoc_ch" },
+          "rawSql": "SELECT program, count() AS cnt FROM netdoc_logs.syslog WHERE timestamp >= $__fromTime AND timestamp <= $__toTime GROUP BY program ORDER BY cnt DESC LIMIT 15",
+          "refId": "A"
+        }
+      ],
+      "title": "Top 15 procesów",
+      "type": "bargauge"
+    },
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "netdoc_ch" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "timestamp" }, "properties": [{ "id": "custom.width", "value": 155 }] },
+          { "matcher": { "id": "byName", "options": "src_ip"    }, "properties": [{ "id": "custom.width", "value": 120 }] },
+          { "matcher": { "id": "byName", "options": "severity"  }, "properties": [{ "id": "custom.width", "value": 80  }] },
+          { "matcher": { "id": "byName", "options": "program"   }, "properties": [{ "id": "custom.width", "value": 110 }] }
+        ]
+      },
+      "gridPos": { "h": 14, "w": 24, "x": 0, "y": 16 },
+      "id": 4,
+      "options": { "footer": { "show": false }, "showHeader": true },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "netdoc_ch" },
+          "rawSql": "SELECT timestamp, src_ip, multiIf(severity=0,'EMERGENCY',severity=1,'ALERT',severity=2,'CRITICAL',severity=3,'ERROR',severity=4,'WARNING',severity=5,'NOTICE',severity=6,'INFO','DEBUG') AS severity, program, message FROM netdoc_logs.syslog WHERE timestamp >= $__fromTime AND timestamp <= $__toTime ORDER BY timestamp DESC LIMIT 500",
+          "refId": "A"
+        }
+      ],
+      "title": "Ostatnie logi",
+      "type": "table"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["netdoc", "syslog"],
+  "templating": { "list": [] },
+  "time": { "from": "now-3h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "NetDoc — Syslog",
+  "uid": "netdoc-syslog",
+  "version": 1
+}

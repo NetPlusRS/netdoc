@@ -1,0 +1,77 @@
+# NetDoc Vector — syslog pipeline
+# Przepływ: rsyslog (TCP 6514, JSON) → transform → ClickHouse (netdoc_logs.syslog)
+
+# ─── API Vector (health check / metrics) ─────────────────────────────────────
+[api]
+enabled = true
+address = "0.0.0.0:8688"
+
+# ─── Source: JSON TCP od rsyslog ─────────────────────────────────────────────
+[sources.rsyslog_in]
+type = "socket"
+address = "0.0.0.0:6514"
+mode = "tcp"
+max_connection_duration_secs = 0          # bez limitu czasu połączenia
+
+[sources.rsyslog_in.framing]
+method = "newline_delimited"
+
+[sources.rsyslog_in.decoding]
+codec = "json"
+
+# ─── Transform: normalizacja i sanityzacja pól ───────────────────────────────
+[transforms.normalize]
+type = "remap"
+inputs = ["rsyslog_in"]
+source = '''
+  # Timestamp — parsuj z JSON lub użyj "teraz"
+  .received_at = now()
+
+  ts, err = parse_timestamp(string(.timestamp) ?? "", "%+")
+  if err == null {
+    .timestamp = ts
+  } else {
+    .timestamp = now()
+  }
+
+  # Sanityzacja — gwarantuj typy dla ClickHouse
+  .src_ip   = string(.src_ip)   ?? ""
+  .hostname = string(.hostname) ?? ""
+  .program  = string(.program)  ?? ""
+  .message  = string(.message)  ?? ""
+
+  # facility i severity jako liczby (rsyslog wysyła jako string "3" itp.)
+  .facility = to_int(string(.facility) ?? "1") ?? 1
+  .severity = to_int(string(.severity) ?? "6") ?? 6
+
+  # Usuń pola pomocnicze których ClickHouse nie potrzebuje
+  del(.host)
+  del(.source_type)
+'''
+
+# ─── Sink: ClickHouse ─────────────────────────────────────────────────────────
+[sinks.clickhouse_syslog]
+type = "clickhouse"
+inputs = ["normalize"]
+endpoint = "http://netdoc-clickhouse:8123"
+database = "netdoc_logs"
+table = "syslog"
+compression = "gzip"
+skip_unknown_fields = true
+
+[sinks.clickhouse_syslog.auth]
+strategy = "basic"
+user = "netdoc"
+password = "${CLICKHOUSE_PASSWORD}"
+
+# Batch: zapisuj co 1000 eventów lub co 5 sekund — kompromis między
+# opóźnieniem a wydajnością przy dużym ruchu
+[sinks.clickhouse_syslog.batch]
+max_events   = 1000
+timeout_secs = 5
+
+# Buffer w pamięci — dodatkowa warstwa przed ClickHouse
+[sinks.clickhouse_syslog.buffer]
+type          = "memory"
+max_events    = 50000
+when_full     = "block"         # back-pressure zamiast gubienia logów

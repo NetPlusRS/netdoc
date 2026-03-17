@@ -2842,8 +2842,11 @@ def create_app():
         "prometheus": "netdoc-prometheus",
         "loki":     "netdoc-loki",
         "promtail": "netdoc-promtail",
-        "internet":   "netdoc-internet",
-        "community":  "netdoc-community",
+        "internet":    "netdoc-internet",
+        "community":   "netdoc-community",
+        "clickhouse":  "netdoc-clickhouse",
+        "rsyslog":     "netdoc-rsyslog",
+        "vector":      "netdoc-vector",
     }
 
     @app.route("/settings/docker/restart-stream")
@@ -3006,6 +3009,34 @@ def create_app():
             mimetype="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    # ── syslog ──────────────────────────────────────────────────────────────────
+    @app.route("/syslog")
+    def syslog():
+        db = SessionLocal()
+        try:
+            devices_list = db.query(Device).filter(Device.is_active == True).order_by(Device.ip).all()
+        finally:
+            db.close()
+        return render_template("syslog.html", devices=devices_list)
+
+    @app.route("/api/syslog")
+    def syslog_proxy():
+        """Proxy do FastAPI — zwraca logi syslog z ClickHouse (GET)."""
+        try:
+            resp = requests.get(f"{API_URL}/api/syslog", params=request.args.to_dict(), timeout=15)
+            return resp.content, resp.status_code, {"Content-Type": "application/json"}
+        except Exception as exc:
+            return jsonify({"error": str(exc), "logs": [], "count": 0}), 503
+
+    @app.route("/api/syslog/devices/<int:device_id>")
+    def syslog_device_proxy(device_id):
+        """Proxy do FastAPI — logi syslog dla konkretnego urządzenia."""
+        try:
+            resp = requests.get(f"{API_URL}/api/syslog/devices/{device_id}", params=request.args.to_dict(), timeout=15)
+            return resp.content, resp.status_code, {"Content-Type": "application/json"}
+        except Exception as exc:
+            return jsonify({"error": str(exc), "logs": [], "count": 0}), 503
 
     # ── logs ───────────────────────────────────────────────────────────────────
     @app.route("/logs")

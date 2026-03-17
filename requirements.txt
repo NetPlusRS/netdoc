@@ -55,5 +55,8 @@ docker>=7.0.0
 # Screenshot HTTP preview (hover na IP)
 playwright>=1.40.0
 
+# ClickHouse (syslog storage)
+clickhouse-connect>=0.7.0
+
 # Dev
 python-dotenv==1.0.1

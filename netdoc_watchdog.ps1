@@ -25,6 +25,9 @@ $ExpectedContainers = @(
     "netdoc-vuln"
     "netdoc-internet"
     "netdoc-community"
+    "netdoc-clickhouse"
+    "netdoc-rsyslog"
+    "netdoc-vector"
 )
 
 function Write-Log {

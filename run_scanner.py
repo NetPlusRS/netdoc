@@ -2506,6 +2506,9 @@ _DOCKER_SERVICES = [
     "netdoc-cred",
     "netdoc-vuln",
     "netdoc-internet",
+    "netdoc-clickhouse",
+    "netdoc-rsyslog",
+    "netdoc-vector",
 ]
 
 _POSTGRES_PORT = 15432

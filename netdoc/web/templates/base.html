@@ -86,6 +86,7 @@
         <li class="nav-item"><a class="nav-link {% if '/scan' in request.path %}active{% endif %}" href="/scan"><i class="bi bi-radar me-1"></i>Skanowanie</a></li>
         <li class="nav-item"><a class="nav-link {% if '/settings' in request.path %}active{% endif %}" href="/settings"><i class="bi bi-gear me-1"></i>Ustawienia</a></li>
         <li class="nav-item"><a class="nav-link {% if '/logs' in request.path %}active{% endif %}" href="/logs"><i class="bi bi-journal-text me-1"></i>Logi</a></li>
+        <li class="nav-item"><a class="nav-link {% if '/syslog' in request.path %}active{% endif %}" href="/syslog"><i class="bi bi-journal-code me-1"></i>Syslog</a></li>
         <li class="nav-item"><a class="nav-link {% if '/internet' in request.path %}active{% endif %}" href="/internet"><i class="bi bi-globe2 me-1"></i>Internet</a></li>
         <li class="nav-item"><a class="nav-link {% if '/chat' in request.path %}active{% endif %}" href="/chat"><i class="bi bi-robot me-1"></i>Asystent AI{% if not PRO_ENABLED %}<span class="badge bg-warning text-dark ms-1" style="font-size:0.6rem;vertical-align:middle">PRO</span>{% endif %}</a></li>
       </ul>

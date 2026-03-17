@@ -1,0 +1,28 @@
+<!-- NetDoc ClickHouse — limity profilów (auth przez ENV vars w docker-compose) -->
+<clickhouse>
+  <profiles>
+    <default>
+      <!-- Max pamięci na jedno zapytanie: 4 GB -->
+      <max_memory_usage>4294967296</max_memory_usage>
+      <!-- Max wierszy w wyniku zapytania HTTP/API -->
+      <max_result_rows>100000</max_result_rows>
+      <!-- Nieograniczone zapisy (potrzebne dla Vector) -->
+      <readonly>0</readonly>
+      <!-- Akceptuj ISO 8601 z timezone 'Z' (Vector wysyła nanosekund timestamps) -->
+      <date_time_input_format>best_effort</date_time_input_format>
+    </default>
+  </profiles>
+
+  <quotas>
+    <default>
+      <interval>
+        <duration>3600</duration>
+        <queries>0</queries>
+        <errors>0</errors>
+        <result_rows>0</result_rows>
+        <read_rows>0</read_rows>
+        <execution_time>0</execution_time>
+      </interval>
+    </default>
+  </quotas>
+</clickhouse>
