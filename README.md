@@ -14,26 +14,29 @@ Niezalezny od producenta urzadzen — Cisco, MikroTik, Ubiquiti, Fortinet i inne
 > - **Full port scan** (1–65535) generuje znaczny ruch i moze wyzwolic systemy IDS/IPS
 >
 > **Zalecane srodowisko startowe:** siec testowa, laboratorium lub dolaczone Demo Lab (`docker compose -f docker-compose.lab.yml up`).
-> Projekt jest aktywnie rozwijany — przed wdrozeniem produkcyjnym przetestuj na wlasnym sprzecie.
 
 ---
 
 ## Architektura
 
 ```
-Collector (host) → PostgreSQL → API (FastAPI) → Grafana
-                             ↓
-                       Flask Web Admin
-                             ↑
-              Docker workers (ping, snmp, cred, vuln)
+Urządzenia sieciowe
+  ├─ syslog UDP/TCP 514 → rsyslog → Vector → ClickHouse
+  └─ nmap/ARP/SNMP ──→ Collector (host) → PostgreSQL → API (FastAPI)
+                                                     ↓
+                                              Flask Web Admin
+                                                     ↑
+                                   Docker workers (ping, snmp, cred, vuln,
+                                                   community, internet)
 ```
 
 | Warstwa | Technologie |
 |---------|-------------|
 | **Collector** | nmap, netmiko, pysnmp-lextudio, APScheduler |
-| **Storage** | SQLAlchemy, PostgreSQL (prod) / SQLite (dev) |
+| **Storage** | PostgreSQL (prod) / SQLite (dev), ClickHouse (syslog) |
 | **API** | FastAPI + Uvicorn + Prometheus metrics |
 | **Monitoring** | Grafana + Prometheus + Loki + Promtail |
+| **Syslog pipeline** | rsyslog → Vector → ClickHouse |
 | **Admin UI** | Flask web panel (port 5000) |
 
 ---
@@ -51,7 +54,7 @@ Instalator automatycznie:
 - sprawdza i instaluje wymagania (WSL2, Docker Desktop, git, Python 3.11+)
 - konfiguruje `.env` z szablonu
 - uruchamia wszystkie kontenery Docker
-- weryfikuje stan 9 kontenerow
+- weryfikuje stan 16 kontenerow
 - uruchamia pierwsze skanowanie sieci
 - otwiera panel administracyjny w przegladarce
 
@@ -90,6 +93,7 @@ docker compose up -d
 | Grafana | http://localhost:3000 |
 | Prometheus | http://localhost:9090 |
 | Loki | http://localhost:3100 |
+| ClickHouse HTTP | http://localhost:8123 |
 
 Domyslne haslo Grafana: `admin / netdoc`
 
@@ -99,6 +103,12 @@ Skaner uruchamia sie na hoscie (pelny dostep do sieci, ARP table):
 pip install -r requirements.txt
 python run_scanner.py --once
 ```
+
+### Odbior syslogow z urządzeń sieciowych
+
+Skonfiguruj urzadzenia sieciowe (routery, switche, AP) aby wysylaly syslog UDP na port 514
+adresu IP hosta z NetDoc. Logi trafią automatycznie do ClickHouse i będą widoczne w zakładce
+**Syslog** oraz na dashboardzie Grafana.
 
 ### Autostart (Windows Task Scheduler)
 
@@ -124,6 +134,7 @@ Kluczowe zmienne:
 | `LOG_LEVEL` | Poziom logow | INFO |
 | `FLASK_SECRET_KEY` | Klucz sesji Flask | dev-only |
 | `TELEGRAM_BOT_TOKEN` | Token bota Telegram do alertow | opcjonalne |
+| `CLICKHOUSE_PASSWORD` | Haslo ClickHouse (syslog) | netdoc |
 
 Gdy `NETWORK_RANGES` jest puste, system automatycznie wykrywa lokalne podsieci.
 
@@ -166,7 +177,9 @@ Pokrycie kluczowych modulow:
 - `normalizer.py` — 100%
 - `api/routes/devices.py` — 97%
 - `network_detect.py` — 89%
-- Ogolne — ~38%
+- Ogolne — ~80%
+
+Liczba testow: **2470+** (jednostkowe + integracyjne)
 
 ---
 
@@ -186,10 +199,17 @@ Pokrycie kluczowych modulow:
 - **UniFi API** — sprzet Ubiquiti (UniFi OS)
 - **Modbus TCP** — inwertery, PLC, liczniki energii
 
+### Syslog
+
+- **Archiwizacja** — logi sieciowe z routerow, switchy i AP w ClickHouse (rsyslog → Vector → ClickHouse)
+- **Filtrowanie** — severity, urzadzenie, program, zakres czasu, wyszukiwanie w tresci
+- **Dashboard Grafana** — timeline logow, top urzadzenia, top programy
+- **Pipeline** — Debian rsyslog (UDP/TCP 514), kolejka dyskowa, auto-retry
+
 ### Bezpieczenstwo
 
-- **Skanowanie podatnosci** — domyslne hasla, otwarty Telnet/RTSP/Modbus, ONVIF bez auth, DVRIP
-- **Testowanie credentials** — SSH, HTTP Basic, SNMP, VNC, FTP — automatyczna weryfikacja
+- **Skanowanie podatnosci** — 33+ kontrole: domyslne hasla, Telnet/RTSP/Modbus bez auth, ONVIF kamery, DVRIP, Redis, MongoDB, Docker API
+- **Testowanie credentials** — SSH, HTTP Basic, SNMP, VNC, FTP, RDP, MySQL, MSSQL, PostgreSQL — 170+ par
 - **Re-weryfikacja** — credentials sprawdzane przy kazdym cyklu skanowania
 
 ### Monitorowanie
@@ -198,11 +218,12 @@ Pokrycie kluczowych modulow:
 - **Alerty Telegram** — urzadzenie zniklo/pojawilo sie/wykryto podatnosc
 - **Prometheus metrics** — liczniki urzadzen, skanow, bledow
 - **Loki** — agregacja logow ze wszystkich kontenerow
-- **Grafana dashboardy** — inwentarz, security, workers, internet
+- **Grafana dashboardy (6)** — inwentarz, security, workers, internet, logi, syslog
 
 ### Admin UI (Flask)
 
 - Dashboard z podsumowaniem stanu sieci
+- Zakładka Syslog — przegladanie i filtrowanie logow sieciowych
 - Zarzadzanie sieciami i credentials (CRUD)
 - Wyzwalanie skanowania (standard / full port scan / aktualizacja OUI)
 - Podglad logow, alertow, podatnosci
@@ -215,26 +236,35 @@ Pokrycie kluczowych modulow:
 ```
 netdoc/
 ├── api/              # FastAPI endpoints
-│   └── routes/       # devices, topology, events, scan, credentials, vulnerabilities
+│   └── routes/       # devices, topology, events, scan, credentials, vulnerabilities, syslog
 ├── collector/        # Discovery engine
 │   ├── discovery.py  # ARP + nmap + OUI + reklasyfikacja
 │   ├── pipeline.py   # SNMP/SSH/Modbus kolekcja
 │   ├── normalizer.py # Normalizacja danych
 │   └── drivers/      # snmp, cisco, mikrotik, unifi, modbus
-├── storage/          # SQLAlchemy models + database
+├── storage/          # SQLAlchemy models + database + clickhouse.py
 ├── notifications/    # Telegram alerts
 └── web/              # Flask Admin UI + chat_agent
+clickhouse/
+└── init/             # Inicjalizacja bazy netdoc_logs (Dictionary, tabela syslog)
 config/
-├── grafana/          # Provisioning: datasources, dashboards (5 dashboardow)
+├── grafana/          # Provisioning: datasources, dashboards (6 dashboardow)
 ├── loki/             # Loki config
 ├── promtail/         # Log shipper
+├── rsyslog/          # rsyslog.conf (syslog receiver)
+├── vector/           # syslog.toml (pipeline rsyslog → ClickHouse)
+├── clickhouse/       # users.xml (profil netdoc)
 └── lab/              # Demo Lab: PLC, router, SSH, HMI
+docker/
+└── rsyslog/          # Dockerfile (Debian rsyslog)
 run_scanner.py        # Glowny skaner (host)
 run_ping.py           # Ping worker (Docker)
 run_snmp_worker.py    # SNMP enrichment worker (Docker)
 run_cred_worker.py    # Credential testing worker (Docker)
 run_vuln_worker.py    # Vulnerability scanner (Docker)
-tests/                # 500+ testow jednostkowych
+run_community_worker.py  # SNMP community discovery (Docker)
+run_internet.py       # Internet connectivity checks (Docker)
+tests/                # 2470+ testow jednostkowych
 ```
 
 ---
@@ -249,23 +279,27 @@ tests/                # 500+ testow jednostkowych
 | SNMP kolekcja + autodiscovery | ✅ Done |
 | SSH kolekcja (Cisco, MikroTik) | ✅ Done |
 | Modbus TCP (PLC, inwertery) | ✅ Done |
-| Skanowanie podatnosci | ✅ Done |
-| Testowanie credentials (SSH/HTTP/SNMP/VNC/FTP) | ✅ Done |
+| Skanowanie podatnosci (33+ typow) | ✅ Done |
+| Testowanie credentials (10 protokolow) | ✅ Done |
 | Ping monitoring (co 18s) | ✅ Done |
 | Alerty Telegram | ✅ Done |
+| Syslog pipeline (rsyslog → Vector → ClickHouse) | ✅ Done |
 | FastAPI REST | ✅ Done |
 | PostgreSQL storage | ✅ Done |
 | Prometheus metrics | ✅ Done |
-| Grafana dashboardy (5 szt.) | ✅ Done |
+| Grafana dashboardy (6 szt.) | ✅ Done |
 | Loki + Promtail | ✅ Done |
-| Flask Admin UI | ✅ Done |
-| Docker Compose (9 kontenerow) | ✅ Done |
+| Flask Admin UI + zakładka Syslog | ✅ Done |
+| Docker Compose (16 kontenerow) | ✅ Done |
 | Demo Lab (symulowane urzadzenia) | ✅ Done |
-| Testy jednostkowe (500+) | ✅ Done |
+| Testy jednostkowe (2470+) | ✅ Done |
 | Task Scheduler (Windows autostart) | ✅ Done |
+| Watchdog (auto-restart kontenerow) | ✅ Done |
 | Mapa topologii sieci | 🔄 W trakcie |
 | SNMP Walk (ARP, routing, LLDP) | 🔄 W trakcie |
 | Raporty PDF | 📋 Planned |
+| NetFlow / sFlow analiza ruchu | 📋 Planned |
+| NIS2 / DORA Compliance Pack | 📋 Planned |
 | Integracja Zabbix | 📋 Planned |
 | Alerty email (SMTP) | 📋 Planned |
 
