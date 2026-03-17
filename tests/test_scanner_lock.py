@@ -325,6 +325,49 @@ class TestRestartLogic:
         assert "10.0.0.2" not in stale
         db.close()
 
+    # -------------------------------------------------------------------------
+    # Testy regresyjne BUG-CONC-1: atomiczne zapisanie PID (TOCTOU fix)
+    # -------------------------------------------------------------------------
+
+    def test_lock_uses_exclusive_create_x_mode(self, tmp_path):
+        """BUG-CONC-1: _acquire_scanner_lock zapisuje PID przez open('x') nie open('w').
+
+        Weryfikuje ze zrodlo kodu zawiera open(_LOCK_FILE, 'x') — jesli wrocimy
+        do open('w') ten test padnie.
+        """
+        import inspect, run_scanner as rs
+        src = inspect.getsource(rs._acquire_scanner_lock)
+        assert '"x"' in src or "'x'" in src, (
+            "BUG-CONC-1 regresja: _acquire_scanner_lock nie uzywa open('x') — "
+            "TOCTOU race condition powrocil"
+        )
+
+    def test_lock_race_condition_file_exists_error_returns_false(self, tmp_path):
+        """BUG-CONC-1: jesli FileExistsError podczas open('x') -> zwroc False.
+
+        Symuluje sytuacje gdy inny proces zapisal lock miedzy naszym remove() a open('x').
+        """
+        _is_scanner_process, _acquire_scanner_lock, _ = _import_lock_fns()
+        import run_scanner as rs
+        lock_file = str(tmp_path / "scanner.pid")
+        other_pid = 77777
+
+        original_open = open
+
+        def _open_raises_once(path, mode="r", **kw):
+            if path == lock_file and mode == "x":
+                # Zapisz PID innego procesu i rzuc FileExistsError
+                with original_open(lock_file, "w") as f:
+                    f.write(str(other_pid))
+                raise FileExistsError("inny proces zdazyl")
+            return original_open(path, mode, **kw)
+
+        with patch.object(rs, "_LOCK_FILE", lock_file), \
+             patch("builtins.open", side_effect=_open_raises_once):
+            result = _acquire_scanner_lock()
+
+        assert result is False, "FileExistsError podczas open('x') powinien zwrocic False"
+
     def test_deleted_device_rediscovered_by_upsert(self):
         """Usuniete z GUI urzadzenie wraca po kolejnym skanie (upsert po IP)."""
         from netdoc.storage.models import Device, DeviceType, Event

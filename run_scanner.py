@@ -2353,7 +2353,7 @@ def _ensure_task_scheduled() -> bool:
     # Sprawdz czy task juz istnieje (schtasks nie wymaga PowerShell)
     check = subprocess.run(
         ["schtasks", "/Query", "/TN", TASK_NAME, "/FO", "LIST"],
-        capture_output=True,
+        capture_output=True, timeout=30,  # BUG-CONC-8: brak timeout mogl zawiesic skaner
     )
     if check.returncode == 0:
         logger.info("Task Scheduler: zadanie %r juz istnieje.", TASK_NAME)
@@ -2380,7 +2380,7 @@ def _ensure_task_scheduled() -> bool:
             ])
             fix_result = subprocess.run(
                 ["powershell", "-NonInteractive", "-OutputFormat", "Text", "-Command", ps_fix],
-                capture_output=True,
+                capture_output=True, timeout=30,
             )
             fix_out = fix_result.stdout.decode("utf-8", errors="replace")
             if "UPDATED" in fix_out:
@@ -2393,7 +2393,7 @@ def _ensure_task_scheduled() -> bool:
 
         if "Running" not in output:
             logger.info("Task Scheduler: uruchamiam zadanie...")
-            subprocess.run(["schtasks", "/Run", "/TN", TASK_NAME], capture_output=True)
+            subprocess.run(["schtasks", "/Run", "/TN", TASK_NAME], capture_output=True, timeout=30)
         return True
 
     # Nie istnieje - utworz przez PowerShell z UTF-8 output
@@ -2408,13 +2408,13 @@ def _ensure_task_scheduled() -> bool:
     ])
     result = subprocess.run(
         ["powershell", "-NonInteractive", "-OutputFormat", "Text", "-Command", ps_cmd],
-        capture_output=True,
+        capture_output=True, timeout=60,
     )
     stdout = result.stdout.decode("utf-8", errors="replace")
     stderr = result.stderr.decode("utf-8", errors="replace")
     if result.returncode == 0 and "OK" in stdout:
         logger.info("Task Scheduler: zadanie %r zarejestrowane.", TASK_NAME)
-        subprocess.run(["schtasks", "/Run", "/TN", TASK_NAME], capture_output=True)
+        subprocess.run(["schtasks", "/Run", "/TN", TASK_NAME], capture_output=True, timeout=30)
         return True
     logger.warning(
         "Task Scheduler: nie udalo sie zarejestrowac (brak uprawnien admin?). "
@@ -2438,7 +2438,7 @@ def _ensure_watchdog_scheduled() -> None:
     import subprocess
     check = subprocess.run(
         ["schtasks", "/Query", "/TN", WATCHDOG_TASK_NAME, "/FO", "LIST"],
-        capture_output=True,
+        capture_output=True, timeout=30,
     )
     if check.returncode == 0:
         logger.info("Task Scheduler: watchdog %r istnieje.", WATCHDOG_TASK_NAME)
@@ -2460,7 +2460,7 @@ def _ensure_watchdog_scheduled() -> None:
     )
     result = subprocess.run(
         ["powershell", "-ExecutionPolicy", "Bypass", "-NonInteractive", "-File", watchdog_script],
-        capture_output=True,
+        capture_output=True, timeout=60,
     )
     out = result.stdout.decode("utf-8", errors="replace")
     err = result.stderr.decode("utf-8", errors="replace")
@@ -2700,10 +2700,24 @@ def _acquire_scanner_lock() -> bool:
         except (ValueError, OSError):
             pass  # uszkodzony plik — nadpisz
 
-    # Zapisz nasz PID
+    # BUG-CONC-1: atomiczne zapisanie PID — open("x") rzuca FileExistsError jesli
+    # inny proces zdazyl zapisac lock miedzy naszym sprawdzeniem a zapisem (TOCTOU fix)
     try:
-        with open(_LOCK_FILE, "w") as _f:
+        try:
+            os.remove(_LOCK_FILE)
+        except OSError:
+            pass  # nie istnieje lub nie mozna usunac — open("x") to wykryje
+        with open(_LOCK_FILE, "x") as _f:
             _f.write(str(my_pid))
+    except FileExistsError:
+        # Inny proces przejal lock miedzy naszym sprawdzeniem a zapisem
+        try:
+            with open(_LOCK_FILE) as _f:
+                other = _f.read().strip()
+            logger.error("Race condition: skaner PID=%s wyprzedzil. Zamykam.", other)
+        except OSError:
+            logger.error("Race condition: inny skaner wyprzedzil. Zamykam.")
+        return False
     except OSError as e:
         logger.warning("Nie mozna zapisac pliku lock: %s", e)
         return True  # kontynuuj bez locka jesli plik niedostepny

@@ -1835,12 +1835,27 @@ def _process_device(device_id: int, ip: str,
     return res
 
 
+_dangling_threads: list = []  # BUG-CONC-2: sledzenie watkow po timeout (daemon, nie mozna zabic)
+_MAX_DANGLING = 50            # limit zanim zaczniemy spowalniać
+
+
 def _process_device_with_timeout(timeout_s: int, device_id: int, ip: str,
                                   ssh_pairs: list, web_pairs: list, ftp_pairs: list,
                                   rdp_pairs: list, vnc_pairs: list, pairs_per_cycle: int,
                                   mssql_pairs: list = [], mysql_pairs: list = [],
                                   postgres_pairs: list = []) -> dict:
     """Uruchamia _process_device w watku z timeoutem. Jesli przekroczy — zwraca timeout=True."""
+    # BUG-CONC-2: prune zakończonych wątków z listy dangling przed dodaniem nowych
+    global _dangling_threads
+    _dangling_threads = [t for t in _dangling_threads if t.is_alive()]
+    if len(_dangling_threads) >= _MAX_DANGLING:
+        logger.warning(
+            "BUG-CONC-2: %d watkow nadal aktywnych po timeout — mozliwy OOM/wyczerpanie fd. "
+            "Pomijam %s.", len(_dangling_threads), ip,
+        )
+        return {"ssh": False, "telnet": False, "web": False, "ftp": False, "rdp": False,
+                "mssql": False, "mysql": False, "postgres": False, "new": 0, "timeout": True}
+
     result: list = [None]
 
     def _run():
@@ -1854,6 +1869,7 @@ def _process_device_with_timeout(timeout_s: int, device_id: int, ip: str,
     t.join(timeout=timeout_s)
     if t.is_alive():
         logger.warning("TIMEOUT   %-18s przekroczono %ds — pomijam urzadzenie", ip, timeout_s)
+        _dangling_threads.append(t)  # śledź wątek — może nadal trzymać socket SSH
         return {"ssh": False, "telnet": False, "web": False, "ftp": False, "rdp": False,
                 "mssql": False, "mysql": False, "postgres": False, "new": 0, "timeout": True}
     return result[0] or {"ssh": False, "telnet": False, "web": False, "ftp": False, "rdp": False,
