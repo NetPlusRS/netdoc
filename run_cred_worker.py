@@ -1759,7 +1759,8 @@ def _process_device(device_id: int, ip: str,
                 pair = discover_vnc(ip, vnc_to_try)
                 if pair:
                     _save_cred(db, device_id, CredentialMethod.vnc, pair[0], pair[1])
-                    logger.info("VNC OK:   %-18s pass=%s", ip, pair[1] or "(puste)")
+                    _masked = ("*" * min(len(pair[1] or ""), 4)) or "(puste)"
+                    logger.info("VNC OK:   %-18s pass=%s", ip, _masked)  # BUG-SEC-10: maskowanie
                     res["vnc"] = True; res["new"] += 1
                 else:
                     logger.info("VNC brak: %-18s (wyprobowano %d hasel)", ip, len(vnc_to_try))

@@ -4992,7 +4992,8 @@ Dla urządzeń nieobsoletes: "replacements": []"""
 
         _threading.Thread(target=_restart_after_restore, daemon=True).start()
 
-        container_list_js = str(_RESTORE_CONTAINERS + ["netdoc-web"])
+        # BUG-SEC-7: uzyj zmiennej Jinja2 zamiast konkatenacji w render_template_string
+        container_list_json = _json.dumps(_RESTORE_CONTAINERS + ["netdoc-web"])
         return render_template_string("""
 <!DOCTYPE html>
 <html lang="pl">
@@ -5025,7 +5026,7 @@ Dla urządzeń nieobsoletes: "replacements": []"""
   </div>
 
   <script>
-  var CONTAINERS = """ + container_list_js + """;
+  var CONTAINERS = {{ containers_json | safe }};
   var redirectAt = Date.now() + 12000;
   var allUp = false;
 
@@ -5074,7 +5075,7 @@ Dla urządzeń nieobsoletes: "replacements": []"""
   <style>.spin{animation:spin 1s linear infinite;}@keyframes spin{to{transform:rotate(360deg);}}</style>
 </body>
 </html>
-""", container_list_js=container_list_js)
+""", containers_json=container_list_json)
 
     return app
 
