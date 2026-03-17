@@ -17,6 +17,26 @@ Niezalezny od producenta urzadzen — Cisco, MikroTik, Ubiquiti, Fortinet i inne
 
 ---
 
+## Screenshots
+
+| Panel urządzeń | Bezpieczeństwo |
+|---|---|
+| ![Urządzenia](docs/screenshots/devices.png) | ![Bezpieczeństwo](docs/screenshots/security.png) |
+
+| Inwentarz (S/N, gwarancja, ceny) | Credentials — pokrycie sieci |
+|---|---|
+| ![Inwentarz](docs/screenshots/inventory.png) | ![Credentials](docs/screenshots/credentials.png) |
+
+| AI Chat — analiza podatności | AI Chat — urządzenie MOXA (OT) |
+|---|---|
+| ![AI Security](docs/screenshots/ai_chat_security.png) | ![AI MOXA](docs/screenshots/ai_device_moxa.png) |
+
+| Syslog — logi sieciowe | Grafana — przegląd sieci |
+|---|---|
+| ![Syslog](docs/screenshots/syslog.png) | ![Grafana](docs/screenshots/grafana_main.png) |
+
+---
+
 ## Architektura
 
 ```
@@ -78,12 +98,25 @@ Menu:
 
 ## Szybki start — reczny (Linux / macOS / Windows bez instalatora)
 
+**Wymagania:** Docker + Docker Compose v2 (`docker compose`, nie `docker-compose`), Python 3.10+, nmap w PATH.
+
 ```bash
-cp .env.example .env   # Linux/macOS
-# copy .env.example .env   # Windows cmd
+# Linux/macOS
+cp .env.example .env
+# Edytuj .env jesli potrzeba (NETWORK_RANGES, CLICKHOUSE_PASSWORD itp.)
 
 docker compose up -d
 ```
+
+```
+# Windows cmd
+copy .env.example .env
+docker compose up -d
+```
+
+> **Linux — port 514 (syslog):** Jezeli urzadzenia sieciowe wysylaja syslog do hosta,
+> upewnij sie ze firewall przepuszcza port 514/UDP i 514/TCP z sieci lokalnej:
+> `sudo ufw allow 514/udp && sudo ufw allow 514/tcp`
 
 | Serwis | URL |
 |--------|-----|
@@ -100,6 +133,10 @@ Domyslne haslo Grafana: `admin / netdoc`
 Skaner uruchamia sie na hoscie (pelny dostep do sieci, ARP table):
 
 ```bash
+# Linux/macOS: upewnij sie ze nmap jest zainstalowany
+# sudo apt install nmap   (Debian/Ubuntu)
+# brew install nmap       (macOS)
+
 pip install -r requirements.txt
 python run_scanner.py --once
 ```
@@ -108,7 +145,7 @@ python run_scanner.py --once
 
 Skonfiguruj urzadzenia sieciowe (routery, switche, AP) aby wysylaly syslog UDP na port 514
 adresu IP hosta z NetDoc. Logi trafią automatycznie do ClickHouse i będą widoczne w zakładce
-**Syslog** oraz na dashboardzie Grafana.
+**Syslog** (NetDoc Pro) oraz na dashboardzie Grafana.
 
 ### Autostart (Windows Task Scheduler)
 

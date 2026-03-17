@@ -21,6 +21,7 @@
 - Eksport raportów PDF
 - **NetFlow / sFlow** — analiza ruchu sieciowego, wykrywanie anomalii (eksfiltracja, lateral movement)
 - **NIS2 / DORA Compliance Pack** — retencja logów 12 mies., raporty compliance, export dla audytorów
+- **Threat Intelligence** — sprawdzanie IP i domen z blacklistami (AbuseIPDB, Spamhaus DROP/EDROP, URLhaus, abuse.ch); alert gdy urządzenie nawiąże połączenie z infrastrukturą malware/ransomware/C2
 - Integracja z Zabbix — auto-provisioning wykrytych urządzeń
 - Mapa topologii w UI
 
@@ -30,6 +31,9 @@
 - EoL/EoS daty per model urządzenia (End-of-Life badge)
 - CVE per model (NVD feed)
 - Wykrywanie serwisów infrastruktury (DHCP, DNS, AD, NTP)
+- **DNS Monitoring** — integracja z Pi-hole / Unbound; zbieranie logów DNS zapytań z sieci, wykrywanie zapytań do złośliwych domen, historia połączeń per urządzenie (wymagane NIS2 Art. 21)
+- **Integracje z systemami bezpieczeństwa (Pro)** — korelacja "który asset jest atakowany" → pełen kontekst dla NIS2 Art. 21(2)(b):
+  Wazuh (SIEM alerts → asset), Suricata/Zeek (IDS/IPS + logi połączeń per host), CrowdSec (threat intel), Elastic/Splunk (SIEM forward)
 
 ## Długoterminowe
 
@@ -37,6 +41,7 @@
 - Notatki per urządzenie
 - Architektura SaaS / multi-tenant
 - Integracja z Suricatą (IP reputation snapshot)
+- Historia połączeń sieciowych per urządzenie — "kto z kim gadał" (NetFlow + DNS + Threat Intel)
 
 ## Demo Lab
 
