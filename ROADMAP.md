@@ -42,6 +42,7 @@
 - Architektura SaaS / multi-tenant
 - Integracja z Suricatą (IP reputation snapshot)
 - Historia połączeń sieciowych per urządzenie — "kto z kim gadał" (NetFlow + DNS + Threat Intel)
+- **AI Anomaly Detection (offline)** — lokalny model AI (Ollama/Isolation Forest) analizujący logi syslog bez wysyłania danych na zewnątrz; wykrywanie anomalii: nagły wzrost liczby błędów, nowe nieznane urządzenia w logach, sekwencje zdarzeń typowe dla ataku (failed login → scan → success); działa bez dodatkowych kosztów API
 
 ## Demo Lab
 
