@@ -351,14 +351,16 @@ services:
     container_name: netdoc-rsyslog
     restart: unless-stopped
     <<: *log-limit
+    # network_mode: host — rsyslog słucha bezpośrednio na interfejsie hosta,
+    # dzięki czemu fromhost-ip zawiera prawdziwe IP urządzenia źródłowego
+    # zamiast adresu Docker NAT (172.18.0.1). Działa poprawnie na Linux.
+    # Na Windows z Docker Desktop NAT pozostaje w warstwie WSL2 (ograniczenie platformy).
+    network_mode: host
     environment:
       TZ: "${TZ:-UTC}"
     volumes:
       - ./config/rsyslog/rsyslog.conf:/etc/rsyslog.conf:ro
       - rsyslog_queue:/var/spool/rsyslog
-    ports:
-      - "514:514/udp"   # syslog UDP (urządzenia sieciowe)
-      - "514:514/tcp"   # syslog TCP
     depends_on:
       - vector
 
