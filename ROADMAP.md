@@ -43,15 +43,39 @@
 - Integracja z Suricatą (IP reputation snapshot)
 - Historia połączeń sieciowych per urządzenie — "kto z kim gadał" (NetFlow + DNS + Threat Intel)
 - **AI Anomaly Detection (offline)** — lokalny model AI (Ollama/Isolation Forest) analizujący logi syslog bez wysyłania danych na zewnątrz; wykrywanie anomalii: nagły wzrost liczby błędów, nowe nieznane urządzenia w logach, sekwencje zdarzeń typowe dla ataku (failed login → scan → success); działa bez dodatkowych kosztów API
+- **Integracja z GNS3** — skanowanie wirtualnych topologii sieci zbudowanych z prawdziwych obrazów Cisco IOS, Juniper i MikroTik; testowanie NetDoc przed wdrożeniem w sieci produkcyjnej, weryfikacja wykrywalności podatności i mapowania topologii L2/L3 w kontrolowanym środowisku
 
 ## Demo Lab
 
-Repozytorium zawiera środowisko testowe (`docker-compose.lab.yml`) z symulowanymi urządzeniami:
-- Siemens S7-1200 PLC (Modbus/502)
-- Schneider Modicon M340 (licznik energii)
-- MikroTik RB750 router (SNMP + Telnet)
+Repozytorium zawiera środowisko testowe (`docker-compose.lab.yml`) z symulowanymi urządzeniami — 16 hostów pokrywających typową sieć przemysłową i biurową:
+
+**OT / Przemysłowe:**
+
+- Siemens S7-1200 PLC (Modbus/502, SNMP)
+- Schneider Modicon M340 — licznik energii (Modbus/502, SNMP)
+- ABB AC500 — kontroler zbiornika (Modbus/502, SNMP)
+- Fronius Symo 15.0 — inwerter fotowoltaiczny (Modbus/502, HTTP, SNMP)
+- MOXA NPort W2150A — konwerter RS-232/Ethernet (Telnet/23, HTTP, SNMP)
+
+**Sieć / Infrastruktura:**
+
+- MikroTik RB750 router (SNMP, Telnet/23)
 - Cisco-like switch (SSH)
 - Panel HMI WebServer (HTTP)
+- Ubiquiti UniFi AP AC Pro (HTTP, SNMP)
+
+**Kamery IP / Rejestratory:**
+
+- Dahua IPC-HDW2831T — kamera IP (ONVIF/80, RTSP/554, port Dahua/37777, SNMP)
+- Hikvision DS-2CD2143G2 — kamera IP (RTSP/554, port XMEye/34567, HTTP, SNMP)
+
+**Urządzenia biurowe / serwerowe:**
+
+- HP LaserJet M404n — drukarka sieciowa (HTTP, JetDirect/9100, SNMP)
+- Synology DS920+ NAS (HTTP, FTP anonymous/21, SNMP)
+- APC Smart-UPS 1500 (HTTP, Telnet/23, SNMP)
+- Ubuntu Server 22.04 (Redis/6379, MQTT/1883, Docker API/2375, HTTP, SNMP)
+- Windows Server 2019 (RDP/3389, VNC bez hasła/5900, HTTP, SNMP)
 
 ```bash
 docker compose -f docker-compose.lab.yml up -d

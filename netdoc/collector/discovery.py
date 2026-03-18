@@ -1081,19 +1081,29 @@ def ping_sweep(network_range):
     """
     logger.info("Ping sweep: %s", network_range)
     nm = nmap.PortScanner(nmap_search_path=_NMAP_SEARCH_PATH)
-    try:
-        nm.scan(hosts=network_range, arguments="-sn --min-rate 1000")
-    except UnicodeDecodeError:
-        logger.warning("Ping sweep: nmap output encoding error, pomijam")
-        return []
-    except nmap.PortScannerError as e:
-        logger.error(
-            "Ping sweep: nmap niedostepny dla %s (%s). "
-            "Mozliwa przyczyna: Npcap nie jest jeszcze zaladowany po swiezej instalacji nmap. "
-            "Probuje TCP fallback...",
-            network_range, e
-        )
-        return _tcp_sweep_fallback(network_range)
+    # Uwaga: --min-rate z -sn destabilizuje timer Npcap na Windows (assertion
+    # "htn.toclock_running == true") — uzyj -T4 zamiast --min-rate.
+    # Przy przejsciowym bledzie Npcap (np. tuz po starcie systemu) ponawia raz.
+    for attempt in range(2):
+        try:
+            nm.scan(hosts=network_range, arguments="-sn -T4")
+            break
+        except UnicodeDecodeError:
+            logger.warning("Ping sweep: nmap output encoding error, pomijam")
+            return []
+        except nmap.PortScannerError as e:
+            if attempt == 0:
+                logger.warning(
+                    "Ping sweep: nmap error dla %s (%s), ponawiam po 2s...",
+                    network_range, e,
+                )
+                import time as _t; _t.sleep(2)
+            else:
+                logger.error(
+                    "Ping sweep: nmap niedostepny dla %s (%s). Probuje TCP fallback...",
+                    network_range, e,
+                )
+                return _tcp_sweep_fallback(network_range)
     active = [h for h in nm.all_hosts() if nm[h].state() == "up"]
     logger.info("Aktywne hosty (nmap): %d w %s", len(active), network_range)
     return active

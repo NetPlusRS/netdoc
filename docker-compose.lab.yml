@@ -8,17 +8,32 @@
 #   docker network connect netdoc_lab netdoc-cred
 #   docker network connect netdoc_lab netdoc-vuln
 #   docker network connect netdoc_lab netdoc-ping
+#   docker network connect netdoc_lab netdoc-community
 #
 # .env — dodaj podsiec do skanowania:
 #   NETWORK_RANGES=["192.168.5.0/24","172.28.0.0/24"]
 #
 # URZADZENIA (172.28.0.0/24):
-#   172.28.0.10  netdoc-lab-plc-s7     Siemens S7-200 PLC   (Modbus/502, S7/102, SNMP, Telnet/23, FTP/21, HTTP/80)
-#   172.28.0.11  netdoc-lab-plc-meter  Kamstrup licznik      (Modbus/502, SNMP, HTTP/80)
-#   172.28.0.12  netdoc-lab-plc-fuel   Guardian AST zbiornik (Modbus/502, SNMP, HTTP/80)
-#   172.28.0.20  netdoc-lab-router     MikroTik RB750 router (SNMP/161, Telnet/23)
-#   172.28.0.30  netdoc-lab-ssh        Cisco IOS switch      (SSH/22 — slabe haslo admin/admin)
-#   172.28.0.40  netdoc-lab-hmi        Panel HMI WebServer   (HTTP/80 — strona logowania)
+#
+#   === Istniejace (PLC / OT) ===
+#   172.28.0.10  netdoc-lab-plc-s7     Siemens S7-1200 PLC    (Modbus/502, SNMP)
+#   172.28.0.11  netdoc-lab-plc-meter  Kamstrup licznik       (Modbus/502, SNMP)
+#   172.28.0.12  netdoc-lab-plc-fuel   ABB AC500 zbiornik     (Modbus/502, SNMP)
+#   172.28.0.20  netdoc-lab-router     MikroTik RB750 router  (SNMP/161, Telnet/23)
+#   172.28.0.30  netdoc-lab-ssh        Cisco IOS switch       (SSH/22)
+#   172.28.0.40  netdoc-lab-hmi        Panel HMI WebServer    (HTTP/80)
+#
+#   === Nowe (kamery, drukarki, NAS, konwertery, serwery) ===
+#   172.28.0.50  netdoc-lab-cam-dahua  Dahua IP Camera        (HTTP/80, ONVIF, RTSP/554, Dahua/37777, SNMP)
+#   172.28.0.51  netdoc-lab-cam-hik    Hikvision DVR          (HTTP/80, RTSP/554, XMEye/34567, SNMP)
+#   172.28.0.52  netdoc-lab-printer    HP LaserJet M404n      (HTTP/80, JetDirect/9100, SNMP)
+#   172.28.0.53  netdoc-lab-nas        Synology DS920+        (HTTP/80, FTP/21 anon, SNMP)
+#   172.28.0.54  netdoc-lab-moxa       MOXA NPort W2150A      (HTTP/80, Telnet/23, SNMP)
+#   172.28.0.55  netdoc-lab-ups        APC Smart-UPS 1500     (HTTP/80, Telnet/23, SNMP)
+#   172.28.0.56  netdoc-lab-solar      Fronius Symo 15.0      (HTTP/80, Modbus/502, SNMP)
+#   172.28.0.57  netdoc-lab-server     Ubuntu Server 22.04    (HTTP/80, Redis/6379, MQTT/1883, Docker/2375, SNMP)
+#   172.28.0.58  netdoc-lab-ap         Ubiquiti UniFi AP Pro  (HTTP/80, SNMP)
+#   172.28.0.59  netdoc-lab-winserver  Windows Server 2019    (HTTP/80, RDP/3389, VNC/5900, SNMP)
 
 name: netdoc-lab
 
@@ -127,3 +142,216 @@ services:
         ipv4_address: 172.28.0.40
     ports:
       - "15040:80"   # HTTP HMI (lokal: port 15040)
+
+  # ============================================================================
+  # NOWE URZADZENIA — generyczny symulator (config/lab/device/)
+  # ============================================================================
+
+  # ── Dahua IP Camera (HTTP/ONVIF/RTSP/Dahua port) ──────────────────────────
+  # Podatnosci: dahua_dvr_exposed (37777), rtsp_noauth (554),
+  #             onvif_noauth (80), http_management (80), snmp_public
+  netdoc-lab-cam-dahua:
+    build:
+      context: ./config/lab/device
+      dockerfile: Dockerfile
+    image: netdoc-lab-device
+    container_name: netdoc-lab-cam-dahua
+    restart: unless-stopped
+    environment:
+      DEV_NAME: "Dahua-IPC-HDW2831T"
+      DEV_SNMP_DESCR: "Dahua IPC-HDW2831T-AS 8MP WizSense IR Fixed-focal Dome Camera"
+      DEV_SNMP_NAME: "Dahua-IPC-HDW2831T"
+      DEV_SNMP_LOC: "Parking zewnetrzny / Wejscie A"
+      DEV_HTTP_TITLE: "Dahua IP Camera"
+      DEV_ENABLE_RTSP: "1"
+      DEV_ENABLE_ONVIF: "1"
+      DEV_ENABLE_DAHUA: "1"
+    networks:
+      lab:
+        ipv4_address: 172.28.0.50
+
+  # ── Hikvision DVR (HTTP/RTSP/XMEye port) ──────────────────────────────────
+  # Podatnosci: xmeye_dvr_exposed (34567), rtsp_noauth (554),
+  #             http_management (80), snmp_public
+  netdoc-lab-cam-hik:
+    build:
+      context: ./config/lab/device
+      dockerfile: Dockerfile
+    image: netdoc-lab-device
+    container_name: netdoc-lab-cam-hik
+    restart: unless-stopped
+    environment:
+      DEV_NAME: "Hikvision-DS-2CD2143G2"
+      DEV_SNMP_DESCR: "Hikvision DS-2CD2143G2-I 4MP AcuSense Fixed Dome Network Camera"
+      DEV_SNMP_NAME: "Hikvision-DS-2CD2143G2"
+      DEV_SNMP_LOC: "Hala produkcyjna / Kamera 3"
+      DEV_HTTP_TITLE: "Hikvision IP Camera"
+      DEV_ENABLE_RTSP: "1"
+      DEV_ENABLE_XMEYE: "1"
+    networks:
+      lab:
+        ipv4_address: 172.28.0.51
+
+  # ── HP LaserJet M404n (drukarka sieciowa) ─────────────────────────────────
+  # Uwaga: vuln-worker pomija drukarki (SKIP_VULN_DEVICE_TYPES),
+  # ale drukarka jest widoczna w inwentarzu z portami 9100/80.
+  netdoc-lab-printer:
+    build:
+      context: ./config/lab/device
+      dockerfile: Dockerfile
+    image: netdoc-lab-device
+    container_name: netdoc-lab-printer
+    restart: unless-stopped
+    environment:
+      DEV_NAME: "HP-LaserJet-M404n"
+      DEV_SNMP_DESCR: "HP LaserJet Pro M404n, ROM dsj1FN1.2135140, Model Number: W1A52A"
+      DEV_SNMP_NAME: "HP-LaserJet-M404n"
+      DEV_SNMP_LOC: "Biuro / Drukarka sieciowa"
+      DEV_HTTP_TITLE: "HP LaserJet M404n"
+      DEV_ENABLE_JETDIRECT: "1"
+    networks:
+      lab:
+        ipv4_address: 172.28.0.52
+
+  # ── Synology NAS DS920+ (FTP anonymous + HTTP) ────────────────────────────
+  # Podatnosci: anonymous_ftp (21), open_ftp (21), snmp_public
+  netdoc-lab-nas:
+    build:
+      context: ./config/lab/device
+      dockerfile: Dockerfile
+    image: netdoc-lab-device
+    container_name: netdoc-lab-nas
+    restart: unless-stopped
+    environment:
+      DEV_NAME: "Synology-DS920plus"
+      DEV_SNMP_DESCR: "Synology DiskStation DS920+ (DSM 7.2-64561 Update 1)"
+      DEV_SNMP_NAME: "Synology-DS920plus"
+      DEV_SNMP_LOC: "Serwerownia / Rack 2 / NAS backup"
+      DEV_HTTP_TITLE: "Synology DiskStation DS920+"
+      DEV_ENABLE_FTP: "1"
+    networks:
+      lab:
+        ipv4_address: 172.28.0.53
+
+  # ── MOXA NPort W2150A (konwerter RS-232 → Ethernet) ───────────────────────
+  # Podatnosci: open_telnet (23), snmp_public
+  netdoc-lab-moxa:
+    build:
+      context: ./config/lab/device
+      dockerfile: Dockerfile
+    image: netdoc-lab-device
+    container_name: netdoc-lab-moxa
+    restart: unless-stopped
+    environment:
+      DEV_NAME: "MOXA-NPort-W2150A"
+      DEV_SNMP_DESCR: "MOXA NPort W2150A Wireless Device Server (802.11 a/b/g/n) FW 2.3"
+      DEV_SNMP_NAME: "MOXA-NPort-W2150A"
+      DEV_SNMP_LOC: "Hala produkcyjna / Maszyna CNC-7"
+      DEV_HTTP_TITLE: "MOXA NPort W2150A Device Server"
+      DEV_ENABLE_TELNET: "1"
+    networks:
+      lab:
+        ipv4_address: 172.28.0.54
+
+  # ── APC Smart-UPS 1500 (zasilacz awaryjny) ────────────────────────────────
+  # Podatnosci: open_telnet (23), snmp_public
+  netdoc-lab-ups:
+    build:
+      context: ./config/lab/device
+      dockerfile: Dockerfile
+    image: netdoc-lab-device
+    container_name: netdoc-lab-ups
+    restart: unless-stopped
+    environment:
+      DEV_NAME: "APC-SmartUPS-1500"
+      DEV_SNMP_DESCR: "APC Smart-UPS 1500VA LCD RM 2U 120V (SMT1500RM2UC) FW: UPS 09.8"
+      DEV_SNMP_NAME: "APC-SmartUPS-1500"
+      DEV_SNMP_LOC: "Serwerownia / Rack 1 / UPS"
+      DEV_HTTP_TITLE: "APC Smart-UPS 1500 Network Management"
+      DEV_ENABLE_TELNET: "1"
+    networks:
+      lab:
+        ipv4_address: 172.28.0.55
+
+  # ── Fronius Symo 15.0 (inwerter fotowoltaiczny) ───────────────────────────
+  # Podatnosci: modbus_exposed (502), snmp_public
+  netdoc-lab-solar:
+    build:
+      context: ./config/lab/device
+      dockerfile: Dockerfile
+    image: netdoc-lab-device
+    container_name: netdoc-lab-solar
+    restart: unless-stopped
+    environment:
+      DEV_NAME: "Fronius-Symo-15"
+      DEV_SNMP_DESCR: "Fronius Symo 15.0-3-M Solar Inverter — Datamanager 2.0 v3.21.7-1"
+      DEV_SNMP_NAME: "Fronius-Symo-15"
+      DEV_SNMP_LOC: "Dach / Instalacja PV 60kWp"
+      DEV_HTTP_TITLE: "Fronius Solar.web — Datamanager"
+      DEV_ENABLE_MODBUS: "1"
+    networks:
+      lab:
+        ipv4_address: 172.28.0.56
+
+  # ── Ubuntu Server 22.04 (serwer z niezabezpieczonymi uslugami) ────────────
+  # Podatnosci: redis_noauth (6379), mqtt_noauth (1883),
+  #             docker_api_exposed (2375), snmp_public
+  netdoc-lab-server:
+    build:
+      context: ./config/lab/device
+      dockerfile: Dockerfile
+    image: netdoc-lab-device
+    container_name: netdoc-lab-server
+    restart: unless-stopped
+    environment:
+      DEV_NAME: "ubuntu-srv-01"
+      DEV_SNMP_DESCR: "Linux ubuntu-srv-01 5.15.0-88-generic Ubuntu 22.04.3 LTS x86_64"
+      DEV_SNMP_NAME: "ubuntu-srv-01"
+      DEV_SNMP_LOC: "Serwerownia / Rack 3 / VMware ESXi"
+      DEV_HTTP_TITLE: "Ubuntu Server — Application Dashboard"
+      DEV_ENABLE_REDIS: "1"
+      DEV_ENABLE_MQTT: "1"
+      DEV_ENABLE_DOCKER_API: "1"
+    networks:
+      lab:
+        ipv4_address: 172.28.0.57
+
+  # ── Ubiquiti UniFi AP AC Pro (punkt dostepu WiFi) ─────────────────────────
+  # Podatnosci: http_management (80 — dla typu ap), snmp_public
+  netdoc-lab-ap:
+    build:
+      context: ./config/lab/device
+      dockerfile: Dockerfile
+    image: netdoc-lab-device
+    container_name: netdoc-lab-ap
+    restart: unless-stopped
+    environment:
+      DEV_NAME: "UniFi-AP-AC-Pro"
+      DEV_SNMP_DESCR: "Ubiquiti Networks UAP-AC-PRO UniFi AP-AC-Pro, Version 6.5.55.14522"
+      DEV_SNMP_NAME: "UniFi-AP-AC-Pro"
+      DEV_SNMP_LOC: "Biuro / Sufitowy AP — sala konferencyjna"
+      DEV_HTTP_TITLE: "UniFi Access Point"
+    networks:
+      lab:
+        ipv4_address: 172.28.0.58
+
+  # ── Windows Server 2019 (RDP + VNC bez hasla) ─────────────────────────────
+  # Podatnosci: rdp_exposed (3389), vnc_noauth (5900), snmp_public
+  netdoc-lab-winserver:
+    build:
+      context: ./config/lab/device
+      dockerfile: Dockerfile
+    image: netdoc-lab-device
+    container_name: netdoc-lab-winserver
+    restart: unless-stopped
+    environment:
+      DEV_NAME: "WINSERVER-2019"
+      DEV_SNMP_DESCR: "Windows Server 2019 Standard, Build 17763, Intel Xeon E5-2690"
+      DEV_SNMP_NAME: "WINSERVER-2019"
+      DEV_SNMP_LOC: "Serwerownia / Rack 2 / Domain Controller"
+      DEV_HTTP_TITLE: "Windows Server 2019 — IIS 10.0"
+      DEV_ENABLE_RDP: "1"
+      DEV_ENABLE_VNC_NOAUTH: "1"
+    networks:
+      lab:
+        ipv4_address: 172.28.0.59
