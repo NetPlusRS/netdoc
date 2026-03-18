@@ -28,6 +28,7 @@ $ExpectedContainers = @(
     "netdoc-clickhouse"
     "netdoc-rsyslog"
     "netdoc-vector"
+    "netdoc-nginx"
 )
 
 function Write-Log {

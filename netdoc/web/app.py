@@ -2847,6 +2847,7 @@ def create_app():
         "clickhouse":  "netdoc-clickhouse",
         "rsyslog":     "netdoc-rsyslog",
         "vector":      "netdoc-vector",
+        "nginx":       "netdoc-nginx",
     }
 
     @app.route("/settings/docker/restart-stream")
