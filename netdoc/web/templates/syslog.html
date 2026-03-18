@@ -2,6 +2,27 @@
 {% block title %}Syslog{% endblock %}
 
 {% block content %}
+
+{# ── Banner: Docker NAT src_ip — pokazywany tylko gdy wykryty problem ── #}
+<div id="syslogNatBanner" class="alert alert-warning alert-dismissible d-none mb-3" role="alert"
+     style="border-left:4px solid var(--bs-warning);font-size:.88rem">
+  <div class="d-flex gap-2 align-items-start">
+    <i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
+    <div>
+      <strong>Adresy IP urządzeń mogą być niewidoczne</strong> — kolumna <em>IP</em> pokazuje
+      adres Docker NAT (<code>172.x.x.x</code>) zamiast prawdziwego IP urządzenia sieciowego.
+      <div class="mt-1 text-muted">
+        <strong>Przyczyna:</strong> Kontener rsyslog działa za mostem Docker, który maskuje
+        źródłowy adres pakietu UDP/TCP. Fix (<code>network_mode: host</code>) jest wdrożony
+        i działa poprawnie na Linux. Na <strong>Windows z Docker Desktop</strong> adres jest
+        nadal NATowany przez warstwę WSL2 — jest to ograniczenie platformy, nie błąd konfiguracji.
+        <br>Identyfikacja urządzeń możliwa przez pole <strong>hostname</strong> zawarte w treści logu.
+      </div>
+    </div>
+  </div>
+  <button type="button" class="btn-close" id="syslogNatBannerClose" aria-label="Zamknij"></button>
+</div>
+
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h5 class="mb-0"><i class="bi bi-journal-code me-2"></i>Syslog</h5>
   <div class="d-flex align-items-center gap-2">
@@ -147,6 +168,7 @@ function fetchLogs() {
       allRows = data.logs || [];
       applyTextFilter();
       setStatus("ok");
+      checkNatBanner(allRows);
     })
     .catch(err => {
       document.getElementById("syslogBody").innerHTML =
@@ -228,6 +250,36 @@ function startAuto() {
   if (arCheck.checked) autoRefreshTimer = setInterval(fetchLogs, 30000);
 }
 arCheck.addEventListener("change", startAuto);
+
+// ── Docker NAT banner — wykryj problem i pokaż tylko gdy występuje ───────────
+const _NAT_DISMISSED_KEY = "syslog_nat_banner_dismissed_v1";
+// Zakresy Docker bridge: 172.16–31.x.x (RFC 1918 blok /12 używany przez Docker)
+const _DOCKER_NAT_RE = /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/;
+
+function checkNatBanner(logs) {
+  // Nie pokazuj jeśli użytkownik już zamknął baner
+  if (localStorage.getItem(_NAT_DISMISSED_KEY)) return;
+  // Potrzeba przynajmniej 5 logów żeby ocenić
+  if (logs.length < 5) return;
+
+  const withIp = logs.filter(r => r.src_ip && r.src_ip !== "—");
+  if (withIp.length === 0) return;
+
+  const natCount = withIp.filter(r => _DOCKER_NAT_RE.test(r.src_ip)).length;
+  const ratio = natCount / withIp.length;
+
+  const banner = document.getElementById("syslogNatBanner");
+  if (ratio >= 0.5) {
+    banner.classList.remove("d-none");
+  } else {
+    banner.classList.add("d-none");
+  }
+}
+
+document.getElementById("syslogNatBannerClose").addEventListener("click", function() {
+  document.getElementById("syslogNatBanner").classList.add("d-none");
+  try { localStorage.setItem(_NAT_DISMISSED_KEY, "1"); } catch(e) {}
+});
 
 // Start
 fetchLogs();
