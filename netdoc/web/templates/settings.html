@@ -726,8 +726,23 @@
 <p class="text-muted small">Sekcja <strong>config</strong> jest edytowalna. Pozostałe ustawienia są read-only (zmień w <code>.env</code> i zrestartuj serwis).</p>
 
 {% for category, rows in grouped.items() %}
+{% set _collapsible = category == "cred_tried" %}
+{% set _cat_id = "settingsCat_" ~ loop.index %}
 <div class="card mb-3">
-  <div class="card-header text-capitalize"><i class="bi bi-sliders me-2"></i>{{ category }}</div>
+  <div class="card-header text-capitalize d-flex align-items-center justify-content-between
+              {% if _collapsible %}{% endif %}"
+       {% if _collapsible %}style="cursor:pointer" onclick="toggleSettingsCat('{{ _cat_id }}')" title="Kliknij aby rozwinąć / zwinąć"{% endif %}>
+    <span><i class="bi bi-sliders me-2"></i>{{ category }}
+      {% if _collapsible %}<small class="text-muted ms-2 fw-normal" style="font-size:.8rem">historia wypróbowanych haseł per urządzenie</small>{% endif %}
+    </span>
+    {% if _collapsible %}
+    <span class="d-flex align-items-center gap-2">
+      <span class="badge bg-secondary">{{ rows|length }} urządzeń</span>
+      <i class="bi bi-chevron-down" id="{{ _cat_id }}_chev" style="font-size:.85rem;transition:transform .2s"></i>
+    </span>
+    {% endif %}
+  </div>
+  <div {% if _collapsible %}id="{{ _cat_id }}" class="collapse"{% endif %}>
   <div class="card-body p-0">
     <table class="table table-sm mb-0">
       <tbody>
@@ -756,6 +771,15 @@
                 <i class="bi bi-check2"></i>
               </button>
             </form>
+            {% elif _collapsible %}
+            {# cred_tried: JSON blob — pokaż skrócony z możliwością rozwinięcia #}
+            {% set _v = r.value or "—" %}
+            {% if _v|length > 80 %}
+            <span class="font-monospace text-muted" style="font-size:.75rem;word-break:break-all"
+                  id="ctv_{{ r.key }}" data-full="{{ _v|e }}">{{ _v[:80] }}<span class="ctv-dots">… </span><a href="#" class="text-secondary" style="font-size:.7rem" onclick="expandCtv('{{ r.key }}');return false">pokaż</a></span>
+            {% else %}
+            <span class="font-monospace" style="font-size:.75rem">{{ _v }}</span>
+            {% endif %}
             {% else %}
             <span class="font-monospace">{{ r.value or "—" }}</span>
             {% endif %}
@@ -771,10 +795,42 @@
       </tbody>
     </table>
   </div>
+  </div>
 </div>
 {% else %}
 <div class="alert alert-secondary">Brak danych. Uruchom serwis NetDoc API.</div>
 {% endfor %}
+<script>
+(function(){
+  // Collapse dla cred_tried
+  function applyState(id, open) {
+    var el   = document.getElementById(id);
+    var chev = document.getElementById(id + "_chev");
+    if (!el) return;
+    if (open) { new bootstrap.Collapse(el, {toggle:false}).show(); if(chev) chev.style.transform="rotate(180deg)"; }
+    else       { new bootstrap.Collapse(el, {toggle:false}).hide(); if(chev) chev.style.transform="rotate(0deg)"; }
+  }
+  window.toggleSettingsCat = function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var nowOpen = el.classList.contains("show");
+    try { localStorage.setItem("scat_" + id, nowOpen ? "0" : "1"); } catch(e) {}
+    applyState(id, !nowOpen);
+  };
+  // Przywróć stan z localStorage (domyślnie zwinięte)
+  document.querySelectorAll(".collapse[id^='settingsCat_']").forEach(function(el) {
+    var open = localStorage.getItem("scat_" + el.id) === "1";
+    applyState(el.id, open);
+  });
+
+  // Rozwiń pełny JSON cred_tried
+  window.expandCtv = function(key) {
+    var el = document.getElementById("ctv_" + key);
+    if (!el) return;
+    el.innerHTML = '<span style="word-break:break-all">' + el.dataset.full + '</span>';
+  };
+})();
+</script>
 
 {# ── Konfiguracja powiadomien Telegram ──────────────────────────────────── #}
 <div class="card mb-4">
@@ -1557,6 +1613,29 @@ function dsAction(mode) {
       </div>
 
     </div>{# /row #}
+
+    <hr class="my-3">
+
+    {# Syslog (ClickHouse) — informacja #}
+    <div class="d-flex align-items-start gap-3">
+      <i class="bi bi-journal-code text-secondary mt-1" style="font-size:1.2rem"></i>
+      <div>
+        <h6 class="mb-1">Logi syslog (ClickHouse)</h6>
+        <p class="small text-muted mb-1">
+          Dane syslog przechowywane są w ClickHouse — osobnej bazie kolumnowej zoptymalizowanej pod logi sieciowe.
+          Nie są objęte powyższym backupem PostgreSQL.
+        </p>
+        <p class="small text-muted mb-0">
+          <i class="bi bi-shield-lock me-1"></i>
+          Eksport i długoterminowa retencja logów (wymagana przez <strong>NIS2 Art. 21</strong> — min. 12 miesięcy)
+          dostępne w wersji <span class="badge bg-warning text-dark">Pro — Compliance Pack</span>.
+          Dla bieżących potrzeb możesz eksportować logi ręcznie przez
+          <a href="http://localhost:8123/play" target="_blank" rel="noopener" class="text-info">ClickHouse UI</a>
+          lub <code>clickhouse-client</code>.
+        </p>
+      </div>
+    </div>
+
   </div>
 </div>
 
