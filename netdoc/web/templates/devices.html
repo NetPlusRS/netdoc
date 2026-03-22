@@ -1209,7 +1209,7 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
             </div>
             <i class="bi bi-chevron-right text-muted"></i>
           </div>
-          ${it.summary || it.reason ? `<div class="text-muted mt-1" style="font-size:.74rem">${(it.summary || it.reason).substring(0,120)}…</div>` : ""}
+          ${it.summary || it.reason ? `<div class="text-muted mt-1" style="font-size:.74rem">${escHtml((it.summary || it.reason).substring(0,120))}…</div>` : ""}
         </a>`;
       }
       html += `</div>`;
@@ -1226,11 +1226,13 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
     } catch(e) { _hide(loading); errDiv.textContent = "Błąd historii: " + e; _show(errDiv); }
   }
 
-  document.querySelectorAll(".dev-ai-assess-btn").forEach(btn => {
-    btn.addEventListener("click", async function() {
-      currentDeviceId = this.dataset.deviceId;
-      const label = this.dataset.deviceLabel || this.dataset.deviceIp;
-      title.innerHTML = `<i class="bi bi-cpu me-2"></i>AI Ocena: <code>${label}</code>`;
+  document.addEventListener("click", async function(e) {
+    const btn = e.target.closest(".dev-ai-assess-btn");
+    if (!btn) return;
+    {
+      currentDeviceId = btn.dataset.deviceId;
+      const label = btn.dataset.deviceLabel || btn.dataset.deviceIp;
+      title.innerHTML = `<i class="bi bi-cpu me-2"></i>AI Ocena: <code>${escHtml(label)}</code>`;
       _showToast(`Sprawdzam historię AI dla: ${label}`);
       bsModal.show();
       _hideAll(); _show(loading);
@@ -1246,7 +1248,7 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
       } catch(e) { /* intencjonalne: jeśli historia niedostępna — ruszamy od razu z oceną */ }
       // Brak historii — uruchom ocenę od razu (toast zostanie odświeżony przez runDevAssess)
       await runDevAssess();
-    });
+    }
   });
 
   refreshBtn.addEventListener("click", runDevAssess);

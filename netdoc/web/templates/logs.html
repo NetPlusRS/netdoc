@@ -264,6 +264,10 @@ function fmtAgo(isoStr) {
   return Math.round(s/86400) + "d";
 }
 
+function escH(s) {
+  return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
 function fetchEvents() {
   const limit = document.getElementById("eventsLimit").value;
   fetch("/api/logs/events?limit=" + limit)
@@ -283,12 +287,12 @@ function fetchEvents() {
           ? '<span class="badge badge-up">UP</span>'
           : (isDown ? '<span class="badge badge-down">DOWN</span>'
                     : '<span class="badge bg-secondary">' + ev.event_type + '</span>');
-        const host = ev.hostname ? '<span class="text-muted">' + ev.hostname + '</span>' : '<span class="text-muted">—</span>';
+        const host = ev.hostname ? '<span class="text-muted">' + escH(ev.hostname) + '</span>' : '<span class="text-muted">—</span>';
         return '<tr class="' + rowCls + '">' +
-          '<td class="font-monospace small">' + ev.time + '</td>' +
+          '<td class="font-monospace small">' + escH(ev.time) + '</td>' +
           '<td>' + badge + '</td>' +
-          '<td class="font-monospace small">' + ev.device_ip + '</td>' +
-          '<td class="small text-muted">' + ev.device_type + '</td>' +
+          '<td class="font-monospace small">' + escH(ev.device_ip) + '</td>' +
+          '<td class="small text-muted">' + escH(ev.device_type) + '</td>' +
           '<td class="small">' + host + '</td>' +
           '<td class="small text-muted">' + fmtAgo(ev.time) + '</td>' +
           '</tr>';
@@ -301,19 +305,20 @@ function fetchEvents() {
 // ── Kolorowanie logow tekstowych ──────────────────────────────────────────────
 function colorizeLog(text) {
   return text.split("\n").map(line => {
+    const safe = escH(line);
     if (line.includes("[ERROR]") || line.includes("ERROR:") || line.includes("[BLAD]"))
-      return '<span style="color:#ff7b72">' + line + '</span>';
+      return '<span style="color:#ff7b72">' + safe + '</span>';
     if (line.includes("[WARNING]") || line.includes("Warning") || line.includes("[WARN]"))
-      return '<span style="color:#e3b341">' + line + '</span>';
+      return '<span style="color:#e3b341">' + safe + '</span>';
     if (line.includes("[OK]"))
-      return '<span style="color:#7ee787">' + line + '</span>';
+      return '<span style="color:#7ee787">' + safe + '</span>';
     if (line.includes("[INFO]") || line.includes("INFO:"))
-      return '<span style="color:#7ee787">' + line + '</span>';
+      return '<span style="color:#7ee787">' + safe + '</span>';
     if (line.includes("[WAIT]"))
-      return '<span style="color:#79c0ff">' + line + '</span>';
+      return '<span style="color:#79c0ff">' + safe + '</span>';
     if (line.startsWith("===") || line.startsWith("["))
-      return '<span style="color:#79c0ff;font-weight:bold">' + line + '</span>';
-    return '<span style="color:#8b949e">' + line + '</span>';
+      return '<span style="color:#79c0ff;font-weight:bold">' + safe + '</span>';
+    return '<span style="color:#8b949e">' + safe + '</span>';
   }).join("\n");
 }
 
@@ -413,12 +418,12 @@ function fetchAiLogs() {
             ? `<span class="badge bg-success">OK</span>`
             : `<span class="badge bg-secondary">?</span>`;
         const modelShort = (it.model || "claude").replace("claude-", "").replace("-latest", "");
-        const reason = (it.reason || it.summary || "").substring(0, 80);
+        const reason = escH((it.reason || it.summary || "").substring(0, 80));
         return `<tr>
-          <td class="font-monospace small text-muted">${it.assessed_at}</td>
-          <td class="font-monospace small">${it.device_ip}</td>
-          <td class="small">${it.device_label !== it.device_ip ? it.device_label : ""}</td>
-          <td class="small text-muted">${modelShort}</td>
+          <td class="font-monospace small text-muted">${escH(it.assessed_at)}</td>
+          <td class="font-monospace small">${escH(it.device_ip)}</td>
+          <td class="small">${it.device_label !== it.device_ip ? escH(it.device_label) : ""}</td>
+          <td class="small text-muted">${escH(modelShort)}</td>
           <td>${obsBadge}</td>
           <td class="small text-muted">${reason}${(it.reason||"").length > 80 ? "…" : ""}</td>
           <td>

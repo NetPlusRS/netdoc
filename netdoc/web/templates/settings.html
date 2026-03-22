@@ -828,7 +828,11 @@
   window.expandCtv = function(key) {
     var el = document.getElementById("ctv_" + key);
     if (!el) return;
-    el.innerHTML = '<span style="word-break:break-all">' + el.dataset.full + '</span>';
+    var sp = document.createElement("span");
+    sp.style.wordBreak = "break-all";
+    sp.textContent = el.dataset.full;
+    el.textContent = "";
+    el.appendChild(sp);
   };
 })();
 </script>

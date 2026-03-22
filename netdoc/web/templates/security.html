@@ -213,7 +213,7 @@
             <tr>
               <td class="font-monospace small">{{ c.device_ip }}</td>
               <td class="small text-muted">{{ c.device_type }}</td>
-              <td><span class="badge bg-{{ meth_cls }}">{{ c.method.value|upper }}</span></td>
+              <td><span class="badge bg-{{ meth_cls }}">{{ c.method|upper }}</span></td>
               <td class="font-monospace small">{{ c.username or "—" }}</td>
               <td class="small text-muted">
                 {% if c.last_success_at %}{{ c.last_success_at.strftime("%m-%d %H:%M") }}{% else %}—{% endif %}
