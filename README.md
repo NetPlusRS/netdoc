@@ -59,7 +59,7 @@ Urządzenia sieciowe
 | **API** | FastAPI + Uvicorn + Prometheus metrics |
 | **Monitoring** | Grafana + Prometheus + Loki + Promtail |
 | **Syslog pipeline** | rsyslog → Vector → ClickHouse |
-| **Admin UI** | Flask web panel (port 5000) |
+| **Admin UI** | Flask web panel (przez nginx, port 80) |
 
 ---
 
@@ -76,7 +76,7 @@ Instalator automatycznie:
 - sprawdza i instaluje wymagania (WSL2, Docker Desktop, git, Python 3.11+)
 - konfiguruje `.env` z szablonu
 - uruchamia wszystkie kontenery Docker
-- weryfikuje stan 16 kontenerow
+- weryfikuje stan 17 kontenerow
 - uruchamia pierwsze skanowanie sieci
 - otwiera panel administracyjny w przegladarce
 
@@ -122,13 +122,13 @@ docker compose up -d
 
 | Serwis | URL |
 |--------|-----|
-| NetDoc Admin (Flask) | http://localhost:5000 |
-| NetDoc API (FastAPI) | http://localhost:8000 |
-| Swagger UI | http://localhost:8000/docs |
-| Grafana | http://localhost:3000 |
-| Prometheus | http://localhost:9090 |
-| Loki | http://localhost:3100 |
-| ClickHouse HTTP | http://localhost:8123 |
+| NetDoc Admin (Flask) | <http://localhost> |
+| NetDoc API (FastAPI) | <http://localhost:8000> |
+| Swagger UI | <http://localhost:8000/docs> |
+| Grafana | <http://localhost/grafana> |
+| Prometheus | <http://localhost:9090> |
+| Loki | <http://localhost:3100> |
+| ClickHouse HTTP | <http://localhost:8123> |
 
 Domyslne haslo Grafana: `admin / netdoc`
 
@@ -242,7 +242,7 @@ Liczba testow: **2470+** (jednostkowe + integracyjne)
 
 - **Archiwizacja** — logi sieciowe z routerow, switchy i AP w ClickHouse (rsyslog → Vector → ClickHouse)
 - **Filtrowanie** — severity, urzadzenie, program, zakres czasu, wyszukiwanie w tresci
-- **Dashboard Grafana** — timeline logow, top urzadzenia, top programy
+- **Dashboard Grafana** — timeline logow, top urzadzenia, top programy (publiczny, bez logowania)
 - **Pipeline** — Debian rsyslog (UDP/TCP 514), kolejka dyskowa, auto-retry
 
 ### Bezpieczenstwo
@@ -266,7 +266,7 @@ Liczba testow: **2470+** (jednostkowe + integracyjne)
 - Zarzadzanie sieciami i credentials (CRUD)
 - Wyzwalanie skanowania (standard / full port scan / aktualizacja OUI)
 - Podglad logow, alertow, podatnosci
-- Asystent AI (wersja Pro)
+- Asystent AI (wymaga własnego klucza Anthropic API)
 
 ---
 
@@ -290,6 +290,7 @@ config/
 ├── grafana/          # Provisioning: datasources, dashboards (6 dashboardow)
 ├── loki/             # Loki config
 ├── promtail/         # Log shipper
+├── nginx/            # nginx.conf (reverse proxy: port 80 → web:5000, /grafana/ → grafana:3000)
 ├── rsyslog/          # rsyslog.conf (syslog receiver)
 ├── vector/           # syslog.toml (pipeline rsyslog → ClickHouse)
 ├── clickhouse/       # users.xml (profil netdoc)
@@ -329,7 +330,7 @@ tests/                # 2470+ testow jednostkowych
 | Grafana dashboardy (6 szt.) | ✅ Done |
 | Loki + Promtail | ✅ Done |
 | Flask Admin UI + zakładka Syslog | ✅ Done |
-| Docker Compose (16 kontenerow) | ✅ Done |
+| Docker Compose (17 kontenerow) + nginx reverse proxy | ✅ Done |
 | Demo Lab (symulowane urzadzenia) | ✅ Done |
 | Testy jednostkowe (2470+) | ✅ Done |
 | Task Scheduler (Windows autostart) | ✅ Done |
