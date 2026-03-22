@@ -771,7 +771,7 @@ docker compose up -d --build
 if ($LASTEXITCODE -ne 0) {
     Write-Fail "docker compose up zakonczyl sie bledem."
     Write-Info "Sprawdz komunikaty powyzej. Typowe przyczyny:"
-    Write-Info "  - Port 5000/8000/3000 jest zajety przez inna aplikacje"
+    Write-Info "  - Port 80/8000 jest zajety przez inna aplikacje"
     Write-Info "  - Brak pamieci RAM (Docker wymaga min. 4 GB)"
     Write-Info "  - Docker Desktop nie jest uruchomiony"
     Write-Info "  - Brak uprawnien Docker socket: Settings -> Advanced ->"
@@ -857,7 +857,7 @@ if (-not $allUp) {
 
 # ── Poczekaj az Panel Web odpowie ─────────────────────────────────────────────
 
-Write-Step "Czekam az Panel Web bedzie dostepny (http://localhost:5000)..."
+Write-Step "Czekam az Panel Web bedzie dostepny (http://localhost)..."
 
 $webReady = $false
 $maxWait  = 60
@@ -868,7 +868,7 @@ Write-Host "     " -NoNewline
 
 while ($waited -lt $maxWait) {
     try {
-        $r = Invoke-WebRequest -Uri "http://localhost:5000/" -TimeoutSec 3 -UseBasicParsing -ErrorAction Stop
+        $r = Invoke-WebRequest -Uri "http://localhost/" -TimeoutSec 3 -UseBasicParsing -ErrorAction Stop
         if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 400) {
             $webReady = $true
             break
@@ -890,7 +890,7 @@ if ($webReady) {
     Write-Host ""
     Write-Host "  Otwieram karte Urzadzenia w przegladarce..." -ForegroundColor Cyan
     Write-Info "  (urzadzenia pojawia sie automatycznie po zakonczeniu pierwszego skanu)"
-    Start-Process "http://localhost:5000/devices"
+    Start-Process "http://localhost/devices"
 } else {
     Write-Warn "Panel Web nie odpowiada po $maxWait sekundach."
     Write-Info "Sprawdz logi: docker logs netdoc-web"
@@ -918,9 +918,9 @@ if ($allUp -and $webReady) {
     Write-Host "  ================================================" -ForegroundColor Cyan
 }
 Write-Host ""
-Write-Host "   Panel Admin   http://localhost:5000" -ForegroundColor White
+Write-Host "   Panel Admin   http://localhost" -ForegroundColor White
 Write-Host "   API           http://localhost:8000/docs" -ForegroundColor White
-Write-Host "   Grafana        http://localhost:3000   (admin / netdoc)" -ForegroundColor White
+Write-Host "   Grafana        http://localhost/grafana   (admin / netdoc)" -ForegroundColor White
 Write-Host ""
 Write-Host "  Nastepne kroki:" -ForegroundColor Cyan
 Write-Host "   1. Pierwsze skanowanie sieci:" -ForegroundColor White

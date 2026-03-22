@@ -7,9 +7,10 @@ $ComposeFile = Join-Path $ProjectDir "docker-compose.yml"
 
 $Services = @(
     @{ Name = "netdoc-postgres";   Port = 15432; Label = "PostgreSQL" }
+    @{ Name = "netdoc-nginx";      Port = 80;    Label = "nginx (Panel + Grafana)" }
     @{ Name = "netdoc-api";        Port = 8000;  Label = "API (FastAPI)" }
-    @{ Name = "netdoc-web";        Port = 5000;  Label = "Panel Web" }
-    @{ Name = "netdoc-grafana";    Port = 3000;  Label = "Grafana" }
+    @{ Name = "netdoc-web";        Port = 0;     Label = "Panel Web (wewn.)" }
+    @{ Name = "netdoc-grafana";    Port = 0;     Label = "Grafana (wewn.)" }
     @{ Name = "netdoc-prometheus"; Port = 9090;  Label = "Prometheus" }
     @{ Name = "netdoc-loki";       Port = 3100;  Label = "Loki (logi)" }
     @{ Name = "netdoc-promtail";   Port = 0;     Label = "Promtail" }
@@ -46,8 +47,8 @@ function Write-Header {
 
 function Write-Menu {
     Write-Host "  [1] Uruchom Docker (build + start)" -ForegroundColor Green
-    Write-Host "       Buduje obrazy Docker od nowa i uruchamia wszystkie 9 kontenerow:" -ForegroundColor DarkGray
-    Write-Host "       postgres, api, web, grafana, prometheus, ping/snmp/cred/vuln worker" -ForegroundColor DarkGray
+    Write-Host "       Buduje obrazy Docker od nowa i uruchamia wszystkie kontenery:" -ForegroundColor DarkGray
+    Write-Host "       nginx, postgres, api, web, grafana, prometheus, ping/snmp/cred/vuln worker" -ForegroundColor DarkGray
     Write-Host "       Uzyj przy pierwszym uruchomieniu lub po zmianie kodu." -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "  [2] Zatrzymaj Docker (stop)" -ForegroundColor Yellow
@@ -64,7 +65,7 @@ function Write-Menu {
     Write-Host ""
     Write-Host "  [5] Testy - sprawdz czy wszystko dziala" -ForegroundColor Cyan
     Write-Host "       Sprawdza dostepnosc portow TCP i HTTP dla wszystkich serwisow:" -ForegroundColor DarkGray
-    Write-Host "       API, Panel Web, Grafana, Prometheus oraz polaczenie z baza danych." -ForegroundColor DarkGray
+    Write-Host "       nginx (:80), API (:8000), Grafana (/grafana), Prometheus." -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "  [6] Logi kontenera..." -ForegroundColor DarkGray
     Write-Host "       Wyswietla ostatnie 50 linii logow wybranego kontenera." -ForegroundColor DarkGray
@@ -124,6 +125,10 @@ function Invoke-Tests {
     $allOk = $true
 
     foreach ($svc in $Services) {
+        if ($svc.Port -eq 0) {
+            Write-Host ("  [--] {0,-20} (wewnetrzny — brak portu hosta)" -f $svc.Label) -ForegroundColor DarkGray
+            continue
+        }
         $open  = Test-Port -Port $svc.Port
         $icon  = if ($open) { "[OK]" } else { "[!!]" }
         $color = if ($open) { "Green" } else { "Red" }
@@ -137,9 +142,9 @@ function Invoke-Tests {
     Write-Host ""
 
     $endpoints = @(
+        @{ Url = "http://localhost/";                          Label = "Panel Web (nginx)"  }
         @{ Url = "http://localhost:8000/api/devices/?limit=1"; Label = "API /api/devices"  }
-        @{ Url = "http://localhost:5000/";                     Label = "Panel Web /"        }
-        @{ Url = "http://localhost:3000/";                     Label = "Grafana /"          }
+        @{ Url = "http://localhost/grafana/";                  Label = "Grafana /"          }
         @{ Url = "http://localhost:9090/-/ready";              Label = "Prometheus /ready"  }
     )
 
