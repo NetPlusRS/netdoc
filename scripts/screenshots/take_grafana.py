@@ -11,7 +11,7 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-GRAFANA = "http://localhost:3000"
+GRAFANA = "http://localhost/grafana"
 OUT = Path("C:/Users/Yeszie/OneDrive/netdoc-www/screenshots")
 VIEWPORT = {"width": 1440, "height": 900}
 AUTH = "Basic " + base64.b64encode(b"admin:netdoc").decode()

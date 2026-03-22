@@ -191,7 +191,7 @@ class TestSetupPs:
 
     def test_setup_ps_opens_browser_url(self):
         text = SETUP_PS.read_text(encoding="utf-8")
-        assert "localhost:5000" in text, "Brak adresu panelu admina w setup.ps1"
+        assert "http://localhost" in text, "Brak adresu panelu admina w setup.ps1"
 
     def test_setup_ps_no_hardcoded_passwords(self):
         text = SETUP_PS.read_text(encoding="utf-8")

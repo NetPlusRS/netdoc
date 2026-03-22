@@ -14,7 +14,7 @@ Wymagania:
     - psycopg2 w środowisku Python (pip install psycopg2-binary)
     - PostgreSQL w Dockerze (docker compose up -d postgres)
 
-Status skanera widoczny w panelu: http://localhost:5000/settings
+Status skanera widoczny w panelu: http://localhost/settings
 """
 import sys
 import atexit
@@ -2822,6 +2822,7 @@ def main():
             "network_ranges":          ("",   "worker_settings"),
             "scan_vpn_networks":       ("0",  "worker_settings"),
             "scan_virtual_networks":   ("0",  "worker_settings"),
+            "lab_monitoring_enabled":  ("0",  "config"),
         }
         for cfg_key, (cfg_val, cfg_cat) in _config_defaults.items():
             if not db.query(SystemStatus).filter(SystemStatus.key == cfg_key).first():

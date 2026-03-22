@@ -27,7 +27,7 @@ except ImportError:
     PRO_ENABLED = False
 
 API_URL = os.getenv("NETDOC_API_URL", "http://localhost:8000")
-GRAFANA_URL = os.getenv("GRAFANA_URL", "http://localhost:3000")
+GRAFANA_URL = os.getenv("GRAFANA_URL", "/grafana")
 
 # Krotkie opisy podatnosci uzywane w tooltipach (security.html)
 _VULN_HINTS: dict = {

@@ -10,8 +10,8 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-FLASK = "http://localhost:5000"
-GRAFANA = "http://localhost:3000"
+FLASK = "http://localhost"
+GRAFANA = "http://localhost/grafana"
 OUT = Path("C:/Users/Yeszie/OneDrive/netdoc-www/screenshots")
 OUT.mkdir(parents=True, exist_ok=True)
 VIEWPORT = {"width": 1440, "height": 900}

@@ -802,7 +802,8 @@ $ExpectedContainers = @(
     "netdoc-community",
     "netdoc-clickhouse",
     "netdoc-rsyslog",
-    "netdoc-vector"
+    "netdoc-vector",
+    "netdoc-nginx"
 )
 
 $maxContainerWait = 120   # sekund lacznego oczekiwania

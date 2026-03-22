@@ -6,7 +6,7 @@ from playwright.async_api import async_playwright
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-FLASK = "http://localhost:5000"
+FLASK = "http://localhost"
 OUT = Path("C:/Users/Yeszie/OneDrive/netdoc-www/screenshots")
 VIEWPORT = {"width": 1440, "height": 900}
 
