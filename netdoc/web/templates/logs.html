@@ -120,15 +120,23 @@
             <option value="200" selected>200 linii</option>
             <option value="500">500 linii</option>
           </select>
-          <div class="btn-group btn-group-sm" id="workersSelect" role="group">
-            <button type="button" class="btn btn-outline-info active"    data-container="netdoc-ping">Ping</button>
-            <button type="button" class="btn btn-outline-warning"        data-container="netdoc-cred">Cred</button>
-            <button type="button" class="btn btn-outline-danger"         data-container="netdoc-vuln">Vuln</button>
-            <button type="button" class="btn btn-outline-secondary"      data-container="netdoc-snmp">SNMP poll</button>
-            <button type="button" class="btn btn-outline-primary"        data-container="netdoc-community">Community</button>
-            <button type="button" class="btn btn-outline-success"        data-container="netdoc-internet">Internet</button>
-            <button type="button" class="btn btn-outline-secondary"      data-container="netdoc-web">Web</button>
-            <button type="button" class="btn btn-outline-secondary"      data-container="netdoc-api">API</button>
+          <div class="d-flex flex-wrap gap-1" id="workersSelect">
+            <div class="btn-group btn-group-sm" role="group">
+              <button type="button" class="btn btn-outline-info active"  data-container="netdoc-ping">Ping</button>
+              <button type="button" class="btn btn-outline-warning"      data-container="netdoc-cred">Cred</button>
+              <button type="button" class="btn btn-outline-danger"       data-container="netdoc-vuln">Vuln</button>
+              <button type="button" class="btn btn-outline-secondary"    data-container="netdoc-snmp">SNMP</button>
+              <button type="button" class="btn btn-outline-primary"      data-container="netdoc-community">Community</button>
+              <button type="button" class="btn btn-outline-success"      data-container="netdoc-internet">Internet</button>
+              <button type="button" class="btn btn-outline-secondary"    data-container="netdoc-web">Web</button>
+              <button type="button" class="btn btn-outline-secondary"    data-container="netdoc-api">API</button>
+            </div>
+            <div class="btn-group btn-group-sm" role="group">
+              <button type="button" class="btn btn-outline-secondary"    data-container="netdoc-nginx">nginx</button>
+              <button type="button" class="btn btn-outline-secondary"    data-container="netdoc-rsyslog">rsyslog</button>
+              <button type="button" class="btn btn-outline-secondary"    data-container="netdoc-vector">Vector</button>
+              <button type="button" class="btn btn-outline-secondary"    data-container="netdoc-clickhouse">ClickHouse</button>
+            </div>
           </div>
           <span class="text-muted small" id="workersLabel">Docker stdout: <code>netdoc-ping</code></span>
         </div>
