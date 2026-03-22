@@ -1,26 +1,26 @@
 {% extends "base.html" %}
-{% block title %}Inwentarz{% endblock %}
+{% block title %}Inventory{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h5 class="mb-0"><i class="bi bi-box-seam me-2"></i>Inwentarz urządzeń ({{ inv_rows|length }})</h5>
+  <h5 class="mb-0"><i class="bi bi-box-seam me-2"></i>Device inventory ({{ inv_rows|length }})</h5>
   <div class="d-flex gap-2">
     <a href="/inventory?format=csv" class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-download me-1"></i>Eksportuj CSV
+      <i class="bi bi-download me-1"></i>Export CSV
     </a>
     <a href="/devices" class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-pc-display me-1"></i>Urządzenia
+      <i class="bi bi-pc-display me-1"></i>Devices
     </a>
   </div>
 </div>
 
 <div class="alert alert-info py-2 mb-3 small">
   <i class="bi bi-info-circle me-1"></i>
-  Dane inwentarzowe (S/N, asset tag, cena, gwarancja) edytujesz przez
-  <strong>Urządzenia → Akcje → Inwentarz / ST</strong>.
-  Status <span class="badge bg-danger">EoS</span> = wsparcie producenta wygasło,
-  <span class="badge bg-warning text-dark">EoS</span> = wygasa w ciągu 90 dni,
-  <span class="badge bg-danger">GWR</span> / <span class="badge bg-warning text-dark">GWR</span> = analogicznie dla gwarancji.
+  Inventory data (S/N, asset tag, price, warranty) is edited via
+  <strong>Devices → Actions → Inventory / ST</strong>.
+  Status <span class="badge bg-danger">EoS</span> = manufacturer support has expired,
+  <span class="badge bg-warning text-dark">EoS</span> = expires within 90 days,
+  <span class="badge bg-danger">GWR</span> / <span class="badge bg-warning text-dark">GWR</span> = same for warranty.
 </div>
 
 <div class="card">
@@ -31,19 +31,19 @@
           <tr>
             <th>IP</th>
             <th>Hostname</th>
-            <th>Typ</th>
+            <th>Type</th>
             <th>Vendor / Model</th>
-            <th title="Numer seryjny urządzenia">S/N</th>
-            <th title="Wewnętrzny numer ewidencyjny (Asset tag)">Asset tag</th>
-            <th>Data zakupu</th>
-            <th>Cena</th>
-            <th>Dostawca</th>
-            <th>Faktura</th>
-            <th>Koniec gwarancji</th>
-            <th>Koniec wsparcia</th>
+            <th title="Device serial number">S/N</th>
+            <th title="Internal inventory number (Asset tag)">Asset tag</th>
+            <th>Purchase date</th>
+            <th>Price</th>
+            <th>Vendor</th>
+            <th>Invoice</th>
+            <th>Warranty end</th>
+            <th>Support end</th>
             <th>Status</th>
-            <th>Osoba odp.</th>
-            <th>Notatki</th>
+            <th>Responsible</th>
+            <th>Notes</th>
           </tr>
         </thead>
         <tbody>
@@ -84,20 +84,20 @@
             </td>
             <td>
               {% if row.eos_status == "expired" %}
-                <span class="badge bg-danger" title="Wsparcie producenta wygasło">EoS</span>
+                <span class="badge bg-danger" title="Manufacturer support has expired">EoS</span>
               {% elif row.eos_status == "soon" %}
                 {% set _eos_d = (d.support_end - today).days %}
-                <span class="badge bg-warning text-dark" title="Wygasa za {{ _eos_d }} dni">EoS</span>
+                <span class="badge bg-warning text-dark" title="Expires in {{ _eos_d }} days">EoS</span>
               {% elif row.eos_status == "ok" %}
-                <span class="badge bg-success" title="Wsparcie aktywne">EoS</span>
+                <span class="badge bg-success" title="Support active">EoS</span>
               {% endif %}
               {% if row.warranty_status == "expired" %}
-                <span class="badge bg-danger" title="Gwarancja wygasła">GWR</span>
+                <span class="badge bg-danger" title="Warranty has expired">GWR</span>
               {% elif row.warranty_status == "soon" %}
                 {% set _war_d = (d.warranty_end.date() - today).days %}
-                <span class="badge bg-warning text-dark" title="Wygasa za {{ _war_d }} dni">GWR</span>
+                <span class="badge bg-warning text-dark" title="Expires in {{ _war_d }} days">GWR</span>
               {% elif row.warranty_status == "ok" %}
-                <span class="badge bg-success" title="Gwarancja aktywna">GWR</span>
+                <span class="badge bg-success" title="Warranty active">GWR</span>
               {% endif %}
               {% if not row.eos_status and not row.warranty_status %}
                 <span class="text-muted small">—</span>
@@ -112,8 +112,8 @@
           {% else %}
           <tr>
             <td colspan="15" class="text-center text-muted py-4">
-              Brak urządzeń. Dane inwentarzowe uzupełnij przez
-              <a href="/devices">Urządzenia → Akcje → Inwentarz / ST</a>.
+              No devices. Fill in inventory data via
+              <a href="/devices">Devices → Actions → Inventory / ST</a>.
             </td>
           </tr>
           {% endfor %}
@@ -125,11 +125,11 @@
 
 <div class="mt-3 d-flex gap-2 align-items-center">
   <a href="/inventory?format=csv" class="btn btn-sm btn-outline-secondary">
-    <i class="bi bi-file-earmark-spreadsheet me-1"></i>Pobierz CSV (dla działu księgowości)
+    <i class="bi bi-file-earmark-spreadsheet me-1"></i>Download CSV (for accounting)
   </a>
   <span class="text-muted small">
-    CSV zawiera: IP, hostname, typ, vendor, model, S/N, asset tag, data zakupu,
-    cena, waluta, dostawca, faktura, koniec gwarancji, koniec wsparcia, osoba odpow., notatki.
+    CSV contains: IP, hostname, type, vendor, model, S/N, asset tag, purchase date,
+    price, currency, vendor, invoice, warranty end, support end, responsible person, notes.
   </span>
 </div>
 {% endblock %}

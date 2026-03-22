@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pl" data-theme="dark">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -73,22 +73,22 @@
     <div class="collapse navbar-collapse" id="navmenu">
       <ul class="navbar-nav me-auto">
         <li class="nav-item"><a class="nav-link {% if request.path == '/' %}active{% endif %}" href="/"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a></li>
-        <li class="nav-item"><a class="nav-link {% if '/devices' in request.path and '/inventory' not in request.path %}active{% endif %}" href="/devices"><i class="bi bi-pc-display me-1"></i>Urzadzenia</a></li>
+        <li class="nav-item"><a class="nav-link {% if '/devices' in request.path and '/inventory' not in request.path %}active{% endif %}" href="/devices"><i class="bi bi-pc-display me-1"></i>Devices</a></li>
         {% if inventory_enabled %}
-        <li class="nav-item"><a class="nav-link {% if request.path == '/inventory' %}active{% endif %}" href="/inventory"><i class="bi bi-box-seam me-1"></i>Inwentarz</a></li>
+        <li class="nav-item"><a class="nav-link {% if request.path == '/inventory' %}active{% endif %}" href="/inventory"><i class="bi bi-box-seam me-1"></i>Inventory</a></li>
         {% endif %}
-        <li class="nav-item"><a class="nav-link {% if '/networks' in request.path %}active{% endif %}" href="/networks"><i class="bi bi-diagram-3 me-1"></i>Sieci</a></li>
+        <li class="nav-item"><a class="nav-link {% if '/networks' in request.path %}active{% endif %}" href="/networks"><i class="bi bi-diagram-3 me-1"></i>Networks</a></li>
         <li class="nav-item"><a class="nav-link {% if '/credentials' in request.path %}active{% endif %}" href="/credentials"><i class="bi bi-key me-1"></i>Credentials</a></li>
-        <li class="nav-item"><a class="nav-link {% if '/security' in request.path %}active{% endif %}" href="/security"><i class="bi bi-shield-exclamation me-1"></i>Bezpieczenstwo</a></li>
-        <li class="nav-item"><a class="nav-link {% if '/threats' in request.path %}active{% endif %}" href="/threats"><i class="bi bi-book-half me-1"></i>Zagrozenia</a></li>
-        <li class="nav-item"><a class="nav-link {% if '/kb/ports' in request.path %}active{% endif %}" href="/kb/ports" title="Encyklopedia portów sieciowych"><i class="bi bi-plug me-1"></i>Porty KB</a></li>
-        <li class="nav-item"><a class="nav-link {% if '/kb/guides' in request.path %}active{% endif %}" href="/kb/guides" title="Poradniki bezpieczeństwa"><i class="bi bi-journal-richtext me-1"></i>Poradniki</a></li>
-        <li class="nav-item"><a class="nav-link {% if '/scan' in request.path %}active{% endif %}" href="/scan"><i class="bi bi-radar me-1"></i>Skanowanie</a></li>
-        <li class="nav-item"><a class="nav-link {% if '/settings' in request.path %}active{% endif %}" href="/settings"><i class="bi bi-gear me-1"></i>Ustawienia</a></li>
-        <li class="nav-item"><a class="nav-link {% if '/logs' in request.path %}active{% endif %}" href="/logs"><i class="bi bi-journal-text me-1"></i>Logi</a></li>
+        <li class="nav-item"><a class="nav-link {% if '/security' in request.path %}active{% endif %}" href="/security"><i class="bi bi-shield-exclamation me-1"></i>Security</a></li>
+        <li class="nav-item"><a class="nav-link {% if '/threats' in request.path %}active{% endif %}" href="/threats"><i class="bi bi-book-half me-1"></i>Threats</a></li>
+        <li class="nav-item"><a class="nav-link {% if '/kb/ports' in request.path %}active{% endif %}" href="/kb/ports" title="Network ports encyclopedia"><i class="bi bi-plug me-1"></i>Ports KB</a></li>
+        <li class="nav-item"><a class="nav-link {% if '/kb/guides' in request.path %}active{% endif %}" href="/kb/guides" title="Security guides"><i class="bi bi-journal-richtext me-1"></i>Guides</a></li>
+        <li class="nav-item"><a class="nav-link {% if '/scan' in request.path %}active{% endif %}" href="/scan"><i class="bi bi-radar me-1"></i>Scan</a></li>
+        <li class="nav-item"><a class="nav-link {% if '/settings' in request.path %}active{% endif %}" href="/settings"><i class="bi bi-gear me-1"></i>Settings</a></li>
+        <li class="nav-item"><a class="nav-link {% if '/logs' in request.path %}active{% endif %}" href="/logs"><i class="bi bi-journal-text me-1"></i>Logs</a></li>
         <li class="nav-item"><a class="nav-link {% if '/syslog' in request.path %}active{% endif %}" href="/syslog"><i class="bi bi-journal-code me-1"></i>Syslog</a></li>
         <li class="nav-item"><a class="nav-link {% if '/internet' in request.path %}active{% endif %}" href="/internet"><i class="bi bi-globe2 me-1"></i>Internet</a></li>
-        <li class="nav-item"><a class="nav-link {% if '/chat' in request.path %}active{% endif %}" href="/chat"><i class="bi bi-robot me-1"></i>Asystent AI{% if not PRO_ENABLED %}<span class="badge bg-warning text-dark ms-1" style="font-size:0.6rem;vertical-align:middle">PRO</span>{% endif %}</a></li>
+        <li class="nav-item"><a class="nav-link {% if '/chat' in request.path %}active{% endif %}" href="/chat"><i class="bi bi-robot me-1"></i>AI Assistant{% if not PRO_ENABLED %}<span class="badge bg-warning text-dark ms-1" style="font-size:0.6rem;vertical-align:middle">PRO</span>{% endif %}</a></li>
       </ul>
       <ul class="navbar-nav align-items-center gap-2">
         <li class="nav-item">
@@ -97,7 +97,7 @@
           </a>
         </li>
         <li class="nav-item">
-          <button id="theme-toggle" title="Przelacz jasny/ciemny">
+          <button id="theme-toggle" title="Toggle light/dark">
             <i id="theme-icon" class="bi bi-sun-fill"></i>
           </button>
         </li>
@@ -107,7 +107,7 @@
         <span id="status-job">...</span>
       </span>
       <span class="navbar-text ms-2 small" id="refresh-badge" style="display:none">
-        <span class="badge bg-secondary" style="cursor:pointer;font-size:.7rem" id="refresh-btn" title="Kliknij aby wstrzymac/wzznowic odswiezanie">
+        <span class="badge bg-secondary" style="cursor:pointer;font-size:.7rem" id="refresh-btn" title="Click to pause/resume auto-refresh">
           <i class="bi bi-arrow-clockwise me-1" id="refresh-icon"></i><span id="refresh-count">60</span>s
         </span>
       </span>
@@ -129,15 +129,15 @@
     <div class="d-flex gap-2 align-items-start">
       <i class="bi bi-exclamation-triangle-fill text-warning mt-1 flex-shrink-0"></i>
       <div>
-        <strong>Wersja Beta — nie uruchamiaj bez przygotowania w sieci produkcyjnej.</strong>
-        Skanowanie może powodować niechciane wydruki na drukarkach (port 9100),
-        restarty lub zawieszenie starszych urządzeń IoT i przełączników,
-        a full scan (1–65535) generuje duży ruch i może wyzwolić systemy IDS/IPS.
-        Zacznij od sieci testowej lub użyj
+        <strong>Beta Version — do not run without preparation on a production network.</strong>
+        Scanning may cause unwanted printouts on printers (port 9100),
+        restarts or freezing of older IoT devices and switches,
+        and a full scan (1–65535) generates heavy traffic and may trigger IDS/IPS systems.
+        Start with a test network or use
         <a href="/settings#lab" class="alert-link">Demo Lab</a>.
       </div>
     </div>
-    <button type="button" class="btn-close" onclick="dismissBetaBanner()" aria-label="Zamknij"></button>
+    <button type="button" class="btn-close" onclick="dismissBetaBanner()" aria-label="Close"></button>
   </div>
 
   {% block content %}{% endblock %}
@@ -162,7 +162,7 @@
 
   // Live clock
   function tick() {
-    document.getElementById("footer-time").textContent = new Date().toLocaleString("pl-PL");
+    document.getElementById("footer-time").textContent = new Date().toLocaleString("en-US");
   }
   tick(); setInterval(tick, 1000);
 
@@ -204,7 +204,7 @@
     btn.addEventListener("click", () => {
       paused = !paused;
       icon.className = paused ? "bi bi-pause-fill me-1" : "bi bi-arrow-clockwise me-1";
-      btn.title = paused ? "Wzznow odswiezanie" : "Wstrzymaj odswiezanie";
+      btn.title = paused ? "Resume auto-refresh" : "Pause auto-refresh";
     });
     setInterval(() => {
       if (paused) return;

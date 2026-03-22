@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Skanowanie{% endblock %}
+{% block title %}Scan{% endblock %}
 
 {% block content %}
-<h5 class="mb-3"><i class="bi bi-radar me-2"></i>Kontrola skanowania</h5>
+<h5 class="mb-3"><i class="bi bi-radar me-2"></i>Scan control</h5>
 
 {% set scanner_ok = status.get("scanner_mode") == "host" %}
 {% set last_err   = status.get("scanner_last_error","") %}
@@ -11,25 +11,25 @@
 {% if scanner_ok %}
 <div class="alert alert-success py-2 mb-3">
   <i class="bi bi-check-circle-fill me-2"></i>
-  <strong>Skaner hosta aktywny</strong> (PID {{ status.get("scanner_pid","?") }}) —
-  ostatni skan: {{ status.get("scanner_last_at","—") }},
-  wykrytych: <strong>{{ status.get("scanner_last_devices","—") }}</strong> urządzeń,
-  wzbogaconych: <strong>{{ status.get("scanner_last_enriched","—") }}</strong>.
+  <strong>Host scanner active</strong> (PID {{ status.get("scanner_pid","?") }}) —
+  last scan: {{ status.get("scanner_last_at","—") }},
+  discovered: <strong>{{ status.get("scanner_last_devices","—") }}</strong> devices,
+  enriched: <strong>{{ status.get("scanner_last_enriched","—") }}</strong>.
 </div>
 {% else %}
 <div class="alert alert-warning py-2 mb-3">
   <i class="bi bi-exclamation-triangle-fill me-2"></i>
-  <strong>Skaner hosta nie działa.</strong>
-  Uruchom na hoście Windows:
+  <strong>Host scanner is not running.</strong>
+  Run on the Windows host:
   <code class="ms-2">python run_scanner.py</code>
-  &nbsp;(wymaga nmap w PATH i dostępu do PostgreSQL na porcie 15432).
+  &nbsp;(requires nmap in PATH and access to PostgreSQL on port 15432).
 </div>
 {% endif %}
 
 {% if last_err %}
 <div class="alert alert-danger py-2 mb-3">
   <i class="bi bi-bug-fill me-2"></i>
-  <strong>Ostatni błąd skanera:</strong> <span class="font-monospace small">{{ last_err }}</span>
+  <strong>Last scanner error:</strong> <span class="font-monospace small">{{ last_err }}</span>
 </div>
 {% endif %}
 
@@ -39,29 +39,29 @@
   <div class="col-12 col-md-4">
     <div class="card h-100">
       <div class="card-header d-flex align-items-center gap-2">
-        <i class="bi bi-search"></i> Skanowanie sieci
+        <i class="bi bi-search"></i> Network scan
       </div>
       <div class="card-body d-flex flex-column">
         <p class="small text-muted mb-2">
-          Ping sweep → port scan (~{{ status.get("target_ports","").split(",")|length or 45 }} portów) → SNMP enrichment
-          na wszystkich sieciach z <code>.env</code> i auto-detekcji.<br>
-          Automatycznie przez <strong>Windows Task Scheduler</strong>
-          — interwał konfigurowany w harmonogramie zadań.
+          Ping sweep → port scan (~{{ status.get("target_ports","").split(",")|length or 45 }} ports) → SNMP enrichment
+          on all networks from <code>.env</code> and auto-detection.<br>
+          Automatic via <strong>Windows Task Scheduler</strong>
+          — interval configured in the task scheduler.
         </p>
         {% set qb = status.get("scan_batch_size","5000")|int %}
         <div class="small text-muted mb-3">
-          <i class="bi bi-layers me-1"></i>Portów na partię: <strong>{{ qb if qb > 0 else "bez podziału" }}</strong>
+          <i class="bi bi-layers me-1"></i>Ports per batch: <strong>{{ qb if qb > 0 else "no split" }}</strong>
           &nbsp;·&nbsp;
           {% if status.get("scan_resume_enabled","1") == "1" %}
-            <i class="bi bi-arrow-repeat me-1 text-success"></i><span class="text-success">wznawianie włączone</span>
+            <i class="bi bi-arrow-repeat me-1 text-success"></i><span class="text-success">resume enabled</span>
           {% else %}
-            <i class="bi bi-x-circle me-1 text-muted"></i><span class="text-muted">wznawianie wyłączone</span>
+            <i class="bi bi-x-circle me-1 text-muted"></i><span class="text-muted">resume disabled</span>
           {% endif %}
         </div>
         <form method="post" action="/scan/trigger" class="mt-auto">
           <input type="hidden" name="type" value="standard">
-          <button class="btn btn-success w-100" {% if not scanner_ok %}title="Uruchom run_scanner.py na hoscie"{% endif %}>
-            <i class="bi bi-play-fill me-2"></i>Uruchom teraz
+          <button class="btn btn-success w-100" {% if not scanner_ok %}title="Run run_scanner.py on the host"{% endif %}>
+            <i class="bi bi-play-fill me-2"></i>Run now
           </button>
         </form>
       </div>
@@ -72,28 +72,28 @@
   <div class="col-12 col-md-4">
     <div class="card h-100">
       <div class="card-header d-flex align-items-center gap-2">
-        <i class="bi bi-hdd-network"></i> Pełny skan portów
+        <i class="bi bi-hdd-network"></i> Full port scan
       </div>
       <div class="card-body d-flex flex-column">
         <p class="small text-muted mb-2">
-          TCP 1–65535 dla urządzeń bez aktualnego pełnego skanu.<br>
-          Wielowątkowy: <strong>{{ status.get("full_scan_workers","4") }} workery</strong>
-          × <strong>{{ status.get("full_scan_batch_size","6") }} hosty</strong>.
+          TCP 1–65535 for devices without a current full scan.<br>
+          Multi-threaded: <strong>{{ status.get("full_scan_workers","4") }} workers</strong>
+          × <strong>{{ status.get("full_scan_batch_size","6") }} hosts</strong>.
         </p>
         {% set fpb = status.get("full_scan_port_batch_size","5000")|int %}
         <div class="small text-muted mb-3">
-          <i class="bi bi-layers me-1"></i>Portów na partię: <strong>{{ fpb if fpb > 0 else "1–65535 (jedna partia)" }}</strong>
+          <i class="bi bi-layers me-1"></i>Ports per batch: <strong>{{ fpb if fpb > 0 else "1–65535 (single batch)" }}</strong>
           &nbsp;·&nbsp;
           {% if status.get("scan_resume_enabled","1") == "1" %}
-            <i class="bi bi-arrow-repeat me-1 text-success"></i><span class="text-success">wznawianie włączone</span>
+            <i class="bi bi-arrow-repeat me-1 text-success"></i><span class="text-success">resume enabled</span>
           {% else %}
-            <i class="bi bi-x-circle me-1 text-muted"></i><span class="text-muted">wznawianie wyłączone</span>
+            <i class="bi bi-x-circle me-1 text-muted"></i><span class="text-muted">resume disabled</span>
           {% endif %}
         </div>
         <form method="post" action="/scan/trigger" class="mt-auto">
           <input type="hidden" name="type" value="full">
           <button class="btn btn-warning w-100">
-            <i class="bi bi-search me-2"></i>Uruchom full scan
+            <i class="bi bi-search me-2"></i>Run full scan
           </button>
         </form>
       </div>
@@ -104,25 +104,25 @@
   <div class="col-12 col-md-4">
     <div class="card h-100">
       <div class="card-header d-flex align-items-center gap-2">
-        <i class="bi bi-cloud-download"></i> Baza OUI (producenci MAC)
+        <i class="bi bi-cloud-download"></i> OUI database (MAC vendors)
       </div>
       <div class="card-body d-flex flex-column">
         <p class="small text-muted mb-2">
-          IEEE MA-L/MA-M/MA-S — identyfikacja producenta po adresie MAC.
+          IEEE MA-L/MA-M/MA-S — vendor identification by MAC address.
         </p>
         {% set oui_entries = oui_status.get("entries", 0)|int %}
         {% set oui_age    = oui_status.get("age_days") %}
         {% set oui_needs  = oui_status.get("needs_update", false) %}
         <div class="small mb-3">
           <div class="d-flex justify-content-between mb-1">
-            <span class="text-muted">Wpisów:</span>
+            <span class="text-muted">Entries:</span>
             <strong>{{ oui_entries if oui_entries > 0 else "—" }}</strong>
           </div>
           <div class="d-flex justify-content-between">
-            <span class="text-muted">Wiek bazy:</span>
+            <span class="text-muted">Database age:</span>
             {% if oui_age is not none and oui_age != "?" %}
               <span class="{{ 'text-warning' if oui_needs else 'text-success' }}">
-                {{ "%.0f"|format(oui_age|float) }} dni
+                {{ "%.0f"|format(oui_age|float) }} days
                 {% if oui_needs %}<i class="bi bi-exclamation-circle ms-1"></i>{% else %}<i class="bi bi-check-circle ms-1"></i>{% endif %}
               </span>
             {% else %}
@@ -133,7 +133,7 @@
         <form method="post" action="/scan/trigger" class="mt-auto">
           <input type="hidden" name="type" value="oui">
           <button class="btn {{ 'btn-warning' if oui_needs else 'btn-outline-info' }} w-100">
-            <i class="bi bi-cloud-download me-2"></i>Aktualizuj OUI
+            <i class="bi bi-cloud-download me-2"></i>Update OUI
           </button>
         </form>
       </div>
@@ -145,7 +145,7 @@
 <!-- Live progress card — widoczny tylko gdy trwa skan -->
 <div class="card mb-3" id="progressCard" style="display:none;border-color:var(--accent);">
   <div class="card-header d-flex justify-content-between align-items-center">
-    <span><i class="bi bi-activity me-2 text-warning"></i>Postęp skanowania — <span id="progressJobName" class="text-warning fw-bold"></span></span>
+    <span><i class="bi bi-activity me-2 text-warning"></i>Scan progress — <span id="progressJobName" class="text-warning fw-bold"></span></span>
     <span class="badge bg-warning text-dark" id="progressBatchLabel">—</span>
   </div>
   <div class="card-body">
@@ -161,23 +161,23 @@
 
 <!-- Status skanera -->
 <div class="card mb-3">
-  <div class="card-header"><i class="bi bi-info-circle me-2"></i>Status skanera</div>
+  <div class="card-header"><i class="bi bi-info-circle me-2"></i>Scanner status</div>
   <div class="card-body p-0">
     <table class="table table-sm mb-0">
       <tbody>
-        <tr><td class="text-muted ps-3" style="width:40%">Tryb</td>
-            <td>{{ "Host Windows (run_scanner.py)" if scanner_ok else "⚠ Skaner nieaktywny" }}</td></tr>
-        <tr><td class="text-muted ps-3">Aktualne zadanie</td>
+        <tr><td class="text-muted ps-3" style="width:40%">Mode</td>
+            <td>{{ "Windows host (run_scanner.py)" if scanner_ok else "⚠ Scanner inactive" }}</td></tr>
+        <tr><td class="text-muted ps-3">Current job</td>
             <td id="statusJobCell">{{ status.get("scanner_job","-") }}</td></tr>
-        <tr><td class="text-muted ps-3">Ostatni skan</td>
+        <tr><td class="text-muted ps-3">Last scan</td>
             <td>{{ status.get("scanner_last_at","—") }}</td></tr>
-        <tr><td class="text-muted ps-3">Typ skanowania</td>
+        <tr><td class="text-muted ps-3">Scan type</td>
             <td>{{ status.get("scanner_last_type","—") }}</td></tr>
-        <tr><td class="text-muted ps-3">Czas trwania</td>
+        <tr><td class="text-muted ps-3">Duration</td>
             <td>{{ status.get("scanner_last_duration_s","—") }} s</td></tr>
-        <tr><td class="text-muted ps-3">Urządzeń wykrytych</td>
+        <tr><td class="text-muted ps-3">Devices discovered</td>
             <td>{{ status.get("scanner_last_devices","—") }}</td></tr>
-        <tr><td class="text-muted ps-3">Wzbogaconych (SNMP/SSH)</td>
+        <tr><td class="text-muted ps-3">Enriched (SNMP/SSH)</td>
             <td>{{ status.get("scanner_last_enriched","—") }}</td></tr>
       </tbody>
     </table>
@@ -186,9 +186,9 @@
 
 <!-- Konfiguracja skanowania -->
 <div class="card mb-3">
-  <div class="card-header"><i class="bi bi-sliders me-2"></i>Konfiguracja skanowania
+  <div class="card-header"><i class="bi bi-sliders me-2"></i>Scan configuration
     <a href="/settings#scan" class="btn btn-sm btn-outline-secondary float-end py-0 px-2" style="font-size:.75rem">
-      <i class="bi bi-pencil me-1"></i>Ustawienia
+      <i class="bi bi-pencil me-1"></i>Settings
     </a>
   </div>
   <div class="card-body p-0">
@@ -197,36 +197,36 @@
         {% set qb = status.get("scan_batch_size","5000")|int %}
         {% set pb = status.get("scan_batch_pause_s","3") %}
         {% set ri = status.get("scan_resume_enabled","1") %}
-        <tr><td class="text-muted ps-3" style="width:40%">Interwał skanowania</td>
+        <tr><td class="text-muted ps-3" style="width:40%">Scan interval</td>
             <td>Windows Task Scheduler
               <a href="ms-taskmgr:" class="text-muted ms-1" style="font-size:.8rem"
-                 title="Konfiguracja w: Panel Kontrolny → Harmonogram zadań → NetDocScanner">
+                 title="Configuration in: Control Panel → Task Scheduler → NetDocScanner">
                 <i class="bi bi-calendar-event"></i></a>
             </td></tr>
-        <tr><td class="text-muted ps-3">Portów na partię (quick + full)</td>
-            <td>{{ qb if qb > 0 else "bez podziału (jeden nmap)" }}</td></tr>
-        <tr><td class="text-muted ps-3">Pauza między partiami</td>
+        <tr><td class="text-muted ps-3">Ports per batch (quick + full)</td>
+            <td>{{ qb if qb > 0 else "no split (single nmap)" }}</td></tr>
+        <tr><td class="text-muted ps-3">Pause between batches</td>
             <td>{{ pb }} s</td></tr>
-        <tr><td class="text-muted ps-3">Wznawianie po przerwaniu</td>
+        <tr><td class="text-muted ps-3">Resume after interruption</td>
             <td>
               {% if ri == "1" %}
-                <span class="text-success"><i class="bi bi-check-circle-fill me-1"></i>włączone</span>
+                <span class="text-success"><i class="bi bi-check-circle-fill me-1"></i>enabled</span>
               {% else %}
-                <span class="text-muted"><i class="bi bi-x-circle me-1"></i>wyłączone</span>
+                <span class="text-muted"><i class="bi bi-x-circle me-1"></i>disabled</span>
               {% endif %}
             </td></tr>
-        <tr><td class="text-muted ps-3">Skanowane sieci</td>
-            <td class="font-monospace small">{{ status.get("network_ranges","—") or "auto-detekcja" }}</td></tr>
+        <tr><td class="text-muted ps-3">Scanned networks</td>
+            <td class="font-monospace small">{{ status.get("network_ranges","—") or "auto-detection" }}</td></tr>
         <tr>
-          <td class="text-muted ps-3">Monitorowane porty</td>
+          <td class="text-muted ps-3">Monitored ports</td>
           <td>
             {% set tp = status.get("target_ports","") %}
             {% if tp %}
               {% set port_list = tp.split(",") %}
-              <span class="text-muted small">{{ port_list|length }} portów</span>
+              <span class="text-muted small">{{ port_list|length }} ports</span>
               <button class="btn btn-link btn-sm p-0 ms-2" type="button"
                       data-bs-toggle="collapse" data-bs-target="#portListCollapse"
-                      style="font-size:.75rem">pokaż</button>
+                      style="font-size:.75rem">show</button>
               <div class="collapse mt-1" id="portListCollapse">
                 <span class="font-monospace small">{{ tp }}</span>
               </div>
@@ -235,7 +235,7 @@
             {% endif %}
           </td>
         </tr>
-        <tr><td class="text-muted ps-3">Aktualizacja OUI</td>
+        <tr><td class="text-muted ps-3">OUI update</td>
             <td>{{ status.get("last_oui_update_at","—") }}</td></tr>
       </tbody>
     </table>
@@ -244,50 +244,50 @@
 
 {# ── Konserwacja wyników skanowania ──────────────────────────────────────── #}
 <div class="card mb-3">
-  <div class="card-header"><i class="bi bi-eraser me-2 text-secondary"></i>Konserwacja wyników skanowania</div>
+  <div class="card-header"><i class="bi bi-eraser me-2 text-secondary"></i>Scan result maintenance</div>
   <div class="card-body">
     <p class="small text-muted mb-3">
-      Usuwa zapisane wyniki skanowania portów z bazy danych. Przy następnym skanie dane zostaną odświeżone.
-      Przydatne gdy urządzenie zmieniło konfigurację lub wyniki są nieaktualne.
+      Removes saved port scan results from the database. At the next scan, data will be refreshed.
+      Useful when a device has changed its configuration or results are outdated.
     </p>
     <div class="row g-3">
       <div class="col-12 col-md-6">
-        <h6 class="small text-muted border-bottom pb-1 mb-2">Wszystkie urządzenia</h6>
+        <h6 class="small text-muted border-bottom pb-1 mb-2">All devices</h6>
         <div class="d-flex gap-2 flex-wrap">
           <form method="post" action="/devices/clear-ports">
             <input type="hidden" name="scan_type" value="nmap_full">
             <button class="btn btn-sm btn-outline-secondary" type="submit"
-                    onclick="return confirm('Usunąć wyniki pełnego skanu (1-65535) dla WSZYSTKICH urządzeń?')"
-                    title="Usuwa wyniki pełnego skanu 1-65535 dla wszystkich urządzeń.">
-              <i class="bi bi-eraser me-1"></i>Wyczyść pełny skan — wszystkie
+                    onclick="return confirm('Delete full scan results (1-65535) for ALL devices?')"
+                    title="Removes full scan 1-65535 results for all devices.">
+              <i class="bi bi-eraser me-1"></i>Clear full scan — all
             </button>
           </form>
           <form method="post" action="/devices/clear-ports">
             <button class="btn btn-sm btn-outline-secondary" type="submit"
-                    onclick="return confirm('Usunąć WSZYSTKIE wyniki skanowania portów dla wszystkich urządzeń?')"
-                    title="Usuwa wyniki szybkiego i pełnego skanu dla wszystkich urządzeń.">
-              <i class="bi bi-x-circle me-1"></i>Wyczyść wszystkie skany — wszystkie
+                    onclick="return confirm('Delete ALL port scan results for all devices?')"
+                    title="Removes quick and full scan results for all devices.">
+              <i class="bi bi-x-circle me-1"></i>Clear all scans — all
             </button>
           </form>
         </div>
       </div>
       <div class="col-12 col-md-6">
-        <h6 class="small text-muted border-bottom pb-1 mb-2">Konkretne urządzenie (po ID lub IP)</h6>
+        <h6 class="small text-muted border-bottom pb-1 mb-2">Specific device (by ID or IP)</h6>
         <form method="post" action="" id="clearSingleForm" class="d-flex gap-2 align-items-end flex-wrap">
           <div>
-            <label class="form-label small mb-1">IP urządzenia</label>
+            <label class="form-label small mb-1">Device IP</label>
             <input type="text" id="clearDeviceIp" class="form-control form-control-sm" style="width:160px"
-                   placeholder="np. 192.168.1.1" autocomplete="off">
+                   placeholder="e.g. 192.168.1.1" autocomplete="off">
           </div>
           <div>
-            <label class="form-label small mb-1">Typ skanu</label>
+            <label class="form-label small mb-1">Scan type</label>
             <select id="clearScanType" class="form-select form-select-sm" style="width:160px">
-              <option value="nmap_full">Tylko pełny (1-65535)</option>
-              <option value="">Wszystkie</option>
+              <option value="nmap_full">Full only (1-65535)</option>
+              <option value="">All</option>
             </select>
           </div>
           <button type="button" class="btn btn-sm btn-outline-secondary" id="clearSingleBtn">
-            <i class="bi bi-eraser me-1"></i>Wyczyść
+            <i class="bi bi-eraser me-1"></i>Clear
           </button>
         </form>
       </div>
@@ -309,7 +309,7 @@
 
   function parseProgress(prog) {
     if (!prog) return null;
-    // "zakończono: N urządzeń"
+    // "completed: N devices"
     if (/zakon/i.test(prog)) return { pct: 100, label: prog, done: true };
     // "X/Y batchy" — X=0 na starcie, wtedy minimum 3% żeby pasek był widoczny
     const m = prog.match(/(\d+)\/(\d+)/);
@@ -363,12 +363,12 @@
             var t = bootstrap.Tooltip.getInstance(el);
             if (t) t.dispose();
           });
-          ipsEl.innerHTML = '<i class="bi bi-hdd-network me-1"></i>Aktualnie skanowane: '
+          ipsEl.innerHTML = '<i class="bi bi-hdd-network me-1"></i>Currently scanning: '
             + list.map(ip => {
                 const info = batchMap[ip];
                 const tip  = info
-                  ? `Partia ${info.batch}/${info.total} · porty: ${info.ports}`
-                  : 'Oczekuje na skan…';
+                  ? `Batch ${info.batch}/${info.total} · ports: ${info.ports}`
+                  : 'Waiting for scan…';
                 const cls  = info ? 'bg-primary' : 'bg-secondary';
                 // data-bs-title zamiast title — Bootstrap nie przesuwa go do data-bs-original-title
                 return `<span class="badge ${cls} font-monospace me-1"
@@ -395,17 +395,17 @@
 // ── Czyszczenie skanów dla konkretnego urządzenia (po IP) ─────────────────
 document.getElementById("clearSingleBtn").addEventListener("click", async function() {
   const ip = document.getElementById("clearDeviceIp").value.trim();
-  if (!ip) { alert("Podaj adres IP urządzenia."); return; }
+  if (!ip) { alert("Enter the device IP address."); return; }
   const scanType = document.getElementById("clearScanType").value;
   try {
     const r = await fetch("/api/devices/?ip=" + encodeURIComponent(ip) + "&limit=1");
     if (!r.ok) throw new Error("HTTP " + r.status);
     const data = await r.json();
     const items = data.items || data;
-    if (!Array.isArray(items) || items.length === 0) { alert("Nie znaleziono urządzenia o IP: " + ip); return; }
+    if (!Array.isArray(items) || items.length === 0) { alert("No device found with IP: " + ip); return; }
     const devId = items[0].id;
-    const label = scanType === "nmap_full" ? "pełnego skanu" : "wszystkich skanów";
-    if (!confirm("Usunąć wyniki " + label + " dla " + ip + " (ID=" + devId + ")?")) return;
+    const label = scanType === "nmap_full" ? "full scan" : "all scans";
+    if (!confirm("Delete " + label + " results for " + ip + " (ID=" + devId + ")?")) return;
     const form = document.createElement("form");
     form.method = "post";
     form.action = "/devices/" + devId + "/clear-ports";
@@ -416,7 +416,7 @@ document.getElementById("clearSingleBtn").addEventListener("click", async functi
     }
     document.body.appendChild(form);
     form.submit();
-  } catch(e) { alert("Błąd: " + e.message); }
+  } catch(e) { alert("Error: " + e.message); }
 });
 </script>
 {% endblock %}

@@ -1,18 +1,18 @@
 {% extends "base.html" %}
-{% block title %}Logi{% endblock %}
+{% block title %}Logs{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h5 class="mb-0"><i class="bi bi-terminal me-2"></i>Logi i aktywnosc</h5>
+  <h5 class="mb-0"><i class="bi bi-terminal me-2"></i>Logs and activity</h5>
   <div class="d-flex align-items-center gap-2">
-    <span class="badge bg-secondary" id="logStatus" title="Czas ostatniego odświeżenia danych">...</span>
+    <span class="badge bg-secondary" id="logStatus" title="Time of last data refresh">...</span>
     <div class="form-check form-switch mb-0"
-         title="Automatyczne odświeżanie: Aktywność sieci co 10s, pozostałe zakładki co 5s">
+         title="Auto-refresh: Network activity every 10s, other tabs every 5s">
       <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
       <label class="form-check-label small" for="autoRefresh">Auto</label>
     </div>
     <button class="btn btn-outline-secondary btn-sm" id="refreshBtn" onclick="refreshActive()"
-            title="Odśwież teraz">
+            title="Refresh now">
       <i class="bi bi-arrow-clockwise"></i>
     </button>
   </div>
@@ -21,32 +21,32 @@
 <ul class="nav nav-tabs mb-0" id="logTabs">
   <li class="nav-item">
     <button class="nav-link active" data-tab="events">
-      <i class="bi bi-activity me-1"></i>Aktywnosc sieci
+      <i class="bi bi-activity me-1"></i>Network activity
     </button>
   </li>
   <li class="nav-item">
     <button class="nav-link" data-tab="scanner">
-      <i class="bi bi-cpu me-1"></i>Log skanera
+      <i class="bi bi-cpu me-1"></i>Scanner log
     </button>
   </li>
   <li class="nav-item">
     <button class="nav-link" data-tab="watchdog">
-      <i class="bi bi-shield-check me-1"></i>Log watchdog
+      <i class="bi bi-shield-check me-1"></i>Watchdog log
     </button>
   </li>
   <li class="nav-item">
     <button class="nav-link" data-tab="workers">
-      <i class="bi bi-activity me-1"></i>Workery Docker
+      <i class="bi bi-activity me-1"></i>Docker workers
     </button>
   </li>
   <li class="nav-item">
     <button class="nav-link" data-tab="cred">
-      <i class="bi bi-key me-1"></i>Log credentiali
+      <i class="bi bi-key me-1"></i>Credential log
     </button>
   </li>
   <li class="nav-item">
     <button class="nav-link" data-tab="ai">
-      <i class="bi bi-cpu me-1"></i>AI Zapytania
+      <i class="bi bi-cpu me-1"></i>AI Queries
     </button>
   </li>
 </ul>
@@ -58,26 +58,26 @@
     <div id="tab-events">
       <div class="d-flex align-items-center gap-3 p-2 border-bottom" style="background:var(--bg3)">
         <select class="form-select form-select-sm" style="width:130px" id="eventsLimit">
-          <option value="50">50 zdarzen</option>
-          <option value="100" selected>100 zdarzen</option>
-          <option value="200">200 zdarzen</option>
+          <option value="50">50 events</option>
+          <option value="100" selected>100 events</option>
+          <option value="200">200 events</option>
         </select>
-        <span class="text-muted small">Zdarzenia UP/DOWN z tabeli events — odswiezane co 10s</span>
+        <span class="text-muted small">UP/DOWN events from the events table — refreshed every 10s</span>
       </div>
       <div style="max-height:72vh;overflow-y:auto">
         <table class="table table-sm table-hover mb-0" id="eventsTable">
           <thead style="position:sticky;top:0;z-index:1">
             <tr>
-              <th style="width:145px">Czas</th>
-              <th style="width:110px">Zdarzenie</th>
+              <th style="width:145px">Time</th>
+              <th style="width:110px">Event</th>
               <th style="width:125px">IP</th>
-              <th style="width:100px">Typ</th>
+              <th style="width:100px">Type</th>
               <th>Hostname</th>
-              <th style="width:80px" class="text-muted small">Jak dawno</th>
+              <th style="width:80px" class="text-muted small">Ago</th>
             </tr>
           </thead>
           <tbody id="eventsBody">
-            <tr><td colspan="6" class="text-center text-muted py-3">Ladowanie...</td></tr>
+            <tr><td colspan="6" class="text-center text-muted py-3">Loading...</td></tr>
           </tbody>
         </table>
       </div>
@@ -87,28 +87,28 @@
     <div id="tab-scanner" style="display:none">
       <div class="d-flex align-items-center gap-3 p-2 border-bottom" style="background:var(--bg3)">
         <select class="form-select form-select-sm" style="width:120px" id="scannerTail">
-          <option value="100">100 linii</option>
-          <option value="200" selected>200 linii</option>
-          <option value="500">500 linii</option>
+          <option value="100">100 lines</option>
+          <option value="200" selected>200 lines</option>
+          <option value="500">500 lines</option>
         </select>
-        <span class="text-muted small">Plik: <code>logs/scanner.log</code></span>
+        <span class="text-muted small">File: <code>logs/scanner.log</code></span>
       </div>
       <pre id="scannerOutput" class="mb-0 p-3 font-monospace small"
-           style="background:#0d1117;color:#c9d1d9;max-height:72vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all">Ladowanie...</pre>
+           style="background:#0d1117;color:#c9d1d9;max-height:72vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all">Loading...</pre>
     </div>
 
     {# ── Log watchdog ── #}
     <div id="tab-watchdog" style="display:none">
       <div class="d-flex align-items-center gap-3 p-2 border-bottom" style="background:var(--bg3)">
         <select class="form-select form-select-sm" style="width:120px" id="watchdogTail">
-          <option value="100">100 linii</option>
-          <option value="200" selected>200 linii</option>
-          <option value="500">500 linii</option>
+          <option value="100">100 lines</option>
+          <option value="200" selected>200 lines</option>
+          <option value="500">500 lines</option>
         </select>
-        <span class="text-muted small">Plik: <code>logs/watchdog.log</code> — watchdog Docker co 5 min</span>
+        <span class="text-muted small">File: <code>logs/watchdog.log</code> — Docker watchdog every 5 min</span>
       </div>
       <pre id="watchdogOutput" class="mb-0 p-3 font-monospace small"
-           style="background:#0d1117;color:#c9d1d9;max-height:72vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all">Ladowanie...</pre>
+           style="background:#0d1117;color:#c9d1d9;max-height:72vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all">Loading...</pre>
     </div>
 
     {# ── Workery Docker ── #}
@@ -116,9 +116,9 @@
       <div class="d-flex flex-column gap-2 p-2 border-bottom" style="background:var(--bg3)">
         <div class="d-flex align-items-center gap-2 flex-wrap">
           <select class="form-select form-select-sm" style="width:120px" id="workersTail">
-            <option value="100">100 linii</option>
-            <option value="200" selected>200 linii</option>
-            <option value="500">500 linii</option>
+            <option value="100">100 lines</option>
+            <option value="200" selected>200 lines</option>
+            <option value="500">500 lines</option>
           </select>
           <div class="d-flex flex-wrap gap-1" id="workersSelect">
             <div class="btn-group btn-group-sm" role="group">
@@ -142,7 +142,7 @@
         </div>
         <div class="d-flex align-items-center gap-2">
           <input type="text" id="workersFilter" class="form-control form-control-sm"
-                 style="width:260px" placeholder="Filtruj: wpisz IP, słowo kluczowe…" autocomplete="off">
+                 style="width:260px" placeholder="Filter: enter IP, keyword…" autocomplete="off">
           <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('workersFilter').value='';applyWorkersFilter()">
             <i class="bi bi-x"></i>
           </button>
@@ -150,57 +150,57 @@
         </div>
       </div>
       <pre id="workersOutput" class="mb-0 p-3 font-monospace small"
-           style="background:#0d1117;color:#c9d1d9;max-height:68vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all">Ladowanie...</pre>
+           style="background:#0d1117;color:#c9d1d9;max-height:68vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all">Loading...</pre>
     </div>
 
     {# ── Log credentiali ── #}
     <div id="tab-cred" style="display:none">
       <div class="d-flex align-items-center gap-3 p-2 border-bottom flex-wrap" style="background:var(--bg3)">
         <select class="form-select form-select-sm" style="width:120px" id="credTail">
-          <option value="100">100 linii</option>
-          <option value="200" selected>200 linii</option>
-          <option value="500">500 linii</option>
+          <option value="100">100 lines</option>
+          <option value="200" selected>200 lines</option>
+          <option value="500">500 lines</option>
         </select>
         <div class="btn-group btn-group-sm" id="credFilter" role="group"
-             title="Filtruj log według protokołu — pokazuje tylko linie zawierające wybrany tag">
-          <button type="button" class="btn btn-outline-secondary active" data-filter="" title="Pokaż wszystkie linie">Wszystko</button>
-          <button type="button" class="btn btn-outline-info"      data-filter="SSH"    title="Filtruj: testy SSH (port 22)">SSH</button>
-          <button type="button" class="btn btn-outline-warning"   data-filter="WEB"    title="Filtruj: testy Web API / HTTP (porty 80, 443, 8080)">WEB</button>
-          <button type="button" class="btn btn-outline-success"   data-filter="FTP"    title="Filtruj: testy FTP (port 21)">FTP</button>
-          <button type="button" class="btn btn-outline-danger"    data-filter="RDP"    title="Filtruj: testy RDP (port 3389)">RDP</button>
-          <button type="button" class="btn btn-outline-secondary" data-filter="BANNER" title="Filtruj: odczyt banerów TCP (identyfikacja usług)">BANNER</button>
+             title="Filter log by protocol — shows only lines containing the selected tag">
+          <button type="button" class="btn btn-outline-secondary active" data-filter="" title="Show all lines">All</button>
+          <button type="button" class="btn btn-outline-info"      data-filter="SSH"    title="Filter: SSH tests (port 22)">SSH</button>
+          <button type="button" class="btn btn-outline-warning"   data-filter="WEB"    title="Filter: Web API / HTTP tests (ports 80, 443, 8080)">WEB</button>
+          <button type="button" class="btn btn-outline-success"   data-filter="FTP"    title="Filter: FTP tests (port 21)">FTP</button>
+          <button type="button" class="btn btn-outline-danger"    data-filter="RDP"    title="Filter: RDP tests (port 3389)">RDP</button>
+          <button type="button" class="btn btn-outline-secondary" data-filter="BANNER" title="Filter: TCP banner reading (service identification)">BANNER</button>
         </div>
-        <span class="text-muted small">Plik: <code>logs/cred.log</code></span>
+        <span class="text-muted small">File: <code>logs/cred.log</code></span>
       </div>
       <pre id="credOutput" class="mb-0 p-3 font-monospace small"
-           style="background:#0d1117;color:#c9d1d9;max-height:72vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all">Ladowanie...</pre>
+           style="background:#0d1117;color:#c9d1d9;max-height:72vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all">Loading...</pre>
     </div>
 
     {# ── AI Zapytania ── #}
     <div id="tab-ai" style="display:none">
       <div class="d-flex align-items-center gap-3 p-2 border-bottom flex-wrap" style="background:var(--bg3)">
         <select class="form-select form-select-sm" style="width:130px" id="aiLogsLimit">
-          <option value="20">20 zapytań</option>
-          <option value="50" selected>50 zapytań</option>
-          <option value="100">100 zapytań</option>
+          <option value="20">20 queries</option>
+          <option value="50" selected>50 queries</option>
+          <option value="100">100 queries</option>
         </select>
-        <span class="text-muted small">Historia zapytań AI per-urządzenie (prompt + odpowiedź)</span>
+        <span class="text-muted small">AI query history per device (prompt + response)</span>
       </div>
       <div style="max-height:72vh;overflow-y:auto">
         <table class="table table-sm table-hover mb-0" id="aiLogsTable">
           <thead style="position:sticky;top:0;z-index:1">
             <tr>
-              <th style="width:145px">Czas</th>
+              <th style="width:145px">Time</th>
               <th style="width:110px">IP</th>
-              <th style="width:120px">Urządzenie</th>
+              <th style="width:120px">Device</th>
               <th style="width:70px">Model</th>
-              <th style="width:90px">Ocena</th>
-              <th>Uzasadnienie</th>
-              <th style="width:70px" title="Pokaż pełny prompt i odpowiedź JSON">Szczeg.</th>
+              <th style="width:90px">Assessment</th>
+              <th>Reasoning</th>
+              <th style="width:70px" title="Show full prompt and JSON response">Detail</th>
             </tr>
           </thead>
           <tbody id="aiLogsBody">
-            <tr><td colspan="7" class="text-center text-muted py-3">Ładowanie...</td></tr>
+            <tr><td colspan="7" class="text-center text-muted py-3">Loading...</td></tr>
           </tbody>
         </table>
       </div>
@@ -211,13 +211,13 @@
       <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header py-2">
-            <h6 class="modal-title" id="aiLogDetailTitle"><i class="bi bi-cpu me-2"></i>Szczegóły zapytania AI</h6>
+            <h6 class="modal-title" id="aiLogDetailTitle"><i class="bi bi-cpu me-2"></i>AI query details</h6>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body p-3">
             <ul class="nav nav-tabs mb-3" id="aiDetailTabs">
               <li class="nav-item"><button class="nav-link active" data-target="aiDetailPrompt">Prompt</button></li>
-              <li class="nav-item"><button class="nav-link" data-target="aiDetailResult">Odpowiedź JSON</button></li>
+              <li class="nav-item"><button class="nav-link" data-target="aiDetailResult">JSON response</button></li>
             </ul>
             <div id="aiDetailPrompt">
               <pre class="small p-3 rounded" style="background:#0d1117;color:#c9d1d9;white-space:pre-wrap;word-break:break-word;max-height:60vh;overflow-y:auto" id="aiLogPromptPre">—</pre>
@@ -227,7 +227,7 @@
             </div>
           </div>
           <div class="modal-footer py-2">
-            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
           </div>
         </div>
       </div>
@@ -283,7 +283,7 @@ function fetchEvents() {
     .then(data => {
       const tbody = document.getElementById("eventsBody");
       if (!data.events || !data.events.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Brak zdarzen w bazie.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No events in the database.</td></tr>';
         setStatus("ok");
         return;
       }
@@ -364,7 +364,7 @@ function applyCredFilter(rawText) {
     const filtered = rawText.split("\n")
       .filter(l => l.includes(credActiveFilter))
       .join("\n");
-    pre.innerHTML = colorizeLog(filtered || "(brak linii dla filtru: " + credActiveFilter + ")");
+    pre.innerHTML = colorizeLog(filtered || "(no lines for filter: " + credActiveFilter + ")");
   }
   if (autoScrollCred) pre.scrollTop = pre.scrollHeight;
 }
@@ -390,8 +390,8 @@ function applyWorkersFilter() {
     countEl.textContent = "";
   } else {
     const lines = workersRawText.split("\n").filter(l => l.toLowerCase().includes(q));
-    countEl.textContent = lines.length + " linii";
-    pre.innerHTML = colorizeLog(lines.join("\n") || "(brak linii dla: " + q + ")");
+    countEl.textContent = lines.length + " lines";
+    pre.innerHTML = colorizeLog(lines.join("\n") || "(no lines for: " + q + ")");
   }
   if (autoScrollWorkers) pre.scrollTop = pre.scrollHeight;
 }
@@ -416,12 +416,12 @@ function fetchAiLogs() {
     .then(items => {
       const tbody = document.getElementById("aiLogsBody");
       if (!Array.isArray(items) || items.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-3">Brak zapytań AI w historii.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-3">No AI queries in history.</td></tr>`;
         setStatus("ok"); return;
       }
       tbody.innerHTML = items.map(it => {
         const obsBadge = it.is_obsolete === true
-          ? `<span class="badge bg-danger">Do wymiany</span>`
+          ? `<span class="badge bg-danger">Replace</span>`
           : it.is_obsolete === false
             ? `<span class="badge bg-success">OK</span>`
             : `<span class="badge bg-secondary">?</span>`;
@@ -436,7 +436,7 @@ function fetchAiLogs() {
           <td class="small text-muted">${reason}${(it.reason||"").length > 80 ? "…" : ""}</td>
           <td>
             <button class="btn btn-sm btn-outline-secondary ai-log-detail-btn" style="font-size:.7rem;padding:.15rem .4rem"
-              title="Pokaż pełny prompt wysłany do AI oraz odpowiedź JSON"
+              title="Show full prompt sent to AI and JSON response"
               data-prompt="${encodeURIComponent(it.prompt)}"
               data-result="${encodeURIComponent(it.result_json)}"
               data-label="${it.device_label} (${it.assessed_at})">
@@ -453,7 +453,7 @@ function fetchAiLogs() {
           document.getElementById("aiLogDetailTitle").textContent = "AI: " + this.dataset.label;
           const promptPre = document.getElementById("aiLogPromptPre");
           const resultPre = document.getElementById("aiLogResultPre");
-          promptPre.textContent = decodeURIComponent(this.dataset.prompt) || "(brak promptu)";
+          promptPre.textContent = decodeURIComponent(this.dataset.prompt) || "(no prompt)";
           try {
             resultPre.textContent = JSON.stringify(JSON.parse(decodeURIComponent(this.dataset.result)), null, 2);
           } catch(e) {

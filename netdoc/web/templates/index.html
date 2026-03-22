@@ -6,25 +6,25 @@
   <div class="col-6 col-lg-3">
     <div class="card stat-card text-center py-3">
       <div class="display-6 fw-bold">{{ device_count }}</div>
-      <div class="text-muted small">Urzadzenia</div>
+      <div class="text-muted small">Devices</div>
     </div>
   </div>
   <div class="col-6 col-lg-3">
     <div class="card stat-card text-center py-3">
       <div class="display-6 fw-bold text-success">{{ active_devices }}</div>
-      <div class="text-muted small">Aktywne (UP)</div>
+      <div class="text-muted small">Active (UP)</div>
     </div>
   </div>
   <div class="col-6 col-lg-3">
     <div class="card stat-card text-center py-3">
       <div class="display-6 fw-bold">{{ network_count }}</div>
-      <div class="text-muted small">Sieci</div>
+      <div class="text-muted small">Networks</div>
     </div>
   </div>
   <div class="col-6 col-lg-3">
     <div class="card stat-card text-center py-3">
       <div class="display-6 fw-bold" style="color:var(--accent)">{{ credentialed_devices }}<span class="fs-5 text-muted fw-normal">/{{ active_devices }}</span></div>
-      <div class="text-muted small"><i class="bi bi-key-fill me-1"></i>Z dostepem (aktywne)</div>
+      <div class="text-muted small"><i class="bi bi-key-fill me-1"></i>With access (active)</div>
     </div>
   </div>
 </div>
@@ -33,19 +33,19 @@
   <div class="col-6 col-lg-4">
     <div class="card stat-card text-center py-3" style="border-color: {% if vuln_critical > 0 %}#da3633{% else %}var(--border){% endif %}">
       <div class="display-6 fw-bold" style="color: {% if vuln_critical > 0 %}#ff7b72{% else %}var(--text-muted){% endif %}">{{ vuln_critical }}</div>
-      <div class="text-muted small"><i class="bi bi-shield-fill-exclamation me-1"></i>Krytyczne podatnosci</div>
+      <div class="text-muted small"><i class="bi bi-shield-fill-exclamation me-1"></i>Critical vulnerabilities</div>
     </div>
   </div>
   <div class="col-6 col-lg-4">
     <div class="card stat-card text-center py-3" style="border-color: {% if vuln_high > 0 %}#e3b341{% else %}var(--border){% endif %}">
       <div class="display-6 fw-bold" style="color: {% if vuln_high > 0 %}#e3b341{% else %}var(--text-muted){% endif %}">{{ vuln_high }}</div>
-      <div class="text-muted small"><i class="bi bi-shield-exclamation me-1"></i>Wysokie podatnosci</div>
+      <div class="text-muted small"><i class="bi bi-shield-exclamation me-1"></i>High vulnerabilities</div>
     </div>
   </div>
   <div class="col-12 col-lg-4">
     <div class="card stat-card text-center py-3">
       <div class="display-6 fw-bold text-muted">{{ vuln_open }}</div>
-      <div class="text-muted small"><a href="/security" class="text-decoration-none text-muted"><i class="bi bi-shield me-1"></i>Wszystkie otwarte &rarr;</a></div>
+      <div class="text-muted small"><a href="/security" class="text-decoration-none text-muted"><i class="bi bi-shield me-1"></i>All open &rarr;</a></div>
     </div>
   </div>
 </div>
@@ -53,7 +53,7 @@
 <div class="row g-3 mb-4">
   <div class="col-12 col-lg-6">
     <div class="card">
-      <div class="card-header"><i class="bi bi-activity me-2"></i>Status systemu</div>
+      <div class="card-header"><i class="bi bi-activity me-2"></i>System status</div>
       <div class="card-body">
         <table class="table table-sm mb-0">
           <tbody>
@@ -67,19 +67,19 @@
   </div>
   <div class="col-12 col-lg-6">
     <div class="card">
-      <div class="card-header"><i class="bi bi-link-45deg me-2"></i>Szybkie linki</div>
+      <div class="card-header"><i class="bi bi-link-45deg me-2"></i>Quick links</div>
       <div class="card-body d-grid gap-2">
         <a href="{{ grafana_url }}" target="_blank" class="btn btn-outline-warning">
-          <i class="bi bi-bar-chart-fill me-2"></i>Grafana — Dashboardy
+          <i class="bi bi-bar-chart-fill me-2"></i>Grafana — Dashboards
         </a>
         <a href="{{ grafana_url }}/d/netdoc-main" target="_blank" class="btn btn-outline-info">
           <i class="bi bi-grid-1x2 me-2"></i>Grafana — NetDoc Main Dashboard
         </a>
         <a href="/scan" class="btn btn-outline-success">
-          <i class="bi bi-radar me-2"></i>Uruchom skanowanie
+          <i class="bi bi-radar me-2"></i>Run scan
         </a>
         <a href="/credentials" class="btn btn-outline-secondary">
-          <i class="bi bi-key me-2"></i>Zarzadzaj credentials
+          <i class="bi bi-key me-2"></i>Manage credentials
         </a>
       </div>
     </div>
@@ -92,9 +92,9 @@
   <div class="col-12">
     <div class="card">
       <div class="card-header d-flex align-items-center justify-content-between">
-        <span><i class="bi bi-globe me-2"></i>Dostepnosc internetu</span>
+        <span><i class="bi bi-globe me-2"></i>Internet connectivity</span>
         {% if internet_status.get('updated_at') %}
-          <span class="text-muted small">Sprawdzono: {{ internet_status.updated_at }}</span>
+          <span class="text-muted small">Checked: {{ internet_status.updated_at }}</span>
         {% endif %}
       </div>
       <div class="card-body py-2">
@@ -125,19 +125,19 @@
           <div class="col-6 col-md-3">
             <div class="fw-bold {% if hc.get('ok') %}text-success{% elif internet_status %}text-danger{% else %}text-muted{% endif %}">
               {% if hc.get('ok') %}<i class="bi bi-check-circle-fill"></i>{% elif internet_status %}<i class="bi bi-x-circle-fill"></i>{% else %}&mdash;{% endif %}
-              Latencja HTTP
+              HTTP Latency
             </div>
             {% if hc.get('avg_ms') is not none %}
               <div class="text-muted small">
                 avg {{ hc.avg_ms }}ms &middot; min {{ hc.min_ms }}ms &middot; max {{ hc.max_ms }}ms
               </div>
-              <div class="text-muted small">Jitter: {{ hc.jitter_ms }}ms ({{ hc.pings }} prob)</div>
+              <div class="text-muted small">Jitter: {{ hc.jitter_ms }}ms ({{ hc.pings }} pings)</div>
             {% else %}
               <div class="text-muted small">1.1.1.1{% if hc.get('ms') is not none %} &middot; {{ hc.ms }}ms{% endif %}</div>
             {% endif %}
           </div>
 
-          {# Predkosc pobierania + wysylania #}
+          {# Download + upload speed #}
           {% set spd = internet_speed %}
           <div class="col-6 col-md-3">
             {% if spd.get('download_mbps') is not none or spd.get('upload_mbps') is not none %}
@@ -155,7 +155,7 @@
               </div>
             {% else %}
               <div class="fw-bold text-muted"><i class="bi bi-speedometer2"></i> &mdash;</div>
-              <div class="text-muted small">Test predkosci co 30 min</div>
+              <div class="text-muted small">Speed test every 30 min</div>
             {% endif %}
           </div>
 

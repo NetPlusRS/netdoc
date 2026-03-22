@@ -1,22 +1,22 @@
 {% extends "base.html" %}
-{% block title %}Sieci{% endblock %}
+{% block title %}Networks{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h5 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>Sieci ({{ networks|length }})</h5>
+  <h5 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>Networks ({{ networks|length }})</h5>
   <div class="d-flex gap-2">
     {% set active_count = networks | selectattr("is_active") | list | length %}
     {% if active_count > 0 %}
     <button class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#pauseAllModal"
-            title="Wstrzymaj wszystkie aktywne sieci — skaner odpauzuje automatycznie te, do ktorych jestes podlaczony">
-      <i class="bi bi-pause-fill me-1"></i>Pauzuj wszystkie ({{ active_count }})
+            title="Pause all active networks — the scanner will automatically unpause those you are connected to">
+      <i class="bi bi-pause-fill me-1"></i>Pause all ({{ active_count }})
     </button>
     {% endif %}
     <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#bulkAddModal">
-      <i class="bi bi-list-ul me-1"></i>Dodaj wiele
+      <i class="bi bi-list-ul me-1"></i>Add multiple
     </button>
     <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addNetModal">
-      <i class="bi bi-plus-lg me-1"></i>Dodaj siec
+      <i class="bi bi-plus-lg me-1"></i>Add network
     </button>
   </div>
 </div>
@@ -27,7 +27,7 @@
     <h2 class="accordion-header">
       <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#netInfoBody"
         style="background:var(--bg3);color:var(--text);border-radius:0;">
-        <i class="bi bi-info-circle me-2 text-info"></i>Jak dzialaja sieci w NetDoc?
+        <i class="bi bi-info-circle me-2 text-info"></i>How do networks work in NetDoc?
       </button>
     </h2>
     <div id="netInfoBody" class="accordion-collapse collapse">
@@ -37,11 +37,11 @@
             <div class="d-flex align-items-start gap-2">
               <i class="bi bi-plus-circle-fill text-success mt-1" style="font-size:1.1rem;flex-shrink:0;"></i>
               <div>
-                <strong>Dodanie sieci</strong><br>
-                Siec zostaje dodana jako <em>aktywna</em>. Przy nastepnym uruchomieniu skanera
-                (<code>run_scanner.py</code>) zakres CIDR zostanie uwzgledniony w fazie discovery (ping sweep + nmap).
-                Urzadzenia odkryte w tym zakresie trafi do bazy danych i beda widoczne na liscie urzadzen.
-                Dane historyczne nie sa kasowane.
+                <strong>Adding a network</strong><br>
+                The network is added as <em>active</em>. At the next scanner run
+                (<code>run_scanner.py</code>) the CIDR range will be included in the discovery phase (ping sweep + nmap).
+                Devices discovered in this range will be added to the database and visible in the device list.
+                Historical data is not deleted.
               </div>
             </div>
           </div>
@@ -49,15 +49,15 @@
             <div class="d-flex align-items-start gap-2">
               <i class="bi bi-pause-circle-fill text-warning mt-1" style="font-size:1.1rem;flex-shrink:0;"></i>
               <div>
-                <strong>Pauza sieci (zatrzymanie)</strong><br>
-                Siec staje sie <em>nieaktywna</em> — skaner (run_scanner.py) pomija ten zakres
-                w przyszlych skanach discovery. Urzadzenia juz wykryte i zapisane w bazie
-                <strong>pozostaja w systemie</strong> i <strong>nadal sa monitorowane</strong>
-                przez ping-workera (dostepnosc) oraz workersy SNMP/podatnosci.
-                Jezeli chcesz calkowicie zatrzymac monitoring segmentu — uzyj opcji usuniecia urzadzen.
-                Dane historyczne (skany, logi) nie sa kasowane.
-                <strong>Opcjonalnie</strong>: przy zatrzymaniu mozesz jednoczesnie usunac wszystkie
-                urzadzenia z tego zakresu — beda ponownie odkryte gdy siec wroci do aktywnych.
+                <strong>Network pause (stop)</strong><br>
+                The network becomes <em>inactive</em> — the scanner (run_scanner.py) skips this range
+                in future discovery scans. Devices already discovered and saved in the database
+                <strong>remain in the system</strong> and <strong>are still monitored</strong>
+                by the ping worker (availability) and SNMP/vulnerability workers.
+                If you want to completely stop monitoring a segment — use the device deletion option.
+                Historical data (scans, logs) is not deleted.
+                <strong>Optional</strong>: when stopping you can simultaneously delete all
+                devices from this range — they will be rediscovered when the network becomes active again.
               </div>
             </div>
           </div>
@@ -65,20 +65,19 @@
             <div class="d-flex align-items-start gap-2">
               <i class="bi bi-trash-fill text-danger mt-1" style="font-size:1.1rem;flex-shrink:0;"></i>
               <div>
-                <strong>Usuniecie sieci</strong><br>
-                Konfiguracja sieci (CIDR, notatka) jest kasowana z bazy. Skaner przestaje skanowac ten zakres.
-                Urzadzenia odkryte wczesniej w tej sieci <strong>domyslnie pozostaja</strong> w bazie
-                (historia skanow, podatnosci, dane SNMP). Mozesz wybrać opcje <em>"rowniez usun urzadzenia"</em>
-                — wowczas wszystkie urzadzenia z tego zakresu IP zostana skasowane i przy ewentualnym
-                ponownym dodaniu sieci zostana odkryte od nowa.
+                <strong>Deleting a network</strong><br>
+                The network configuration (CIDR, note) is removed from the database. The scanner stops scanning this range.
+                Devices previously discovered in this network <strong>remain in the database by default</strong>
+                (scan history, vulnerabilities, SNMP data). You can choose the option <em>"also delete devices"</em>
+                — then all devices in this IP range will be deleted and if the network is re-added they will be rediscovered.
               </div>
             </div>
           </div>
         </div>
         <div class="mt-2 pt-2 border-top" style="border-color:var(--border)!important;">
           <i class="bi bi-lightbulb text-warning me-1"></i>
-          <strong>Uwaga:</strong> Skaner hostowy (<code>run_scanner.py</code>) czyta aktywne sieci z bazy przy kazdym uruchomieniu.
-          Zmiany w statusie sieci beda widoczne w nastepnym cyklu skanowania (domyslnie co 5 min przez Task Scheduler).
+          <strong>Note:</strong> The host scanner (<code>run_scanner.py</code>) reads active networks from the database at every run.
+          Network status changes will be visible in the next scan cycle (default every 5 min via Task Scheduler).
         </div>
       </div>
     </div>
@@ -87,7 +86,7 @@
 
 <div class="d-flex gap-2 align-items-center mb-2">
   <input type="text" id="netSearch" class="form-control form-control-sm" style="max-width:300px"
-         placeholder="Szukaj CIDR lub notatki…" autocomplete="off">
+         placeholder="Search CIDR or note…" autocomplete="off">
   <span id="netSearchCount" class="text-muted small"></span>
 </div>
 
@@ -97,14 +96,14 @@
       <thead>
         <tr>
           <th class="net-sort" data-col="cidr" style="cursor:pointer;user-select:none">CIDR <span class="sort-icon">↕</span></th>
-          <th>Zrodlo</th>
+          <th>Source</th>
           <th class="net-sort" data-col="status" style="cursor:pointer;user-select:none">Status <span class="sort-icon">↕</span></th>
-          <th class="net-sort" data-col="active" style="cursor:pointer;user-select:none" data-bs-toggle="tooltip" title="Aktywne / nieaktywne urzadzenia w tym zakresie">Urzadzenia <span class="sort-icon text-success">↓</span></th>
-          <th class="net-sort" data-col="maxhosts" style="cursor:pointer;user-select:none" data-bs-toggle="tooltip" title="Maksymalna liczba adresowalnych hostow w tej podsieci (2^(32-prefix) - 2)">Maks. hostow <span class="sort-icon">↕</span></th>
-          <th class="net-sort" data-col="first_seen" style="cursor:pointer;user-select:none">Pierwsza detekcja <span class="sort-icon">↕</span></th>
-          <th class="net-sort" data-col="last_seen" style="cursor:pointer;user-select:none">Ostatnia detekcja <span class="sort-icon">↕</span></th>
-          <th>Notatka</th>
-          <th>Akcje</th>
+          <th class="net-sort" data-col="active" style="cursor:pointer;user-select:none" data-bs-toggle="tooltip" title="Active / inactive devices in this range">Devices <span class="sort-icon text-success">↓</span></th>
+          <th class="net-sort" data-col="maxhosts" style="cursor:pointer;user-select:none" data-bs-toggle="tooltip" title="Maximum number of addressable hosts in this subnet (2^(32-prefix) - 2)">Max. hosts <span class="sort-icon">↕</span></th>
+          <th class="net-sort" data-col="first_seen" style="cursor:pointer;user-select:none">First detected <span class="sort-icon">↕</span></th>
+          <th class="net-sort" data-col="last_seen" style="cursor:pointer;user-select:none">Last detected <span class="sort-icon">↕</span></th>
+          <th>Note</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -127,16 +126,16 @@
             data-maxhosts="{{ max_hosts }}"
             data-first="{{ n.first_seen.strftime('%Y-%m-%d') if n.first_seen else '' }}"
             data-last="{{ n.last_seen.strftime('%Y-%m-%d %H:%M') if n.last_seen else '' }}"
-            data-status="{{ 'aktywna' if n.is_active else 'nieaktywna' }}"
+            data-status="{{ 'active' if n.is_active else 'inactive' }}"
             data-notes="{{ n.notes or '' }}">
           <td class="font-monospace">{{ n.cidr }}</td>
           <td>
             {% if n.source and n.source.value == "manual" %}
-              <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Siec dodana recznie przez uzytkownika z panelu lub .env">manual</span>
+              <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Network added manually by the user from the panel or .env">manual</span>
             {% elif n.source and n.source.value == "auto" %}
-              <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Siec wykryta automatycznie przez skaner na podstawie interfejsow sieciowych hosta">auto</span>
+              <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Network detected automatically by the scanner based on host network interfaces">auto</span>
             {% elif n.source and n.source.value == "lldp" %}
-              <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Siec odkryta via protokol LLDP/CDP z sasiedniego urzadzenia sieciowego">lldp</span>
+              <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Network discovered via LLDP/CDP protocol from a neighboring network device">lldp</span>
             {% else %}
               <span class="badge bg-secondary">{{ n.source.value if n.source else "?" }}</span>
             {% endif %}
@@ -144,46 +143,46 @@
           <td>
             {% if n.is_active %}
               <span class="badge bg-success" data-bs-toggle="tooltip"
-                title="Skaner aktywnie przeszukuje ten zakres CIDR w kazdym cyklu (co {{ scan_interval_minutes }} min). Nowe urzadzenia sa automatycznie dodawane do bazy.">aktywna</span>
+                title="The scanner actively scans this CIDR range in every cycle (every {{ scan_interval_minutes }} min). New devices are automatically added to the database.">active</span>
             {% else %}
               <span class="badge bg-secondary" data-bs-toggle="tooltip"
-                title="Siec wstrzymana — skaner pomija ten zakres. Urzadzenia juz wykryte pozostaja w bazie i sa nadal monitorowane (ping/SNMP). Wznow aby wlaczyc ponowne skanowanie discovery.">nieaktywna</span>
+                title="Network paused — the scanner skips this range. Devices already discovered remain in the database and are still monitored (ping/SNMP). Resume to enable discovery scanning again.">inactive</span>
             {% endif %}
           </td>
           <td>
             {% if dev_count > 0 %}
               <a href="/devices?cidr={{ n.cidr | urlencode }}" class="text-decoration-none d-inline-flex gap-1 align-items-center"
-                 data-bs-toggle="tooltip" title="Kliknij aby zobaczyc urzadzenia z sieci {{ n.cidr }}">
+                 data-bs-toggle="tooltip" title="Click to see devices from network {{ n.cidr }}">
                 {% if active_count > 0 %}
-                <span class="badge bg-success">{{ active_count }} aktywne</span>
+                <span class="badge bg-success">{{ active_count }} active</span>
                 {% endif %}
                 {% if inactive_count > 0 %}
-                <span class="badge bg-secondary">{{ inactive_count }} nieaktywne</span>
+                <span class="badge bg-secondary">{{ inactive_count }} inactive</span>
                 {% endif %}
               </a>
             {% else %}
-              <span class="text-muted" data-bs-toggle="tooltip" title="Brak urzadzen z tego zakresu w bazie">0</span>
+              <span class="text-muted" data-bs-toggle="tooltip" title="No devices from this range in the database">0</span>
             {% endif %}
           </td>
           <td class="small text-muted font-monospace">
             {% if max_hosts >= 1000 %}
-              <span data-bs-toggle="tooltip" title="/{{ prefix }} — {{ max_hosts }} adresowalnych hostow">{{ "{:,}".format(max_hosts).replace(",", " ") }}</span>
+              <span data-bs-toggle="tooltip" title="/{{ prefix }} — {{ max_hosts }} addressable hosts">{{ "{:,}".format(max_hosts).replace(",", " ") }}</span>
             {% else %}
-              <span data-bs-toggle="tooltip" title="/{{ prefix }} — {{ max_hosts }} adresowalnych hostow">{{ max_hosts }}</span>
+              <span data-bs-toggle="tooltip" title="/{{ prefix }} — {{ max_hosts }} addressable hosts">{{ max_hosts }}</span>
             {% endif %}
           </td>
           <td class="small text-muted">{{ n.first_seen.strftime("%Y-%m-%d") if n.first_seen else "—" }}</td>
           <td class="small text-muted">{{ n.last_seen.strftime("%Y-%m-%d %H:%M") if n.last_seen else "—" }}</td>
           <td class="notes-cell small" data-net-id="{{ n.id }}" data-notes="{{ n.notes or '' }}">
             <span class="notes-display text-muted">{{ n.notes or "—" }}</span>
-            <button class="btn btn-link btn-sm p-0 ms-1 notes-edit-btn text-muted" title="Edytuj notatke" style="opacity:.5;font-size:.75rem;vertical-align:baseline;">
+            <button class="btn btn-link btn-sm p-0 ms-1 notes-edit-btn text-muted" title="Edit note" style="opacity:.5;font-size:.75rem;vertical-align:baseline;">
               <i class="bi bi-pencil"></i>
             </button>
           </td>
           <td class="d-flex gap-1">
             {% if n.is_active %}
             <!-- Pause: opens modal -->
-            <button class="btn btn-outline-warning btn-sm py-0" title="Zatrzymaj skanowanie tej sieci"
+            <button class="btn btn-outline-warning btn-sm py-0" title="Stop scanning this network"
               data-bs-toggle="modal" data-bs-target="#pauseModal"
               data-net-id="{{ n.id }}" data-net-cidr="{{ n.cidr }}" data-dev-count="{{ dev_count }}">
               <i class="bi bi-pause-fill"></i>
@@ -191,13 +190,13 @@
             {% else %}
             <!-- Activate: direct form post -->
             <form method="post" action="/networks/{{ n.id }}/toggle">
-              <button class="btn btn-outline-success btn-sm py-0" title="Wznow skanowanie tej sieci">
+              <button class="btn btn-outline-success btn-sm py-0" title="Resume scanning this network">
                 <i class="bi bi-play-fill"></i>
               </button>
             </form>
             {% endif %}
             <!-- Delete: opens modal -->
-            <button class="btn btn-outline-danger btn-sm py-0" title="Usun siec z konfiguracji"
+            <button class="btn btn-outline-danger btn-sm py-0" title="Remove network from configuration"
               data-bs-toggle="modal" data-bs-target="#deleteNetModal"
               data-net-id="{{ n.id }}" data-net-cidr="{{ n.cidr }}" data-dev-count="{{ dev_count }}">
               <i class="bi bi-trash"></i>
@@ -205,7 +204,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="9" class="text-center text-muted py-4">Brak sieci. Dodaj zakres do skanowania.</td></tr>
+        <tr><td colspan="9" class="text-center text-muted py-4">No networks. Add a range to scan.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -218,7 +217,7 @@
     <h2 class="accordion-header">
       <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#subnetCalcBody"
         style="background:var(--bg3);color:var(--text);border-radius:0;">
-        <i class="bi bi-calculator me-2 text-info"></i>Kalkulator podsieci
+        <i class="bi bi-calculator me-2 text-info"></i>Subnet calculator
       </button>
     </h2>
     <div id="subnetCalcBody" class="accordion-collapse collapse">
@@ -227,7 +226,7 @@
           <!-- Lewa: slider + wyjscie -->
           <div class="col-md-6">
             <div class="mb-2">
-              <label class="form-label small mb-1">Adres IP (opcjonalny)</label>
+              <label class="form-label small mb-1">IP address (optional)</label>
               <input type="text" id="calcIp" class="form-control form-control-sm font-monospace"
                 placeholder="192.168.1.0" value="192.168.1.0">
             </div>
@@ -239,56 +238,56 @@
               <input type="range" class="form-range" id="calcSlider" min="8" max="30" value="24">
             </div>
             <div class="mb-2">
-              <label class="form-label small mb-1">lub wpisz pozadana liczbe hostow</label>
+              <label class="form-label small mb-1">or enter the desired number of hosts</label>
               <input type="number" id="calcHostsInput" class="form-control form-control-sm"
-                placeholder="np. 200" min="1" max="16777214">
+                placeholder="e.g. 200" min="1" max="16777214">
             </div>
             <div class="mt-3 p-3 rounded small font-monospace" style="background:var(--bg3);border:1px solid var(--border);">
               <div class="row g-1">
-                <div class="col-5 text-muted">Siec:</div>
+                <div class="col-5 text-muted">Network:</div>
                 <div class="col-7" id="calcNetwork">—</div>
                 <div class="col-5 text-muted">Broadcast:</div>
                 <div class="col-7" id="calcBroadcast">—</div>
-                <div class="col-5 text-muted">Pierwszy host:</div>
+                <div class="col-5 text-muted">First host:</div>
                 <div class="col-7" id="calcFirst">—</div>
-                <div class="col-5 text-muted">Ostatni host:</div>
+                <div class="col-5 text-muted">Last host:</div>
                 <div class="col-7" id="calcLast">—</div>
-                <div class="col-5 text-muted">Adresowalnych:</div>
+                <div class="col-5 text-muted">Addressable:</div>
                 <div class="col-7"><strong id="calcHosts" class="text-success">—</strong></div>
-                <div class="col-5 text-muted">Maska:</div>
+                <div class="col-5 text-muted">Mask:</div>
                 <div class="col-7" id="calcMask">—</div>
-                <div class="col-5 text-muted">Wildcarda:</div>
+                <div class="col-5 text-muted">Wildcard:</div>
                 <div class="col-7 text-muted" id="calcWildcard">—</div>
               </div>
               <div class="mt-2 pt-2" style="border-top:1px solid var(--border);">
                 <span class="text-muted">CIDR: </span><strong id="calcCidr" class="text-info">—</strong>
-                <button class="btn btn-outline-secondary btn-sm py-0 ms-2" id="calcCopyBtn" title="Kopiuj CIDR do schowka">
+                <button class="btn btn-outline-secondary btn-sm py-0 ms-2" id="calcCopyBtn" title="Copy CIDR to clipboard">
                   <i class="bi bi-clipboard"></i>
                 </button>
-                <button class="btn btn-outline-success btn-sm py-0 ms-1" id="calcAddBtn" title="Dodaj te siec do skanowania">
-                  <i class="bi bi-plus-lg me-1"></i>Dodaj
+                <button class="btn btn-outline-success btn-sm py-0 ms-1" id="calcAddBtn" title="Add this network to scanning">
+                  <i class="bi bi-plus-lg me-1"></i>Add
                 </button>
               </div>
             </div>
           </div>
           <!-- Prawa: tabela referencji -->
           <div class="col-md-6">
-            <p class="small text-muted mb-2">Popularne podsieci — kliknij aby wybrać:</p>
+            <p class="small text-muted mb-2">Common subnets — click to select:</p>
             <table class="table table-sm table-hover mb-0 small" id="calcRefTable" style="cursor:pointer;">
-              <thead><tr><th>Prefix</th><th>Maska</th><th>Hostow</th><th>Typowe zastosowanie</th></tr></thead>
+              <thead><tr><th>Prefix</th><th>Mask</th><th>Hosts</th><th>Typical use</th></tr></thead>
               <tbody>
-                <tr data-prefix="8"><td>/8</td><td>255.0.0.0</td><td>16&nbsp;777&nbsp;214</td><td class="text-muted">Duze sieci klasy A</td></tr>
-                <tr data-prefix="16"><td>/16</td><td>255.255.0.0</td><td>65&nbsp;534</td><td class="text-muted">Duze kampusy/WAN</td></tr>
-                <tr data-prefix="20"><td>/20</td><td>255.255.240.0</td><td>4&nbsp;094</td><td class="text-muted">Duzy segment LAN</td></tr>
-                <tr data-prefix="22"><td>/22</td><td>255.255.252.0</td><td>1&nbsp;022</td><td class="text-muted">Sredni biurowiec</td></tr>
-                <tr data-prefix="23"><td>/23</td><td>255.255.254.0</td><td>510</td><td class="text-muted">Dwa segmenty /24</td></tr>
-                <tr data-prefix="24" class="table-active"><td>/24</td><td>255.255.255.0</td><td>254</td><td class="text-muted">Typowy LAN biurowy</td></tr>
-                <tr data-prefix="25"><td>/25</td><td>255.255.255.128</td><td>126</td><td class="text-muted">Pol segmentu /24</td></tr>
-                <tr data-prefix="26"><td>/26</td><td>255.255.255.192</td><td>62</td><td class="text-muted">Maly oddzial</td></tr>
-                <tr data-prefix="27"><td>/27</td><td>255.255.255.224</td><td>30</td><td class="text-muted">Segment infrastruktury</td></tr>
-                <tr data-prefix="28"><td>/28</td><td>255.255.255.240</td><td>14</td><td class="text-muted">Segment serwerow</td></tr>
+                <tr data-prefix="8"><td>/8</td><td>255.0.0.0</td><td>16&nbsp;777&nbsp;214</td><td class="text-muted">Large Class A networks</td></tr>
+                <tr data-prefix="16"><td>/16</td><td>255.255.0.0</td><td>65&nbsp;534</td><td class="text-muted">Large campuses/WAN</td></tr>
+                <tr data-prefix="20"><td>/20</td><td>255.255.240.0</td><td>4&nbsp;094</td><td class="text-muted">Large LAN segment</td></tr>
+                <tr data-prefix="22"><td>/22</td><td>255.255.252.0</td><td>1&nbsp;022</td><td class="text-muted">Medium office building</td></tr>
+                <tr data-prefix="23"><td>/23</td><td>255.255.254.0</td><td>510</td><td class="text-muted">Two /24 segments</td></tr>
+                <tr data-prefix="24" class="table-active"><td>/24</td><td>255.255.255.0</td><td>254</td><td class="text-muted">Typical office LAN</td></tr>
+                <tr data-prefix="25"><td>/25</td><td>255.255.255.128</td><td>126</td><td class="text-muted">Half of /24 segment</td></tr>
+                <tr data-prefix="26"><td>/26</td><td>255.255.255.192</td><td>62</td><td class="text-muted">Small branch</td></tr>
+                <tr data-prefix="27"><td>/27</td><td>255.255.255.224</td><td>30</td><td class="text-muted">Infrastructure segment</td></tr>
+                <tr data-prefix="28"><td>/28</td><td>255.255.255.240</td><td>14</td><td class="text-muted">Server segment</td></tr>
                 <tr data-prefix="29"><td>/29</td><td>255.255.255.248</td><td>6</td><td class="text-muted">Point-to-multipoint</td></tr>
-                <tr data-prefix="30"><td>/30</td><td>255.255.255.252</td><td>2</td><td class="text-muted">Lacze P2P (WAN)</td></tr>
+                <tr data-prefix="30"><td>/30</td><td>255.255.255.252</td><td>2</td><td class="text-muted">P2P link (WAN)</td></tr>
               </tbody>
             </table>
           </div>
@@ -305,9 +304,9 @@
       <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#macLookupBody"
         style="background:var(--bg3);color:var(--text);border-radius:0;"
         id="macLookupToggle">
-        <i class="bi bi-ethernet me-2 text-warning"></i>Lookup MAC → producent
+        <i class="bi bi-ethernet me-2 text-warning"></i>Lookup MAC → vendor
         <span id="macDbAgeBadge" class="badge bg-secondary ms-2 small fw-normal" style="font-size:.7rem;">
-          ładowanie bazy…
+          loading database…
         </span>
       </button>
     </h2>
@@ -317,13 +316,13 @@
         {# ── Wyszukiwanie MAC ── #}
         <div class="row g-2 align-items-end mb-3">
           <div class="col-md-4">
-            <label class="form-label small mb-1">Adres MAC</label>
+            <label class="form-label small mb-1">MAC address</label>
             <input type="text" id="macInput" class="form-control form-control-sm font-monospace"
-              placeholder="np. DC:A6:32:11:22:33 lub DCA632">
+              placeholder="e.g. DC:A6:32:11:22:33 or DCA632">
           </div>
           <div class="col-auto">
             <button class="btn btn-outline-warning btn-sm" id="macLookupBtn">
-              <i class="bi bi-search me-1"></i>Sprawdz
+              <i class="bi bi-search me-1"></i>Look up
             </button>
           </div>
           <div class="col-md-5">
@@ -331,28 +330,28 @@
           </div>
         </div>
         <div class="mb-3 small text-muted">
-          Wpisz pelny MAC (AA:BB:CC:DD:EE:FF), pierwsze 3 oktety (AA:BB:CC) lub OUI bez separatorow (AABBCC).
-          Baza OUI zawiera wpisy IEEE MA-L/MA-M/MA-S oraz plik manuf Wireshark.
+          Enter a full MAC (AA:BB:CC:DD:EE:FF), first 3 octets (AA:BB:CC) or OUI without separators (AABBCC).
+          The OUI database contains IEEE MA-L/MA-M/MA-S entries and the Wireshark manuf file.
         </div>
 
         {# ── Status baz danych IEEE ── #}
         <div class="mb-3" id="macDbStatusSection">
-          <div class="small fw-semibold mb-1 text-muted"><i class="bi bi-database me-1"></i>Stan baz danych OUI</div>
+          <div class="small fw-semibold mb-1 text-muted"><i class="bi bi-database me-1"></i>OUI database status</div>
           <div class="row g-2" id="macDbStatusCards">
             <div class="col text-muted small">
-              <span class="spinner-border spinner-border-sm me-1"></span>Sprawdzam stan baz…
+              <span class="spinner-border spinner-border-sm me-1"></span>Checking database status…
             </div>
           </div>
         </div>
 
         {# ── Przeglądarka producentów ── #}
-        <div class="small fw-semibold mb-2 text-muted"><i class="bi bi-list-ul me-1"></i>Baza producentów</div>
+        <div class="small fw-semibold mb-2 text-muted"><i class="bi bi-list-ul me-1"></i>Vendor database</div>
         <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
           <input type="text" id="vendorSearch" class="form-control form-control-sm"
-            style="max-width:260px" placeholder="Szukaj producenta…">
+            style="max-width:260px" placeholder="Search vendor…">
           <select id="vendorSort" class="form-select form-select-sm" style="width:auto">
-            <option value="name">Sortuj: A–Z</option>
-            <option value="count" selected>Sortuj: liczba OUI ↓</option>
+            <option value="name">Sort: A–Z</option>
+            <option value="count" selected>Sort: OUI count ↓</option>
           </select>
           <span id="vendorTotal" class="text-muted small"></span>
         </div>
@@ -361,16 +360,16 @@
             <thead style="position:sticky;top:0;background:var(--bg3);z-index:1;">
               <tr>
                 <th class="ps-2 py-1" style="cursor:pointer" id="thVendor">
-                  Producent <i class="bi bi-arrow-down-up text-muted small"></i>
+                  Vendor <i class="bi bi-arrow-down-up text-muted small"></i>
                 </th>
                 <th class="text-end pe-2 py-1" style="cursor:pointer;width:110px" id="thBlocks">
-                  Bloki OUI <i class="bi bi-arrow-down-up text-muted small"></i>
+                  OUI blocks <i class="bi bi-arrow-down-up text-muted small"></i>
                 </th>
               </tr>
             </thead>
             <tbody id="vendorTableBody">
               <tr><td colspan="2" class="text-muted small ps-2">
-                <span class="spinner-border spinner-border-sm me-1"></span>Ładowanie…
+                <span class="spinner-border spinner-border-sm me-1"></span>Loading…
               </td></tr>
             </tbody>
           </table>
@@ -384,7 +383,7 @@
 <!-- Eksport CSV -->
 <div class="mb-3 d-flex justify-content-end">
   <a href="/devices/export.csv" class="btn btn-outline-secondary btn-sm">
-    <i class="bi bi-download me-1"></i>Eksportuj urzadzenia do CSV
+    <i class="bi bi-download me-1"></i>Export devices to CSV
   </a>
 </div>
 
@@ -393,24 +392,24 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-list-ul me-2 text-info"></i>Dodaj wiele sieci</h5>
+        <h5 class="modal-title"><i class="bi bi-list-ul me-2 text-info"></i>Add multiple networks</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <form method="post" action="/networks/bulk-add">
         <div class="modal-body">
           <div class="alert alert-info py-2 small mb-3">
             <i class="bi bi-info-circle me-1"></i>
-            Wpisz zakresy CIDR — jeden na linii lub oddzielone przecinkiem. Istniejace sieci zostana pominiete.
+            Enter CIDR ranges — one per line or separated by commas. Existing networks will be skipped.
           </div>
           <div class="mb-2">
-            <label class="form-label small">Zakresy CIDR *</label>
+            <label class="form-label small">CIDR ranges *</label>
             <textarea name="cidrs" class="form-control font-monospace" rows="6"
               placeholder="192.168.1.0/24&#10;10.0.0.0/8&#10;172.16.0.0/16" required></textarea>
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
-          <button type="submit" class="btn btn-info text-white"><i class="bi bi-plus-lg me-1"></i>Dodaj wszystkie</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-info text-white"><i class="bi bi-plus-lg me-1"></i>Add all</button>
         </div>
       </form>
     </div>
@@ -422,21 +421,21 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-pause-circle me-2 text-warning"></i>Wstrzymaj wszystkie sieci</h5>
+        <h5 class="modal-title"><i class="bi bi-pause-circle me-2 text-warning"></i>Pause all networks</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <form method="post" action="/networks/pause-all">
         <div class="modal-body">
-          <p>Wszystkie <strong>{{ networks | selectattr("is_active") | list | length }}</strong> aktywne sieci zostana wstrzymane.</p>
+          <p>All <strong>{{ networks | selectattr("is_active") | list | length }}</strong> active networks will be paused.</p>
           <div class="alert alert-info py-2 small">
             <i class="bi bi-lightbulb me-1"></i>
-            Przy nastepnym cyklu skanowania (co 5 min) skaner automatycznie odpauzuje sieci,
-            do ktorych jestes aktualnie podlaczony. Dane i urzadzenia pozostaja w bazie.
+            At the next scan cycle (every 5 min) the scanner will automatically unpause networks
+            you are currently connected to. Data and devices remain in the database.
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
-          <button type="submit" class="btn btn-warning"><i class="bi bi-pause-fill me-1"></i>Wstrzymaj wszystkie</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-warning"><i class="bi bi-pause-fill me-1"></i>Pause all</button>
         </div>
       </form>
     </div>
@@ -448,28 +447,28 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-pause-circle me-2 text-warning"></i>Zatrzymaj siec</h5>
+        <h5 class="modal-title"><i class="bi bi-pause-circle me-2 text-warning"></i>Stop network</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <form method="post" id="pauseForm">
         <input type="hidden" name="delete_devices" id="pauseDeleteDevicesVal" value="0">
         <div class="modal-body">
-          <p>Siec <strong id="pauseNetCidr"></strong> zostanie <strong>zatrzymana</strong>.</p>
+          <p>Network <strong id="pauseNetCidr"></strong> will be <strong>stopped</strong>.</p>
           <div class="alert alert-warning py-2 small">
             <i class="bi bi-info-circle me-1"></i>
-            Skaner pominie ten zakres w nastepnych skanach. Dane historyczne pozostaja w bazie.
+            The scanner will skip this range in future scans. Historical data remains in the database.
           </div>
           <div class="form-check mt-2" id="pauseDeleteOption">
             <input class="form-check-input" type="checkbox" id="pauseDeleteDevices">
             <label class="form-check-label" for="pauseDeleteDevices">
-              Rowniez usun <span id="pauseDevCount" class="badge bg-danger">0</span> urzadzen z tego zakresu z bazy
-              <small class="text-muted d-block">Urzadzenia zostana ponownie odkryte przy nastepnym skanowaniu tej sieci.</small>
+              Also delete <span id="pauseDevCount" class="badge bg-danger">0</span> devices from this range from the database
+              <small class="text-muted d-block">Devices will be rediscovered at the next scan of this network.</small>
             </label>
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
-          <button type="submit" class="btn btn-warning">Zatrzymaj</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-warning">Stop</button>
         </div>
       </form>
     </div>
@@ -481,29 +480,29 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-trash me-2 text-danger"></i>Usun siec</h5>
+        <h5 class="modal-title"><i class="bi bi-trash me-2 text-danger"></i>Delete network</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <form method="post" id="deleteNetForm">
         <input type="hidden" name="delete_devices" id="deleteNetDevicesVal" value="0">
         <div class="modal-body">
-          <p>Usunac siec <strong id="deleteNetCidr"></strong> z konfiguracji skanowania?</p>
+          <p>Delete network <strong id="deleteNetCidr"></strong> from the scan configuration?</p>
           <div class="alert alert-info py-2 small">
             <i class="bi bi-info-circle me-1"></i>
-            Konfiguracja sieci zostanie skasowana. Skaner nie bedzie juz przeszukiwal tego zakresu.
-            Urzadzenia odkryte wczesniej <strong>domyslnie pozostaja</strong> w bazie.
+            The network configuration will be removed. The scanner will no longer search this range.
+            Previously discovered devices <strong>remain in the database by default</strong>.
           </div>
           <div class="form-check mt-2" id="deleteDevOption">
             <input class="form-check-input" type="checkbox" id="deleteNetDevices">
             <label class="form-check-label" for="deleteNetDevices">
-              Rowniez usun <span id="deleteNetDevCount" class="badge bg-danger">0</span> urzadzen z tego zakresu z bazy
-              <small class="text-muted d-block">Urzadzenia zostana ponownie odkryte jesli siec zostanie dodana ponownie.</small>
+              Also delete <span id="deleteNetDevCount" class="badge bg-danger">0</span> devices from this range from the database
+              <small class="text-muted d-block">Devices will be rediscovered if the network is added again.</small>
             </label>
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
-          <button type="submit" class="btn btn-danger">Usun siec</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger">Delete network</button>
         </div>
       </form>
     </div>
@@ -515,28 +514,28 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-plus-circle me-2 text-success"></i>Dodaj siec</h5>
+        <h5 class="modal-title"><i class="bi bi-plus-circle me-2 text-success"></i>Add network</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <form method="post" action="/networks/add">
         <div class="modal-body">
           <div class="alert alert-info py-2 small mb-3">
             <i class="bi bi-info-circle me-1"></i>
-            Siec zostanie dodana jako <strong>aktywna</strong>. Skaner uwzgledni ten zakres CIDR
-            przy nastepnym uruchomieniu (co 5 min). Urzadzenia w tym zakresie zostana automatycznie odkryte.
+            The network will be added as <strong>active</strong>. The scanner will include this CIDR range
+            at the next run (every 5 min). Devices in this range will be automatically discovered.
           </div>
           <div class="mb-2">
             <label class="form-label small">CIDR *</label>
             <input type="text" name="cidr" class="form-control" placeholder="192.168.1.0/24" required>
           </div>
           <div class="mb-2">
-            <label class="form-label small">Notatka</label>
-            <input type="text" name="notes" class="form-control" placeholder="np. LAN biuro Warszawa">
+            <label class="form-label small">Note</label>
+            <input type="text" name="notes" class="form-control" placeholder="e.g. Warsaw office LAN">
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
-          <button type="submit" class="btn btn-success">Dodaj</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success">Add</button>
         </div>
       </form>
     </div>
@@ -629,7 +628,7 @@ document.getElementById('deleteNetDevices').addEventListener('change', function(
     document.getElementById('calcMaskLabel').textContent = intToIp(mask);
     document.getElementById('calcMask').textContent = intToIp(mask);
     document.getElementById('calcWildcard').textContent = intToIp(wildcard);
-    document.getElementById('calcHosts').textContent = usableHosts.toLocaleString('pl-PL');
+    document.getElementById('calcHosts').textContent = usableHosts.toLocaleString('en-US');
 
     if (netInt !== null) {
       document.getElementById('calcNetwork').textContent   = intToIp(netInt);
@@ -729,7 +728,7 @@ document.getElementById('deleteNetDevices').addEventListener('change', function(
             const badge = document.createElement('span');
             badge.className = 'overlap-warn badge bg-warning text-dark ms-1';
             badge.setAttribute('data-bs-toggle', 'tooltip');
-            badge.title = 'Ten zakres naklada sie z: ' + (x === a ? b.cidr : a.cidr);
+            badge.title = 'This range overlaps with: ' + (x === a ? b.cidr : a.cidr);
             badge.textContent = '⚠';
             td.appendChild(badge);
             new bootstrap.Tooltip(badge);
@@ -744,18 +743,18 @@ document.getElementById('deleteNetDevices').addEventListener('change', function(
 document.getElementById('macLookupBtn').addEventListener('click', async function() {
   const mac = document.getElementById('macInput').value.trim();
   const res = document.getElementById('macResult');
-  if (!mac) { res.innerHTML = '<span class="text-warning">Wpisz adres MAC.</span>'; return; }
-  res.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm"></span> Szukam...</span>';
+  if (!mac) { res.innerHTML = '<span class="text-warning">Enter a MAC address.</span>'; return; }
+  res.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm"></span> Searching...</span>';
   try {
     const r = await fetch('/api/mac/' + encodeURIComponent(mac));
     const d = await r.json();
     if (d.vendor) {
       res.innerHTML = '<i class="bi bi-check-circle-fill text-success me-1"></i><strong>' + d.vendor + '</strong>';
     } else {
-      res.innerHTML = '<i class="bi bi-x-circle text-muted me-1"></i><span class="text-muted">Nieznany producent (OUI nie znaleziony w bazie)</span>';
+      res.innerHTML = '<i class="bi bi-x-circle text-muted me-1"></i><span class="text-muted">Unknown vendor (OUI not found in database)</span>';
     }
   } catch {
-    res.innerHTML = '<span class="text-danger">Blad zapytania.</span>';
+    res.innerHTML = '<span class="text-danger">Request error.</span>';
   }
 });
 document.getElementById('macInput').addEventListener('keydown', function(e) {
@@ -788,7 +787,7 @@ document.getElementById('macInput').addEventListener('keydown', function(e) {
       // Badge w nagłówku: liczba wpisów + czy wymaga aktualizacji
       const entries = d.entries || 0;
       const needsUpdate = d.needs_update;
-      badge.textContent = entries.toLocaleString('pl') + ' wpisów' + (needsUpdate ? ' ⚠' : ' ✓');
+      badge.textContent = entries.toLocaleString('en') + ' entries' + (needsUpdate ? ' ⚠' : ' ✓');
       badge.className = 'badge ms-2 small fw-normal ' + (needsUpdate ? 'bg-warning text-dark' : 'bg-success');
 
       // Karty per źródło IEEE
@@ -804,7 +803,7 @@ document.getElementById('macInput').addEventListener('keydown', function(e) {
           html += `<div class="col-auto">
             <div class="border rounded px-2 py-1 small" style="background:var(--bg3)">
               <div class="fw-semibold">${name}</div>
-              <div class="${ageClass}"><i class="bi bi-clock me-1"></i>${age} dni temu</div>
+              <div class="${ageClass}"><i class="bi bi-clock me-1"></i>${age} days ago</div>
               <div class="text-muted">${(sizeKb/1024).toFixed(1)} MB</div>
             </div>
           </div>`;
@@ -812,14 +811,14 @@ document.getElementById('macInput').addEventListener('keydown', function(e) {
           html += `<div class="col-auto">
             <div class="border rounded px-2 py-1 small border-secondary" style="background:var(--bg3)">
               <div class="fw-semibold">${name}</div>
-              <div class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Brak pliku</div>
+              <div class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>File missing</div>
             </div>
           </div>`;
         }
       }
-      cards.innerHTML = html || '<div class="text-muted small col">Brak danych o bazach OUI.</div>';
+      cards.innerHTML = html || '<div class="text-muted small col">No OUI database data available.</div>';
     } catch (e) {
-      document.getElementById('macDbStatusCards').innerHTML = '<div class="text-danger small col">Błąd pobierania statusu.</div>';
+      document.getElementById('macDbStatusCards').innerHTML = '<div class="text-danger small col">Error fetching status.</div>';
     }
   }
 
@@ -831,7 +830,7 @@ document.getElementById('macInput').addEventListener('keydown', function(e) {
       renderVendors();
     } catch {
       document.getElementById('vendorTableBody').innerHTML =
-        '<tr><td colspan="2" class="text-danger small ps-2">Błąd ładowania listy producentów.</td></tr>';
+        '<tr><td colspan="2" class="text-danger small ps-2">Error loading vendor list.</td></tr>';
     }
   }
 
@@ -847,7 +846,7 @@ document.getElementById('macInput').addEventListener('keydown', function(e) {
     const show = rows.slice(0, 200);
     const tbody = document.getElementById('vendorTableBody');
     if (!show.length) {
-      tbody.innerHTML = '<tr><td colspan="2" class="text-muted small ps-2">Brak wyników.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="2" class="text-muted small ps-2">No results.</td></tr>';
       document.getElementById('vendorTotal').textContent = '';
       document.getElementById('vendorShowMore').textContent = '';
       return;
@@ -858,9 +857,9 @@ document.getElementById('macInput').addEventListener('keydown', function(e) {
         <td class="text-end pe-2 py-1 small font-monospace">${v.blocks}</td>
       </tr>`
     ).join('');
-    document.getElementById('vendorTotal').textContent = `${total.toLocaleString('pl')} producentów`;
+    document.getElementById('vendorTotal').textContent = `${total.toLocaleString('en')} vendors`;
     document.getElementById('vendorShowMore').textContent =
-      total > 200 ? `Wyświetlono 200 z ${total.toLocaleString('pl')} — zawęź wyszukiwanie aby zobaczyć więcej.` : '';
+      total > 200 ? `Showing 200 of ${total.toLocaleString('en')} — narrow your search to see more.` : '';
   }
 
   function escHtml(s) {
@@ -912,12 +911,12 @@ document.querySelectorAll('.notes-cell').forEach(function(cell) {
     const saveBtn = document.createElement('button');
     saveBtn.className = 'btn btn-sm btn-success py-0 ms-1';
     saveBtn.innerHTML = '<i class="bi bi-check-lg"></i>';
-    saveBtn.title = 'Zapisz';
+    saveBtn.title = 'Save';
 
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'btn btn-sm btn-secondary py-0 ms-1';
     cancelBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
-    cancelBtn.title = 'Anuluj';
+    cancelBtn.title = 'Cancel';
 
     display.style.display = 'none';
     editBtn.style.display = 'none';
@@ -965,7 +964,7 @@ document.querySelectorAll('.notes-cell').forEach(function(cell) {
   // Dwuklik na tekst notatki tez otwiera edycje
   display.addEventListener('dblclick', startEdit);
   display.style.cursor = 'default';
-  display.title = 'Dwuklik aby edytowac';
+  display.title = 'Double-click to edit';
 });
 
 // ── Sortowanie i wyszukiwanie tabeli sieci ──────────────────────────────────

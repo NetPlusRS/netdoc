@@ -61,7 +61,7 @@
       <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <span><i class="bi bi-bug me-2"></i>Otwarte podatnosci ({{ open_vulns|length }})</span>
         <div class="d-flex gap-2 align-items-center flex-wrap">
-          <input type="text" id="ipSearch" class="form-control form-control-sm" placeholder="Szukaj IP..." style="width:140px">
+          <input type="text" id="ipSearch" class="form-control form-control-sm" placeholder="Search IP..." style="width:140px">
           <div class="d-flex gap-1 flex-wrap">
             <button class="btn btn-outline-secondary btn-sm py-0 px-2 vuln-filter active" data-sev="all">Wszystkie</button>
             {% for key, cls, _, label in sev_map %}

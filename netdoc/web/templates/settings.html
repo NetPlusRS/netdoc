@@ -1,439 +1,439 @@
 {% extends "base.html" %}
-{% block title %}Ustawienia{% endblock %}
+{% block title %}Settings{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h5 class="mb-0"><i class="bi bi-gear me-2"></i>Ustawienia systemu</h5>
+  <h5 class="mb-0"><i class="bi bi-gear me-2"></i>System settings</h5>
   <div class="d-flex gap-2 align-items-center">
     <a href="#scan-advanced" class="btn btn-outline-secondary btn-sm">
-      <i class="bi bi-shield-shaded me-1"></i>Zaawansowane nmap
+      <i class="bi bi-shield-shaded me-1"></i>Advanced nmap
     </a>
     <a href="{{ grafana_url }}/d/netdoc-main" target="_blank" class="btn btn-outline-warning btn-sm">
-      <i class="bi bi-bar-chart-fill me-1"></i>Pokaz w Grafanie
+      <i class="bi bi-bar-chart-fill me-1"></i>Open in Grafana
     </a>
   </div>
 </div>
 
 {# ── Ustawienia workerów ─────────────────────────────────────────────────── #}
 <div class="card mb-4">
-  <div class="card-header"><i class="bi bi-sliders2 me-2"></i>Ustawienia workerów</div>
+  <div class="card-header"><i class="bi bi-sliders2 me-2"></i>Worker settings</div>
   <div class="card-body">
     <form method="post" action="/settings/workers">
       <div class="row g-3">
 
         {# Credential Worker #}
-        <div class="col-12"><h6 class="text-muted border-bottom pb-1 mb-0">Credential Worker — testowanie haseł SSH/Web/RDP/FTP</h6></div>
+        <div class="col-12"><h6 class="text-muted border-bottom pb-1 mb-0">Credential Worker — SSH/Web/RDP/FTP password testing</h6></div>
 
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Interwał [s]</label>
+          <label class="form-label small mb-1">Interval [s]</label>
           <input type="number" name="cred_interval_s" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('cred_interval_s', 60) }}" min="10">
-          <div class="form-text">Przerwa między cyklami testowania. Domyślnie 60s.</div>
+          <div class="form-text">Pause between testing cycles. Default 60s.</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Równoległe urządzenia</label>
+          <label class="form-label small mb-1">Parallel devices</label>
           <input type="number" name="cred_ssh_workers" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('cred_ssh_workers', 16) }}" min="1" max="64">
-          <div class="form-text">Ile IP testowanych jednocześnie (SSH/RDP). Więcej = szybciej, ale może blokować.</div>
+          <div class="form-text">Number of IPs tested simultaneously (SSH/RDP). More = faster, but may cause lockouts.</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Par haseł per cykl / IP</label>
+          <label class="form-label small mb-1">Password pairs per cycle / IP</label>
           <input type="number" name="cred_pairs_per_cycle" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('cred_pairs_per_cycle', 1) }}" min="1" max="50">
-          <div class="form-text">Ile haseł próbować per urządzenie per cykl. 1 = powolne, mało inwazyjne.</div>
+          <div class="form-text">How many passwords to try per device per cycle. 1 = slow, low-impact.</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Timeout urządzenia [s]</label>
+          <label class="form-label small mb-1">Device timeout [s]</label>
           <input type="number" name="cred_device_timeout_s" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('cred_device_timeout_s', 600) }}" min="30" max="3600">
-          <div class="form-text">Maksymalny czas testowania jednego IP. Domyślnie 120s.</div>
+          <div class="form-text">Maximum time for testing one IP. Default 120s.</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Równoległe IP — Web/HTTP
+          <label class="form-label small mb-1">Parallel IPs — Web/HTTP
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Ile adresów IP testowanych jednocześnie przez moduł Web/HTTP (panele logowania urządzeń). Niezależne od SSH workers."></i>
+               title="Number of IP addresses tested simultaneously by the Web/HTTP module (device login panels). Independent of SSH workers."></i>
           </label>
           <input type="number" name="cred_web_workers" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('cred_web_workers', 16) }}" min="1" max="100">
-          <div class="form-text">Domyślnie 16. Web/HTTP bywa szybszy — możesz zwiększyć do 32–64.</div>
+          <div class="form-text">Default 16. Web/HTTP is usually faster — you can increase to 32–64.</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Ponów rotację po [dniach]</label>
+          <label class="form-label small mb-1">Retry rotation after [days]</label>
           <input type="number" name="cred_retry_days" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('cred_retry_days', 1) }}" min="0">
-          <div class="form-text">Co ile dni ponowić pełną rotację haseł per urządzenie. 0 = tylko raz.</div>
+          <div class="form-text">How often to repeat full password rotation per device. 0 = only once.</div>
         </div>
         <div class="col-6 col-md-3">
           <label class="form-label small mb-1">
-            Max par na urządzenie
+            Max pairs per device
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Limit haseł testowanych per urządzenie per cykl. Domyślnie 9999 (bez limitu). Przy dużej bazie haseł ogranicz do 100-200 aby skrócić czas cyklu."></i>
+               title="Limit of passwords tested per device per cycle. Default 9999 (no limit). With a large password database, limit to 100–200 to shorten cycle time."></i>
           </label>
           <input type="number" name="cred_max_creds_per_dev" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('cred_max_creds_per_dev', 9999) }}" min="1">
-          <div class="form-text">9999 = bez limitu. Zmniejsz jeśli baza haseł jest bardzo duża.</div>
+          <div class="form-text">9999 = no limit. Reduce if the password database is very large.</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Minimalny odstęp między IP [s]
+          <label class="form-label small mb-1">Minimum delay between IPs [s]
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Minimalny losowy czas oczekiwania przed testem kolejnego IP. Zapobiega jednoczesnym próbom logowania do wielu urządzeń — zmniejsza ryzyko blokady konta w Active Directory."></i>
+               title="Minimum random wait time before testing the next IP. Prevents simultaneous login attempts to multiple devices — reduces risk of account lockout in Active Directory."></i>
           </label>
           <input type="number" name="cred_min_delay_s" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('cred_min_delay_s', 2) }}" min="0" max="60">
-          <div class="form-text">Domyślnie 2s. 0 = bez opóźnienia (ryzyko AD lockout).</div>
+          <div class="form-text">Default 2s. 0 = no delay (AD lockout risk).</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Maksymalny odstęp między IP [s]
+          <label class="form-label small mb-1">Maximum delay between IPs [s]
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Maksymalny losowy czas oczekiwania przed testem kolejnego IP. Losowa przerwa między min a max sprawia, że testy wyglądają mniej jak skan — unika triggerowania IDS/firewalla."></i>
+               title="Maximum random wait time before testing the next IP. A random pause between min and max makes tests look less like a scan — avoids triggering IDS/firewall."></i>
           </label>
           <input type="number" name="cred_max_delay_s" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('cred_max_delay_s', 10) }}" min="1" max="120">
-          <div class="form-text">Domyślnie 10s. Przy min=max cykl jest przewidywalny.</div>
+          <div class="form-text">Default 10s. When min=max, the cycle is predictable.</div>
         </div>
 
         {# Ping Worker #}
-        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">Ping Worker — ciągłe monitorowanie dostępności</h6></div>
+        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">Ping Worker — continuous availability monitoring</h6></div>
 
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Interwał [s]</label>
+          <label class="form-label small mb-1">Interval [s]</label>
           <input type="number" name="ping_interval_s" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('ping_interval_s', 18) }}" min="1">
-          <div class="form-text">Przerwa między rundami pingowania. Domyślnie 18s.</div>
+          <div class="form-text">Pause between ping rounds. Default 18s.</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Wątki równoległe</label>
+          <label class="form-label small mb-1">Parallel threads</label>
           <input type="number" name="ping_workers" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('ping_workers', 64) }}" min="1" max="256">
-          <div class="form-text">Ile urządzeń pingowanych jednocześnie. Max 256.</div>
+          <div class="form-text">How many devices pinged simultaneously. Max 256.</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Nieaktywny po [min]</label>
+          <label class="form-label small mb-1">Inactive after [min]</label>
           <input type="number" name="ping_inactive_after_min" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('ping_inactive_after_min', 5) }}" min="1">
-          <div class="form-text">Po ilu minutach ciszy ping → status DOWN. Domyślnie 5 min.</div>
+          <div class="form-text">After how many minutes of silence ping → status DOWN. Default 5 min.</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Timeout TCP per port [s]
+          <label class="form-label small mb-1">TCP timeout per port [s]
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Maksymalny czas oczekiwania na połączenie TCP z jednym portem (fallback gdy ICMP blokowany). Niższa wartość = szybszy cykl, ale więcej fałszywych DOWN dla urządzeń z powolnym TCP. Akceptuje ułamki dziesiętne np. 1.5."></i>
+               title="Maximum wait time for a TCP connection to one port (fallback when ICMP is blocked). Lower value = faster cycle, but more false DOWN for devices with slow TCP. Accepts decimals e.g. 1.5."></i>
           </label>
           <input type="number" name="ping_tcp_timeout" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('ping_tcp_timeout', 1.5) }}" min="0.1" max="10" step="0.1">
-          <div class="form-text">Domyślnie 1.5s. Zwiększ do 3–5s jeśli urządzenia są w odległej sieci VPN.</div>
+          <div class="form-text">Default 1.5s. Increase to 3–5s if devices are on a distant VPN network.</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Próg DOWN [liczba porażek]
+          <label class="form-label small mb-1">DOWN threshold [failure count]
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Ile kolejnych nieudanych cykli ping musi nastąpić zanim urządzenie zostanie oznaczone jako DOWN. Chroni przed fałszywymi alertami przy chwilowym przeciążeniu sieci. Wartość 1 = natychmiastowe DOWN po pierwszym braku odpowiedzi."></i>
+               title="How many consecutive failed ping cycles must occur before a device is marked as DOWN. Protects against false alerts during momentary network congestion. Value 1 = immediate DOWN after the first missed response."></i>
           </label>
           <input type="number" name="ping_fail_threshold" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('ping_fail_threshold', 3) }}" min="1" max="10">
-          <div class="form-text">Domyślnie 3. Zwiększ do 5–10 w niestabilnych sieciach.</div>
+          <div class="form-text">Default 3. Increase to 5–10 in unstable networks.</div>
         </div>
 
         {# SNMP Worker #}
-        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">SNMP Worker — automatyczne wzbogacanie danych</h6></div>
+        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">SNMP Worker — automatic data enrichment</h6></div>
 
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Interwał [s]</label>
+          <label class="form-label small mb-1">Interval [s]</label>
           <input type="number" name="snmp_interval_s" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('snmp_interval_s', 300) }}" min="10">
-          <div class="form-text">Co ile sekund odpytywać urządzenia po SNMP. Domyślnie 300s (5 min).</div>
+          <div class="form-text">How often to poll devices via SNMP. Default 300s (5 min).</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Wątki równoległe</label>
+          <label class="form-label small mb-1">Parallel threads</label>
           <input type="number" name="snmp_workers" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('snmp_workers', 10) }}" min="1" max="100">
-          <div class="form-text">Urządzenia odpytywane równolegle. Domyślnie 10.</div>
+          <div class="form-text">Devices polled in parallel. Default 10.</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Timeout SNMP GET [s]
+          <label class="form-label small mb-1">SNMP GET timeout [s]
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Maksymalny czas oczekiwania na odpowiedź SNMP GET od jednego urządzenia. SNMP używa UDP — brak odpowiedzi = urządzenie zablokowane lub nieaktywny port 161. Zwiększ jeśli urządzenia są za WAN z dużym opóźnieniem."></i>
+               title="Maximum wait time for an SNMP GET response from one device. SNMP uses UDP — no response = device blocked or port 161 inactive. Increase if devices are behind a WAN with high latency."></i>
           </label>
           <input type="number" name="snmp_timeout_s" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('snmp_timeout_s', 2) }}" min="1" max="30">
-          <div class="form-text">Domyślnie 2s. Nie przekraczaj 10s — zbyt długi timeout blokuje wątek.</div>
+          <div class="form-text">Default 2s. Do not exceed 10s — excessively long timeout blocks the thread.</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Opóźnienie między community [s]
+          <label class="form-label small mb-1">Delay between community strings [s]
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Czas oczekiwania między kolejnymi próbami community string dla jednego urządzenia. Community sprawdzane są sekwencyjnie (jedno po drugim). Większa wartość = mniejsze obciążenie sieci i urządzeń, ale dłuższy czas autodiscovery przy dużej bazie community."></i>
+               title="Wait time between successive community string attempts for one device. Community strings are checked sequentially (one by one). Higher value = less network/device load, but longer autodiscovery time with a large community database."></i>
           </label>
           <input type="number" name="snmp_community_delay_s" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('snmp_community_delay_s', 3) }}" min="0" max="60">
-          <div class="form-text">Domyślnie 3s. 0 = bez opóźnienia (szybsze, ale agresywniejsze).</div>
+          <div class="form-text">Default 3s. 0 = no delay (faster, but more aggressive).</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Logowanie prób community
+          <label class="form-label small mb-1">Log community attempts
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Gdy włączone, każda próba community string (sukces i porażka) jest zapisywana w logach skanera. Przydatne do diagnostyki SNMP. Przy dużej bazie community może generować dużo wpisów — wyłącz w środowiskach produkcyjnych jeśli logi są za duże."></i>
+               title="When enabled, every community string attempt (success and failure) is written to the scanner log. Useful for SNMP diagnostics. With a large community database this can generate many entries — disable in production if logs become too large."></i>
           </label>
           <select name="snmp_debug" class="form-select form-select-sm">
-            <option value="1" {% if worker_cfg.get('snmp_debug', 1)|int == 1 %}selected{% endif %}>Włączone (domyślnie)</option>
-            <option value="0" {% if worker_cfg.get('snmp_debug', 1)|int == 0 %}selected{% endif %}>Wyłączone</option>
+            <option value="1" {% if worker_cfg.get('snmp_debug', 1)|int == 1 %}selected{% endif %}>Enabled (default)</option>
+            <option value="0" {% if worker_cfg.get('snmp_debug', 1)|int == 0 %}selected{% endif %}>Disabled</option>
           </select>
-          <div class="form-text">Logi: każda próba community → IP, community, wynik (OK/FAIL).</div>
+          <div class="form-text">Logs: every community attempt → IP, community, result (OK/FAIL).</div>
         </div>
 
         {# Community Worker #}
-        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">Community Worker — autodiscovery community SNMP</h6></div>
+        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">Community Worker — SNMP community autodiscovery</h6></div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Interwał [s]
+          <label class="form-label small mb-1">Interval [s]
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Co ile sekund uruchamiać pełny cykl szukania community. Dotyczy tylko urządzeń bez znalezionej community lub z przeterminowanym snmp_ok_at. Domyślnie 3600s (1h)."></i>
+               title="How often to run a full community search cycle. Applies only to devices without a found community or with an expired snmp_ok_at. Default 3600s (1h)."></i>
           </label>
           <input type="number" name="community_interval_s" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('community_interval_s', 3600) }}" min="60">
-          <div class="form-text">Domyślnie 3600s (1h). Min 60s.</div>
+          <div class="form-text">Default 3600s (1h). Min 60s.</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Wątki równoległe (urządzenia)
+          <label class="form-label small mb-1">Parallel threads (devices)
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Ile urządzeń sprawdzać jednocześnie. Każde urządzenie testuje community sekwencyjnie z opóźnieniem — zbyt duża wartość przy dużej bazie community może generować duże obciążenie sieci. Domyślnie 5."></i>
+               title="How many devices to check simultaneously. Each device tests community strings sequentially with a delay — too high a value with a large community database can generate heavy network load. Default 5."></i>
           </label>
           <input type="number" name="community_workers" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('community_workers', 5) }}" min="1" max="50">
-          <div class="form-text">Domyślnie 5. Zależy od rozmiaru sieci i bazy community.</div>
+          <div class="form-text">Default 5. Depends on network size and community database.</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Ponowne sprawdzenie po [dni]
+          <label class="form-label small mb-1">Re-check after [days]
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Po ilu dniach od ostatniego udanego pollu SNMP urządzenie zostanie ponownie sprawdzone przez community-worker. Przydatne gdy community mogło się zmienić. Domyślnie 7 dni."></i>
+               title="How many days after the last successful SNMP poll before a device is re-checked by the community worker. Useful when the community string may have changed. Default 7 days."></i>
           </label>
           <input type="number" name="community_recheck_days" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('community_recheck_days', 7) }}" min="1" max="365">
-          <div class="form-text">Domyślnie 7 dni. Opóźnienie community ustawiane wyżej w sekcji SNMP.</div>
+          <div class="form-text">Default 7 days. Community delay is configured above in the SNMP section.</div>
         </div>
 
         {# Vuln Worker #}
-        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">Vulnerability Worker — skanowanie podatności</h6></div>
+        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">Vulnerability Worker — vulnerability scanning</h6></div>
 
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Interwał [s]</label>
+          <label class="form-label small mb-1">Interval [s]</label>
           <input type="number" name="vuln_interval_s" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('vuln_interval_s', 120) }}" min="10">
-          <div class="form-text">Przerwa między cyklami skanowania luk. Domyślnie 120s (2 min).</div>
+          <div class="form-text">Pause between vulnerability scan cycles. Default 120s (2 min).</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Wątki równoległe</label>
+          <label class="form-label small mb-1">Parallel threads</label>
           <input type="number" name="vuln_workers" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('vuln_workers', 16) }}" min="1" max="64">
-          <div class="form-text">Równoległe sprawdzenia TCP. Więcej = szybciej, ale więcej połączeń.</div>
+          <div class="form-text">Parallel TCP checks. More = faster, but more connections.</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Timeout TCP [s]
+          <label class="form-label small mb-1">TCP timeout [s]
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Czas oczekiwania na połączenie TCP podczas sprawdzania otwartości portu (np. Redis, Telnet, MySQL). Wyższy timeout = więcej fałszywych pozytywów rozliczanych wolniej. Akceptuje ułamki dziesiętne np. 3.0."></i>
+               title="Wait time for a TCP connection when checking port openness (e.g. Redis, Telnet, MySQL). Higher timeout = more false positives resolved more slowly. Accepts decimals e.g. 3.0."></i>
           </label>
           <input type="number" name="vuln_tcp_timeout" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('vuln_tcp_timeout', 3.0) }}" min="0.5" max="30" step="0.5">
-          <div class="form-text">Domyślnie 3.0s. Zmniejsz do 1–2s w szybkiej sieci lokalnej.</div>
+          <div class="form-text">Default 3.0s. Reduce to 1–2s on a fast local network.</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Timeout HTTP [s]
+          <label class="form-label small mb-1">HTTP timeout [s]
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Czas oczekiwania na odpowiedź HTTP przy sprawdzaniu podatności webowych (panel logowania, Docker API bez auth, InfluxDB itp.). Wyższy = wykrywa wolne urządzenia, ale spowalnia cykl."></i>
+               title="Wait time for an HTTP response when checking web vulnerabilities (login panel, Docker API without auth, InfluxDB, etc.). Higher = detects slow devices, but slows down the cycle."></i>
           </label>
           <input type="number" name="vuln_http_timeout" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('vuln_http_timeout', 5.0) }}" min="0.5" max="60" step="0.5">
-          <div class="form-text">Domyślnie 5.0s. Zwiększ do 10–15s jeśli urządzenia mają wolny panel WWW.</div>
+          <div class="form-text">Default 5.0s. Increase to 10–15s if devices have a slow web panel.</div>
         </div>
         <div class="col-6 col-md-3">
-          <label class="form-label small mb-1">Zamknij podatność po N skanach bez wykrycia</label>
+          <label class="form-label small mb-1">Close vulnerability after N scans without detection</label>
           <input type="number" name="vuln_close_after" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('vuln_close_after', 3) }}" min="1" max="20">
           <div class="form-text">
-            Ile razy z rzędu skan musi <em>nie wykryć</em> podatności, żeby ją zamknąć.
-            <strong>Domyślnie 3</strong> — chroni przed fałszywym zamykaniem spowodowanym
-            chwilowym timeoutem TCP lub restartem usługi.
-            Wartość 1 = stare zachowanie (jeden skan = zamknięcie).
+            How many consecutive scans must <em>not detect</em> a vulnerability before it is closed.
+            <strong>Default 3</strong> — protects against false closure caused by
+            a momentary TCP timeout or service restart.
+            Value 1 = old behavior (one scan = closed).
           </div>
         </div>
 
         {# Intensywnosc skanowania #}
-        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">Intensywność skanowania — ochrona wrażliwych urządzeń</h6></div>
+        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">Scan intensity — protecting sensitive devices</h6></div>
 
         <div class="col-6 col-md-3">
           <label class="form-label small mb-1">
-            Pomijaj drukarki w skan. podatności
+            Skip printers in vulnerability scan
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="TCP connect do portów drukarki (9100 JetDirect, 515 LPD) może spowodować wydrukowanie losowych znaków. Zalecane: włączone."></i>
+               title="TCP connect to printer ports (9100 JetDirect, 515 LPD) can cause random characters to be printed. Recommended: enabled."></i>
           </label>
           <select name="vuln_skip_printers" class="form-select form-select-sm">
-            <option value="1" {% if worker_cfg.get('vuln_skip_printers', 1) == 1 %}selected{% endif %}>Tak — pomijaj drukarki (zalecane)</option>
-            <option value="0" {% if worker_cfg.get('vuln_skip_printers', 1) == 0 %}selected{% endif %}>Nie — skanuj drukarki (ryzyko drukowania)</option>
+            <option value="1" {% if worker_cfg.get('vuln_skip_printers', 1) == 1 %}selected{% endif %}>Yes — skip printers (recommended)</option>
+            <option value="0" {% if worker_cfg.get('vuln_skip_printers', 1) == 0 %}selected{% endif %}>No — scan printers (risk of printing)</option>
           </select>
-          <div class="form-text">Domyślnie: Tak. Włącz tylko jeśli chcesz testować drukarki sieci.</div>
+          <div class="form-text">Default: Yes. Enable only if you want to test network printers.</div>
         </div>
 
         <div class="col-6 col-md-3">
           <label class="form-label small mb-1">
-            Ogranicz skan AP / kamer / IoT
+            Limit scan for AP / cameras / IoT
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Access pointy i kamery nie uruchamiają baz danych. Ogranicza skan do sprawdzeń sieciowych — mniej połączeń, mniejsze ryzyko destabilizacji AP."></i>
+               title="Access points and cameras do not run databases. Limits scan to network checks — fewer connections, lower risk of destabilizing the AP."></i>
           </label>
           <select name="vuln_limit_ap_iot" class="form-select form-select-sm">
-            <option value="1" {% if worker_cfg.get('vuln_limit_ap_iot', 1) == 1 %}selected{% endif %}>Tak — tylko porty sieciowe (zalecane)</option>
-            <option value="0" {% if worker_cfg.get('vuln_limit_ap_iot', 1) == 0 %}selected{% endif %}>Nie — pełny skan (więcej połączeń TCP)</option>
+            <option value="1" {% if worker_cfg.get('vuln_limit_ap_iot', 1) == 1 %}selected{% endif %}>Yes — network ports only (recommended)</option>
+            <option value="0" {% if worker_cfg.get('vuln_limit_ap_iot', 1) == 0 %}selected{% endif %}>No — full scan (more TCP connections)</option>
           </select>
-          <div class="form-text">Domyślnie: Tak. Pomija Redis, MySQL, Elasticsearch itp. dla AP/kamer/IoT.</div>
+          <div class="form-text">Default: Yes. Skips Redis, MySQL, Elasticsearch etc. for AP/cameras/IoT.</div>
         </div>
 
         <div class="col-6 col-md-3">
           <label class="form-label small mb-1">
             nmap min-rate [pkt/s]
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Minimalna prędkość skanowania portów przez nmap (--min-rate). Niższa wartość = mniej agresywne skanowanie. Zakres: 50–5000."></i>
+               title="Minimum port scanning speed for nmap (--min-rate). Lower value = less aggressive scanning. Range: 50–5000."></i>
           </label>
           <input type="number" name="nmap_min_rate" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('nmap_min_rate', 100) }}" min="50" max="5000">
-          <div class="form-text">Domyślnie: 100. Zwiększ do 200–300 dla szybszego skanu w stabilnej sieci.</div>
+          <div class="form-text">Default: 100. Increase to 200–300 for faster scanning on a stable network.</div>
         </div>
 
         <div class="col-6 col-md-3">
           <label class="form-label small mb-1">
             nmap version-intensity (0–9)
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Głębokość wykrywania wersji usług (--version-intensity). 0 = tylko najbardziej prawdopodobne proby (bezpieczne dla drukarek). 9 = pełne proby wszystkich protokołów."></i>
+               title="Depth of service version detection (--version-intensity). 0 = only the most likely probes (safe for printers). 9 = full probes for all protocols."></i>
           </label>
           <input type="number" name="nmap_version_intensity" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('nmap_version_intensity', 9) }}" min="0" max="9">
-          <div class="form-text">Domyślnie: 9 (pełne proby). Porty drukarek (9100, 515, 631) są zawsze wykluczone z probowania -sV. Zmniejsz do 1–3 jeśli urządzenia sieciowe reagują wolno.</div>
+          <div class="form-text">Default: 9 (full probes). Printer ports (9100, 515, 631) are always excluded from -sV probing. Reduce to 1–3 if network devices respond slowly.</div>
         </div>
 
         {# Skanowanie partiami i rownolegle #}
         <div class="col-12 mt-2">
           <h6 class="text-muted border-bottom pb-1 mb-0">
-            Skanowanie partiami i równoległość
+            Batch scanning and parallelism
             <i class="bi bi-info-circle text-muted ms-1" style="cursor:help"
-               title="Opcje ograniczające obciążenie skanowanych urządzeń. Szczególnie przydatne przy starych access pointach, switchach i routerach z wolnym CPU, które mogą się zawieszać przy intensywnym skanowaniu."></i>
+               title="Options to reduce load on scanned devices. Especially useful for older access points, switches and routers with slow CPUs that may freeze under intensive scanning."></i>
           </h6>
         </div>
 
         <div class="col-6 col-md-3">
           <label class="form-label small mb-1">
-            Urządzeń jednocześnie (0 = bez limitu)
+            Devices at once (0 = no limit)
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Maksymalna liczba hostów skanowanych równolegle. 0 = wszystkie naraz (dotychczasowe zachowanie). 1 = jeden po drugim (bezpieczne dla starych AP/switchy). Np. 4 = cztery równolegle."></i>
+               title="Maximum number of hosts scanned in parallel. 0 = all at once (previous behavior). 1 = one at a time (safe for old APs/switches). E.g. 4 = four in parallel."></i>
           </label>
           <input type="number" name="scan_concurrency" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('scan_concurrency', 0) }}" min="0" max="64">
-          <div class="form-text">Domyślnie: 0 (bez limitu). Ustaw 1–4 aby chronić wolne urządzenia sieciowe.</div>
+          <div class="form-text">Default: 0 (no limit). Set 1–4 to protect slow network devices.</div>
         </div>
 
         <div class="col-6 col-md-3">
           <label class="form-label small mb-1">
-            Portów w jednej partii (0 = wyłączone)
+            Ports per batch (0 = disabled)
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Dzieli zakres portów na partie z pauzą między nimi — dotyczy zarówno quick scan jak i pełnego skanu 1–65535. 0 = bez podziału (jeden nmap call). Zalecane: 2000–10000 dla pełnych skanów, mniejsze wartości dla ochrony wolnych AP/switchy."></i>
+               title="Splits the port range into batches with a pause between them — applies to both quick scan and full scan 1–65535. 0 = no split (single nmap call). Recommended: 2000–10000 for full scans, smaller values for protecting slow APs/switches."></i>
           </label>
           <input type="number" name="scan_batch_size" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('scan_batch_size', 5000) }}" min="0" max="65535">
-          <div class="form-text">Domyślnie: 5000. Dotyczy quick i full scan. 0 = wyłączone. Quick scan (~45 portów) zawsze mieści się w 1 partii.</div>
+          <div class="form-text">Default: 5000. Applies to quick and full scan. 0 = disabled. Quick scan (~45 ports) always fits in 1 batch.</div>
         </div>
 
         <div class="col-6 col-md-3">
           <label class="form-label small mb-1">
-            Pauza między partiami [s]
+            Pause between batches [s]
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Czas oczekiwania między kolejnymi partiami portów jednego hosta. Daje urządzeniu czas na obsłużenie pakietów WiFi / zarządzania między kolejnymi pakietami nmap."></i>
+               title="Wait time between successive port batches for one host. Gives the device time to process WiFi / management packets between nmap packet bursts."></i>
           </label>
           <input type="number" name="scan_batch_pause_s" class="form-control form-control-sm"
                  value="{{ worker_cfg.get('scan_batch_pause_s', 3.0) }}" min="0" max="60" step="0.5">
-          <div class="form-text">Domyślnie: 3.0s. Aktywne tylko gdy partionowanie włączone (partia > 0).</div>
+          <div class="form-text">Default: 3.0s. Active only when batching is enabled (batch &gt; 0).</div>
         </div>
 
         <div class="col-6 col-md-3">
           <label class="form-label small mb-1">
-            Wznawiaj od miejsca przerwania
+            Resume from last position
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Jeśli skanowanie zostanie przerwane (restart, błąd), kolejne uruchomienie kontynuuje od ostatniej ukończonej partii. Stan zapisywany w pliku scan_progress.json w katalogu projektu."></i>
+               title="If scanning is interrupted (restart, error), the next run continues from the last completed batch. State is saved in scan_progress.json in the project directory."></i>
           </label>
           <select name="scan_resume_enabled" class="form-select form-select-sm">
-            <option value="1" {% if worker_cfg.get('scan_resume_enabled', 1) == 1 %}selected{% endif %}>Tak — wznów od miejsca przerwania</option>
-            <option value="0" {% if worker_cfg.get('scan_resume_enabled', 1) == 0 %}selected{% endif %}>Nie — zawsze od początku</option>
+            <option value="1" {% if worker_cfg.get('scan_resume_enabled', 1) == 1 %}selected{% endif %}>Yes — resume from last position</option>
+            <option value="0" {% if worker_cfg.get('scan_resume_enabled', 1) == 0 %}selected{% endif %}>No — always start from the beginning</option>
           </select>
-          <div class="form-text">Aktywne tylko gdy partionowanie jest włączone.</div>
+          <div class="form-text">Active only when batching is enabled.</div>
         </div>
 
         {# Odkrywanie sieci #}
-        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">Odkrywanie sieci — zakresy skanowania</h6></div>
+        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">Network discovery — scan ranges</h6></div>
 
         <div class="col-12 col-md-6">
           <label class="form-label small mb-1">
-            Dodatkowe zakresy CIDR (nadpisują .env)
+            Additional CIDR ranges (override .env)
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Lista zakresów sieci do skanowania, oddzielona przecinkami. Jeśli ustawiona, ZASTĘPUJE wartość NETWORK_RANGES z pliku .env. Puste pole = używaj .env i auto-wykrywania. Przykład: 10.8.0.0/24,192.168.100.0/24"></i>
+               title="Comma-separated list of network ranges to scan. If set, REPLACES the NETWORK_RANGES value from .env. Empty field = use .env and auto-detection. Example: 10.8.0.0/24,192.168.100.0/24"></i>
           </label>
           <input type="text" name="network_ranges" class="form-control form-control-sm font-monospace"
                  value="{{ worker_cfg.get('network_ranges', '') }}"
-                 placeholder="np. 10.8.0.0/24,192.168.100.0/24 (puste = .env + auto-detect)">
+                 placeholder="e.g. 10.8.0.0/24,192.168.100.0/24 (empty = .env + auto-detect)">
           <div class="form-text">
-            Puste = używaj <code>NETWORK_RANGES</code> z <code>.env</code> i auto-wykrywania.
-            Wpisz zakresy oddzielone przecinkami aby przełączyć skanowanie na VPN lub inną sieć.
+            Empty = use <code>NETWORK_RANGES</code> from <code>.env</code> and auto-detection.
+            Enter comma-separated ranges to switch scanning to VPN or another network.
           </div>
         </div>
 
         <div class="col-6 col-md-3">
           <label class="form-label small mb-1">
-            Skanuj sieci VPN
+            Scan VPN networks
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Czy auto-wykrywanie ma uwzględniać interfejsy VPN (OpenVPN tun0/tun1, WireGuard wg0, Cisco AnyConnect itp.). UWAGA: włączenie może spowodować skanowanie sieci klienta po drugiej stronie tunelu VPN!"></i>
+               title="Whether auto-detection should include VPN interfaces (OpenVPN tun0/tun1, WireGuard wg0, Cisco AnyConnect etc.). WARNING: enabling this may cause scanning of the client network on the other side of the VPN tunnel!"></i>
           </label>
           <select name="scan_vpn_networks" class="form-select form-select-sm">
-            <option value="0" {% if not worker_cfg.get('scan_vpn_networks', 0) %}selected{% endif %}>Nie — pomijaj VPN (domyślne, bezpieczne)</option>
-            <option value="1" {% if worker_cfg.get('scan_vpn_networks', 0) == 1 %}selected{% endif %}>Tak — skanuj przez VPN</option>
+            <option value="0" {% if not worker_cfg.get('scan_vpn_networks', 0) %}selected{% endif %}>No — skip VPN (default, safe)</option>
+            <option value="1" {% if worker_cfg.get('scan_vpn_networks', 0) == 1 %}selected{% endif %}>Yes — scan through VPN</option>
           </select>
-          <div class="form-text text-warning">⚠ Ryzyko: może skanować sieć za tunelem VPN.</div>
+          <div class="form-text text-warning">⚠ Risk: may scan the network behind the VPN tunnel.</div>
         </div>
 
         <div class="col-6 col-md-3">
           <label class="form-label small mb-1">
-            Skanuj sieci wirtualne
+            Scan virtual networks
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Czy auto-wykrywanie ma uwzględniać sieci Docker, Hyper-V, VMware, WSL2. Domyślnie wyłączone — te sieci to mosty wirtualne, nie urządzenia fizyczne."></i>
+               title="Whether auto-detection should include Docker, Hyper-V, VMware, WSL2 networks. Disabled by default — these networks are virtual bridges, not physical devices."></i>
           </label>
           <select name="scan_virtual_networks" class="form-select form-select-sm">
-            <option value="0" {% if not worker_cfg.get('scan_virtual_networks', 0) %}selected{% endif %}>Nie — pomijaj Docker/VMware/Hyper-V (zalecane)</option>
-            <option value="1" {% if worker_cfg.get('scan_virtual_networks', 0) == 1 %}selected{% endif %}>Tak — skanuj sieci wirtualne</option>
+            <option value="0" {% if not worker_cfg.get('scan_virtual_networks', 0) %}selected{% endif %}>No — skip Docker/VMware/Hyper-V (recommended)</option>
+            <option value="1" {% if worker_cfg.get('scan_virtual_networks', 0) == 1 %}selected{% endif %}>Yes — scan virtual networks</option>
           </select>
-          <div class="form-text">Domyślnie: Nie. Włącz aby skanować kontenery Docker w sieci hosta.</div>
+          <div class="form-text">Default: No. Enable to scan Docker containers on the host network.</div>
         </div>
 
         <div class="col-6 col-md-3">
           <label class="form-label small mb-1">
-            Ignoruj MAC wirtualne (LAA)
+            Ignore virtual MACs (LAA)
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Locally Administered Address — MAC z ustawionym bitem LAA (np. 26:12:AC:...) to adresy wirtualne lub randomizowane: Docker bridge, Hyper-V, WireGuard VPN, Windows 11 MAC randomization. Nie reprezentują fizycznych urządzeń sieciowych. Domyślnie włączone — takie wpisy są pomijane w tablicy ARP."></i>
+               title="Locally Administered Address — MAC with the LAA bit set (e.g. 26:12:AC:...) are virtual or randomized addresses: Docker bridge, Hyper-V, WireGuard VPN, Windows 11 MAC randomization. They do not represent physical network devices. Enabled by default — such entries are skipped in the ARP table."></i>
           </label>
           <select name="ignore_laa_macs" class="form-select form-select-sm">
-            <option value="1" {% if worker_cfg.get('ignore_laa_macs', 1) != 0 %}selected{% endif %}>Tak — pomijaj MAC wirtualne/randomizowane (zalecane)</option>
-            <option value="0" {% if worker_cfg.get('ignore_laa_macs', 1) == 0 %}selected{% endif %}>Nie — uwzględniaj wszystkie MAC z ARP</option>
+            <option value="1" {% if worker_cfg.get('ignore_laa_macs', 1) != 0 %}selected{% endif %}>Yes — skip virtual/randomized MACs (recommended)</option>
+            <option value="0" {% if worker_cfg.get('ignore_laa_macs', 1) == 0 %}selected{% endif %}>No — include all MACs from ARP</option>
           </select>
-          <div class="form-text">Domyślnie: Tak. Wyłącz tylko gdy chcesz wykrywać urządzenia z MAC randomization.</div>
+          <div class="form-text">Default: Yes. Disable only when you want to detect devices with MAC randomization.</div>
         </div>
 
         {# Lab monitoring #}
-        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">Siec laboratoryjna — watchdog</h6></div>
+        <div class="col-12 mt-2"><h6 class="text-muted border-bottom pb-1 mb-0">Lab network — watchdog</h6></div>
 
         <div class="col-6 col-md-3">
           <label class="form-label small mb-1">
-            Watchdog pilnuje lab
+            Watchdog monitors lab
             <i class="bi bi-info-circle text-muted" style="cursor:help"
-               title="Jesli wlaczone: (1) watchdog automatycznie uruchamia kontenery lab gdy sa zatrzymane, (2) wszystkie urzadzenia z site_id='lab' sa ZAWSZE monitorowane — nawet jesli uzytkownik nie przestawil flagi is_monitored recznie. Urzadzenia lab dostawaja automatyczny alert gdy staja sie niedostepne."></i>
+               title="If enabled: (1) watchdog automatically starts lab containers when they are stopped, (2) all devices with site_id='lab' are ALWAYS monitored — even if the user has not manually set the is_monitored flag. Lab devices get an automatic alert when they become unavailable."></i>
           </label>
           <select name="lab_monitoring_enabled" class="form-select form-select-sm">
-            <option value="0" {% if worker_cfg.get('lab_monitoring_enabled', 0) == 0 %}selected{% endif %}>Nie — lab nie jest monitorowany</option>
-            <option value="1" {% if worker_cfg.get('lab_monitoring_enabled', 0) == 1 %}selected{% endif %}>Tak — auto-restart kontenerow + monitorowanie urzadzen lab</option>
+            <option value="0" {% if worker_cfg.get('lab_monitoring_enabled', 0) == 0 %}selected{% endif %}>No — lab is not monitored</option>
+            <option value="1" {% if worker_cfg.get('lab_monitoring_enabled', 0) == 1 %}selected{% endif %}>Yes — auto-restart containers + monitor lab devices</option>
           </select>
-          <div class="form-text">Domyslnie: Nie. Wlacz gdy aktywnie uzywasz sieci lab. Wszystkie urzadzenia lab (site_id=lab) beda automatycznie monitorowane przy kazdym cyklu skanowania.</div>
+          <div class="form-text">Default: No. Enable when actively using the lab network. All lab devices (site_id=lab) will be automatically monitored on every scan cycle.</div>
         </div>
 
         <div class="col-12 mt-1">
           <button type="submit" class="btn btn-primary btn-sm">
-            <i class="bi bi-check2-circle me-1"></i>Zapisz ustawienia workerów
+            <i class="bi bi-check2-circle me-1"></i>Save worker settings
           </button>
         </div>
       </div>
@@ -444,18 +444,18 @@
 {# ── Siec laboratoryjna ──────────────────────────────────────────────────── #}
 <div class="card mb-4" id="lab">
   <div class="card-header d-flex justify-content-between align-items-center">
-    <span><i class="bi bi-boxes me-2"></i>Siec laboratoryjna (symulowane urzadzenia)</span>
+    <span><i class="bi bi-boxes me-2"></i>Lab network (simulated devices)</span>
     {% set running_cnt = lab_containers | selectattr("status","eq","running") | list | length %}
     <span class="badge {% if running_cnt > 0 %}bg-success{% else %}bg-secondary{% endif %}">
-      {{ running_cnt }}/{{ lab_containers | length }} aktywnych
+      {{ running_cnt }}/{{ lab_containers | length }} active
     </span>
   </div>
   <div class="card-body">
     <div class="table-responsive mb-3">
       <table class="table table-sm mb-0">
         <thead><tr>
-          <th class="small">Kontener</th>
-          <th class="small">Opis</th>
+          <th class="small">Container</th>
+          <th class="small">Description</th>
           <th class="small">IP</th>
           <th class="small">Status</th>
         </tr></thead>
@@ -471,7 +471,7 @@
               {% elif ct.status == "exited" %}
                 <span class="badge bg-warning text-dark">stopped</span>
               {% elif ct.status == "absent" %}
-                <span class="badge bg-secondary">nie utworzony</span>
+                <span class="badge bg-secondary">not created</span>
               {% else %}
                 <span class="badge bg-danger">{{ ct.status }}</span>
               {% endif %}
@@ -485,19 +485,19 @@
       <button id="btnLabStart" type="button" class="btn btn-success btn-sm"
         onclick="labAction('start')"
         {% if running_cnt == lab_containers | length %}disabled{% endif %}>
-        <i class="bi bi-play-fill me-1"></i>Uruchom Lab
+        <i class="bi bi-play-fill me-1"></i>Start Lab
       </button>
       <button id="btnLabStop" type="button" class="btn btn-danger btn-sm"
         onclick="labAction('stop')"
         {% if running_cnt == 0 %}disabled{% endif %}>
-        <i class="bi bi-stop-fill me-1"></i>Zatrzymaj Lab
+        <i class="bi bi-stop-fill me-1"></i>Stop Lab
       </button>
       <button type="button" class="btn btn-outline-secondary btn-sm"
         onclick="location.reload()">
-        <i class="bi bi-arrow-clockwise me-1"></i>Odśwież
+        <i class="bi bi-arrow-clockwise me-1"></i>Refresh
       </button>
       <span class="text-muted small ms-2">
-        Pierwsze uruchomienie: <code>docker compose -f docker-compose.lab.yml up -d --build</code>
+        First start: <code>docker compose -f docker-compose.lab.yml up -d --build</code>
       </span>
     </div>
     <div id="labResult" class="mt-2" style="display:none"></div>
@@ -505,10 +505,10 @@
     {% if any_absent %}
     <div class="alert alert-info mt-3 mb-0 small">
       <i class="bi bi-info-circle me-1"></i>
-      Obrazy kontenerow nie istnieja. Uruchom raz z terminala:
+      Container images do not exist. Run once from the terminal:
       <code>docker compose -f docker-compose.lab.yml up -d --build</code><br>
-      Jezeli obrazy zostaly juz zbudowane (np. po docker nuke bez rebuild),
-      kliknij <strong>Uruchom Lab</strong> — zostana stworzone automatycznie.
+      If the images have already been built (e.g. after a docker nuke without rebuild),
+      click <strong>Start Lab</strong> — they will be created automatically.
     </div>
     {% endif %}
   </div>
@@ -518,35 +518,35 @@
 <div class="card mb-4" id="docker-services">
   <div class="card-header d-flex align-items-center gap-2">
     <i class="bi bi-boxes fs-5"></i>
-    <strong>Zarządzanie kontenerami Docker</strong>
+    <strong>Docker container management</strong>
   </div>
   <div class="card-body">
     <p class="small text-muted mb-3">
-      <strong>Restart</strong> — wystarczy po zmianach kodu Python (kod montowany jako wolumin, brak przebudowy obrazu).<br>
-      <strong>Przebuduj obraz</strong> — potrzebne gdy zmieniły się <code>requirements.txt</code> lub <code>Dockerfile</code>.
+      <strong>Restart</strong> — sufficient after Python code changes (code is mounted as a volume, no image rebuild).<br>
+      <strong>Rebuild image</strong> — needed when <code>requirements.txt</code> or <code>Dockerfile</code> have changed.
     </p>
     <div class="table-responsive">
       <table class="table table-sm table-hover align-middle mb-3">
         <thead class="table-light">
           <tr>
-            <th style="width:2rem"><input type="checkbox" id="dsSelectAll" class="form-check-input" checked title="Zaznacz wszystkie"></th>
-            <th>Kontener</th>
-            <th>Klucz</th>
+            <th style="width:2rem"><input type="checkbox" id="dsSelectAll" class="form-check-input" checked title="Select all"></th>
+            <th>Container</th>
+            <th>Key</th>
           </tr>
         </thead>
         <tbody>
           {% set _ds = [
             ("api",      "netdoc-api",       "API (FastAPI :8000)"),
-            ("web",      "netdoc-web",       "Web UI (Flask :5000) — restart odłącza stronę na chwilę"),
+            ("web",      "netdoc-web",       "Web UI (Flask :5000) — restart disconnects the page briefly"),
             ("ping",     "netdoc-ping",      "Ping worker (:8001)"),
             ("snmp",     "netdoc-snmp",      "SNMP worker (:8002)"),
             ("cred",     "netdoc-cred",      "Cred worker (:8003)"),
             ("vuln",     "netdoc-vuln",      "Vuln worker (:8004)"),
             ("internet", "netdoc-internet",  "Internet worker"),
             ("nginx",    "netdoc-nginx",     "Nginx reverse proxy (:80)"),
-            ("grafana",  "netdoc-grafana",   "Grafana — dostępna przez /grafana/"),
-            ("prometheus","netdoc-prometheus","Prometheus (:9090) — tylko restart"),
-            ("loki",     "netdoc-loki",      "Loki — tylko restart"),
+            ("grafana",  "netdoc-grafana",   "Grafana — available via /grafana/"),
+            ("prometheus","netdoc-prometheus","Prometheus (:9090) — restart only"),
+            ("loki",     "netdoc-loki",      "Loki — restart only"),
           ] %}
           {% for key, cname, label in _ds %}
           <tr>
@@ -560,10 +560,10 @@
     </div>
     <div class="d-flex gap-2 flex-wrap">
       <button type="button" class="btn btn-primary btn-sm" onclick="dsAction('restart')">
-        <i class="bi bi-arrow-clockwise me-1"></i>Restart wybranych
+        <i class="bi bi-arrow-clockwise me-1"></i>Restart selected
       </button>
       <button type="button" class="btn btn-warning btn-sm" onclick="dsAction('rebuild')">
-        <i class="bi bi-hammer me-1"></i>Przebuduj obraz + restart
+        <i class="bi bi-hammer me-1"></i>Rebuild image + restart
       </button>
     </div>
   </div>
@@ -574,7 +574,7 @@
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="dsModalTitle"><i class="bi bi-arrow-clockwise me-2"></i>Operacja Docker</h5>
+        <h5 class="modal-title" id="dsModalTitle"><i class="bi bi-arrow-clockwise me-2"></i>Docker operation</h5>
       </div>
       <div class="modal-body">
         <pre id="dsOutput"
@@ -582,7 +582,7 @@
              style="max-height:340px;overflow-y:auto;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;white-space:pre-wrap;min-height:60px"></pre>
       </div>
       <div class="modal-footer" id="dsModalFooter">
-        <span class="text-muted small"><span class="spinner-border spinner-border-sm me-1"></span>Trwa operacja…</span>
+        <span class="text-muted small"><span class="spinner-border spinner-border-sm me-1"></span>Operation in progress…</span>
       </div>
     </div>
   </div>
@@ -592,7 +592,7 @@
 <div class="card mb-4 border-danger" id="docker-nuke">
   <div class="card-header d-flex align-items-center gap-2" style="background:#67000d;color:#fff">
     <i class="bi bi-exclamation-triangle-fill fs-5"></i>
-    <strong>Strefa niebezpieczna — Pełny reset Docker</strong>
+    <strong>Danger zone — Full Docker reset</strong>
   </div>
   <div class="card-body">
     <p class="mb-2 small text-muted">
@@ -600,18 +600,18 @@
       <code>docker compose down -v &amp;&amp; docker system prune -af --volumes</code>
     </p>
     <div class="alert alert-warning small mb-3">
-      <strong>Co ta operacja robi:</strong>
+      <strong>What this operation does:</strong>
       <ul class="mb-0 mt-1">
-        <li>Zatrzymuje i usuwa <strong>wszystkie kontenery netdoc</strong> (API, Web, Postgres, workersy, Grafana, Loki…)</li>
-        <li>Usuwa <strong>wszystkie wolumeny Docker</strong> — dane PostgreSQL, Grafana, Prometheus i Loki zostaną <strong>bezpowrotnie utracone</strong></li>
-        <li>Usuwa sieć <code>netdoc_default</code> i wszystkie orphany</li>
-        <li>Czyści <strong>wszystkie obrazy Docker</strong> na systemie oraz build cache</li>
-        <li class="text-danger fw-bold">Po zakończeniu strona WWW przestanie odpowiadać</li>
-        <li>Aby ponownie uruchomić środowisko: <code>docker compose up -d --build</code></li>
+        <li>Stops and removes <strong>all netdoc containers</strong> (API, Web, Postgres, workers, Grafana, Loki…)</li>
+        <li>Removes <strong>all Docker volumes</strong> — PostgreSQL, Grafana, Prometheus and Loki data will be <strong>permanently lost</strong></li>
+        <li>Removes the <code>netdoc_default</code> network and all orphans</li>
+        <li>Clears <strong>all Docker images</strong> on the system and build cache</li>
+        <li class="text-danger fw-bold">After completion the web page will stop responding</li>
+        <li>To restart the environment: <code>docker compose up -d --build</code></li>
       </ul>
     </div>
     <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#dockerNukeModal">
-      <i class="bi bi-trash3-fill me-2"></i>Resetuj Docker
+      <i class="bi bi-trash3-fill me-2"></i>Reset Docker
     </button>
   </div>
 </div>
@@ -622,32 +622,32 @@
     <div class="modal-content border-danger">
       <div class="modal-header" style="background:#67000d;color:#fff">
         <h5 class="modal-title">
-          <i class="bi bi-exclamation-triangle-fill me-2"></i>Potwierdź pełny reset Docker
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>Confirm full Docker reset
         </h5>
       </div>
       <div class="modal-body">
         <div id="nukeWarning">
           <div class="alert alert-danger">
-            <strong>⚠ Operacja nieodwracalna!</strong><br>
-            Wszystkie dane bazy danych, historyczne wykresy Grafana/Prometheus/Loki
-            i wszystkie obrazy Docker zostaną usunięte.<br>
-            <strong>Strona przestanie działać natychmiast po zakończeniu.</strong>
+            <strong>⚠ This operation is irreversible!</strong><br>
+            All database data, historical Grafana/Prometheus/Loki charts
+            and all Docker images will be deleted.<br>
+            <strong>The page will stop working immediately after completion.</strong>
           </div>
-          <p class="mb-1">Upewnij się, że rozumiesz skutki operacji:</p>
+          <p class="mb-1">Make sure you understand the consequences:</p>
           <div class="form-check mb-3">
             <input class="form-check-input" type="checkbox" id="nukeCheck1">
             <label class="form-check-label" for="nukeCheck1">
-              Rozumiem, że wszystkie dane z bazy i monitoringu zostaną usunięte
+              I understand that all database and monitoring data will be deleted
             </label>
           </div>
           <div class="form-check mb-3">
             <input class="form-check-input" type="checkbox" id="nukeCheck2">
             <label class="form-check-label" for="nukeCheck2">
-              Rozumiem, że strona WWW przestanie działać i będę musiał ją uruchomić ręcznie
+              I understand that the web page will stop working and I will need to start it manually
             </label>
           </div>
           <div class="alert alert-info small mb-0">
-            Po resecie uruchom ponownie:<br>
+            After reset, restart with:<br>
             <code>docker compose up -d --build</code>
           </div>
         </div>
@@ -656,9 +656,9 @@
              style="display:none;max-height:320px;overflow-y:auto;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;white-space:pre-wrap"></pre>
       </div>
       <div class="modal-footer" id="nukeModalFooter">
-        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal" id="nukeCancelBtn">Anuluj</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal" id="nukeCancelBtn">Cancel</button>
         <button type="button" class="btn btn-danger btn-sm" id="nukeConfirmBtn" disabled onclick="startDockerNuke()">
-          <i class="bi bi-trash3-fill me-1"></i>Tak, resetuj wszystko
+          <i class="bi bi-trash3-fill me-1"></i>Yes, reset everything
         </button>
       </div>
     </div>
@@ -667,54 +667,54 @@
 
 {# Opisy parametrów konfiguracyjnych (config category) #}
 {% set _cfg_desc = {
-  "full_scan_max_age_days": ("Pełny skan portów — co ile dni",
-    "Co ile dni powtarzać pełny skan TCP 1-65535 dla każdego urządzenia. "
-    "0 = wyłącz automatyczny pełny skan. Zalecane: 7–30 dni. "
-    "Duże wartości = rzadszy skan, mniejsze obciążenie sieci."),
-  "full_scan_enabled": ("Pełny skan portów — włączony/wyłączony",
-    "1 = automatyczny skan 1-65535 jest aktywny (zgodnie z full_scan_max_age_days). "
-    "0 = pełny skan jest wyłączony całkowicie — wykonywany jest tylko skan discovery (30 portów). "
-    "Wyłącz gdy sieć jest duża i nie chcesz obciążać urządzeń rozszerzonym skanem."),
-  "inventory_enabled": ("Moduł inwentaryzacji (Środki Trwałe)",
-    "1 = włączony (widoczny w menu i przyciski Akcje → Inwentarz). "
-    "0 = wyłączony — menu Inwentarz i formularz ST znikają z UI. "
-    "Przydatne gdy nie używasz funkcji śledzenia zakupów/gwarancji."),
-  "cred_snmp_enabled": ("Testowanie SNMP community strings",
-    "1 = skaner automatycznie próbuje odkryć działające community stringi SNMP (public, private, itp.) "
-    "dla każdego urządzenia z otwartym portem UDP 161. "
-    "0 = wyłączone — skaner nie próbuje SNMP autodiscovery (istniejące zapisane community nadal działają)."),
-  "cred_ssh_enabled": ("Testowanie haseł SSH/Telnet",
-    "1 = cred-worker testuje logowanie SSH i Telnet ze słownikiem domyślnych haseł. "
-    "0 = wyłączone — cred-worker pomija SSH/Telnet. "
-    "Wyłącz jeśli nie chcesz aktywnego testowania logowania lub masz własne zarządzanie hasłami."),
-  "cred_ftp_enabled": ("Testowanie haseł FTP",
-    "1 = cred-worker testuje logowanie FTP (port 21) oraz dostęp anonimowy. "
-    "0 = wyłączone — FTP nie jest testowany. "
-    "Wyłącz jeśli FTP nie jest używany w sieci."),
-  "cred_web_enabled": ("Testowanie haseł Web/HTTP",
-    "1 = cred-worker testuje logowanie przez panele webowe urządzeń (HTTP/HTTPS Basic Auth, formularze logowania). "
-    "0 = wyłączone — Web/HTTP nie jest testowany."),
-  "cred_rdp_enabled": ("Testowanie haseł RDP/SMB",
-    "1 = cred-worker testuje logowanie RDP (port 3389) i SMB (port 445) na urządzeniach Windows. "
-    "0 = wyłączone — RDP/SMB nie jest testowany."),
-  "cred_mssql_enabled": ("Testowanie haseł MSSQL (SQL Server)",
-    "1 = cred-worker testuje logowanie do Microsoft SQL Server (port 1433) ze słownikiem domyślnych haseł. "
-    "0 = wyłączone. Wyłącz jeśli nie masz serwerów SQL lub nie chcesz testowania baz danych."),
-  "cred_mysql_enabled": ("Testowanie haseł MySQL/MariaDB",
-    "1 = cred-worker testuje logowanie do MySQL i MariaDB (port 3306). "
-    "0 = wyłączone. Wyłącz jeśli nie masz serwerów MySQL w sieci."),
-  "cred_postgres_enabled": ("Testowanie haseł PostgreSQL",
-    "1 = cred-worker testuje logowanie do PostgreSQL (port 5432). "
-    "0 = wyłączone. Wyłącz jeśli nie masz serwerów PostgreSQL lub chcesz wykluczyć kontener netdoc-postgres z testowania."),
-  "screenshot_ttl_hours": ("Czas ważności zrzutu ekranu [h]",
-    "Co ile godzin odświeżać podgląd strony WWW urządzenia (screenshot). "
-    "Domyślnie: 12h. Niższe wartości = częstsze odświeżenie, wyższe = mniejsze obciążenie. "
-    "Minimalna wartość: 1. Zrzuty są przechowywane w bazie danych PostgreSQL."),
-  "ai_assessment_enabled": ("Ocena urządzenia przez AI (Claude)",
-    "1 = przycisk 'AI Ocena' widoczny w menu każdego urządzenia — pozwala zapytać Claude "
-    "o konkretne urządzenie: stan techniczny, ryzyko, propozycje zamienników w 3 przedziałach cenowych. "
-    "0 = wyłączone — przycisk znika, endpoint /devices/<id>/ai-assess zwraca 403. "
-    "Każde kliknięcie = 1 zapytanie do API (koszt tokenów). Wynik jest cachowany per urządzenie."),
+  "full_scan_max_age_days": ("Full port scan — how often (days)",
+    "How many days between full TCP 1-65535 scans for each device. "
+    "0 = disable automatic full scan. Recommended: 7–30 days. "
+    "Higher values = less frequent scan, lower network load."),
+  "full_scan_enabled": ("Full port scan — enabled/disabled",
+    "1 = automatic 1-65535 scan is active (per full_scan_max_age_days). "
+    "0 = full scan is completely disabled — only the discovery scan (30 ports) is performed. "
+    "Disable when the network is large and you don't want to burden devices with an extended scan."),
+  "inventory_enabled": ("Inventory module (Fixed Assets)",
+    "1 = enabled (visible in menu and Devices → Actions → Inventory buttons). "
+    "0 = disabled — the Inventory menu and fixed-assets form disappear from the UI. "
+    "Useful when you don't use the purchase/warranty tracking features."),
+  "cred_snmp_enabled": ("SNMP community string testing",
+    "1 = scanner automatically tries to discover working SNMP community strings (public, private, etc.) "
+    "for every device with open UDP port 161. "
+    "0 = disabled — scanner does not attempt SNMP autodiscovery (existing saved community strings still work)."),
+  "cred_ssh_enabled": ("SSH/Telnet password testing",
+    "1 = cred-worker tests SSH and Telnet login with a dictionary of default passwords. "
+    "0 = disabled — cred-worker skips SSH/Telnet. "
+    "Disable if you do not want active login testing or have your own password management."),
+  "cred_ftp_enabled": ("FTP password testing",
+    "1 = cred-worker tests FTP login (port 21) and anonymous access. "
+    "0 = disabled — FTP is not tested. "
+    "Disable if FTP is not used on the network."),
+  "cred_web_enabled": ("Web/HTTP password testing",
+    "1 = cred-worker tests login via device web panels (HTTP/HTTPS Basic Auth, login forms). "
+    "0 = disabled — Web/HTTP is not tested."),
+  "cred_rdp_enabled": ("RDP/SMB password testing",
+    "1 = cred-worker tests RDP (port 3389) and SMB (port 445) login on Windows devices. "
+    "0 = disabled — RDP/SMB is not tested."),
+  "cred_mssql_enabled": ("MSSQL (SQL Server) password testing",
+    "1 = cred-worker tests login to Microsoft SQL Server (port 1433) with a dictionary of default passwords. "
+    "0 = disabled. Disable if you have no SQL servers or do not want database testing."),
+  "cred_mysql_enabled": ("MySQL/MariaDB password testing",
+    "1 = cred-worker tests login to MySQL and MariaDB (port 3306). "
+    "0 = disabled. Disable if you have no MySQL servers on the network."),
+  "cred_postgres_enabled": ("PostgreSQL password testing",
+    "1 = cred-worker tests login to PostgreSQL (port 5432). "
+    "0 = disabled. Disable if you have no PostgreSQL servers or want to exclude the netdoc-postgres container from testing."),
+  "screenshot_ttl_hours": ("Screenshot validity period [h]",
+    "How often (in hours) to refresh the device web page preview (screenshot). "
+    "Default: 12h. Lower values = more frequent refresh, higher = less load. "
+    "Minimum value: 1. Screenshots are stored in the PostgreSQL database."),
+  "ai_assessment_enabled": ("AI device assessment (Claude)",
+    "1 = 'AI Assessment' button visible in each device menu — allows asking Claude "
+    "about a specific device: technical state, risk, suggested replacements in 3 price ranges. "
+    "0 = disabled — button disappears, endpoint /devices/<id>/ai-assess returns 403. "
+    "Each click = 1 API request (token cost). Result is cached per device."),
 } %}
 
 {# Klucze konfiguracyjne z widgetem select (0/1) #}
@@ -724,7 +724,7 @@
                        "cred_mssql_enabled", "cred_mysql_enabled", "cred_postgres_enabled",
                        "ai_assessment_enabled"] %}
 
-<p class="text-muted small">Sekcja <strong>config</strong> jest edytowalna. Pozostałe ustawienia są read-only (zmień w <code>.env</code> i zrestartuj serwis).</p>
+<p class="text-muted small">The <strong>config</strong> section is editable. Other settings are read-only (change in <code>.env</code> and restart the service).</p>
 
 {% for category, rows in grouped.items() %}
 {% set _collapsible = category == "cred_tried" %}
@@ -732,13 +732,13 @@
 <div class="card mb-3">
   <div class="card-header text-capitalize d-flex align-items-center justify-content-between
               {% if _collapsible %}{% endif %}"
-       {% if _collapsible %}style="cursor:pointer" onclick="toggleSettingsCat('{{ _cat_id }}')" title="Kliknij aby rozwinąć / zwinąć"{% endif %}>
+       {% if _collapsible %}style="cursor:pointer" onclick="toggleSettingsCat('{{ _cat_id }}')" title="Click to expand / collapse"{% endif %}>
     <span><i class="bi bi-sliders me-2"></i>{{ category }}
-      {% if _collapsible %}<small class="text-muted ms-2 fw-normal" style="font-size:.8rem">historia wypróbowanych haseł per urządzenie</small>{% endif %}
+      {% if _collapsible %}<small class="text-muted ms-2 fw-normal" style="font-size:.8rem">history of tried passwords per device</small>{% endif %}
     </span>
     {% if _collapsible %}
     <span class="d-flex align-items-center gap-2">
-      <span class="badge bg-secondary">{{ rows|length }} urządzeń</span>
+      <span class="badge bg-secondary">{{ rows|length }} devices</span>
       <i class="bi bi-chevron-down" id="{{ _cat_id }}_chev" style="font-size:.85rem;transition:transform .2s"></i>
     </span>
     {% endif %}
@@ -761,14 +761,14 @@
             <form method="post" action="/settings/config/{{ r.key }}" class="d-flex gap-2 align-items-center">
               {% if r.key in _toggle_keys %}
               <select name="value" class="form-select form-select-sm" style="max-width:130px">
-                <option value="1" {% if r.value != "0" %}selected{% endif %}>Włączony (1)</option>
-                <option value="0" {% if r.value == "0" %}selected{% endif %}>Wyłączony (0)</option>
+                <option value="1" {% if r.value != "0" %}selected{% endif %}>Enabled (1)</option>
+                <option value="0" {% if r.value == "0" %}selected{% endif %}>Disabled (0)</option>
               </select>
               {% else %}
               <input type="number" name="value" value="{{ r.value or '' }}"
                      class="form-control form-control-sm" style="max-width:120px" min="0">
               {% endif %}
-              <button class="btn btn-outline-secondary btn-sm py-0" type="submit" title="Zapisz wartość">
+              <button class="btn btn-outline-secondary btn-sm py-0" type="submit" title="Save value">
                 <i class="bi bi-check2"></i>
               </button>
             </form>
@@ -777,7 +777,7 @@
             {% set _v = r.value or "—" %}
             {% if _v|length > 80 %}
             <span class="font-monospace text-muted" style="font-size:.75rem;word-break:break-all"
-                  id="ctv_{{ r.key }}" data-full="{{ _v|e }}">{{ _v[:80] }}<span class="ctv-dots">… </span><a href="#" class="text-secondary" style="font-size:.7rem" onclick="expandCtv('{{ r.key }}');return false">pokaż</a></span>
+                  id="ctv_{{ r.key }}" data-full="{{ _v|e }}">{{ _v[:80] }}<span class="ctv-dots">… </span><a href="#" class="text-secondary" style="font-size:.7rem" onclick="expandCtv('{{ r.key }}');return false">show</a></span>
             {% else %}
             <span class="font-monospace" style="font-size:.75rem">{{ _v }}</span>
             {% endif %}
@@ -788,7 +788,7 @@
           <td class="text-muted" style="font-size:.73rem;width:40%">
             {% if _desc %}{{ _desc[1] }}{% endif %}
             {% if r.updated_at %}
-            <br><span style="font-size:.68rem">Zmieniono: {{ r.updated_at.strftime("%Y-%m-%d %H:%M") }}</span>
+            <br><span style="font-size:.68rem">Changed: {{ r.updated_at.strftime("%Y-%m-%d %H:%M") }}</span>
             {% endif %}
           </td>
         </tr>
@@ -799,7 +799,7 @@
   </div>
 </div>
 {% else %}
-<div class="alert alert-secondary">Brak danych. Uruchom serwis NetDoc API.</div>
+<div class="alert alert-secondary">No data. Start the NetDoc API service.</div>
 {% endfor %}
 <script>
 (function(){
@@ -839,57 +839,57 @@
 
 {# ── Konfiguracja powiadomien Telegram ──────────────────────────────────── #}
 <div class="card mb-4">
-  <div class="card-header"><i class="bi bi-telegram me-2"></i>Powiadomienia Telegram</div>
+  <div class="card-header"><i class="bi bi-telegram me-2"></i>Telegram notifications</div>
   <div class="card-body">
     {% if telegram_config %}
     <div class="alert alert-success py-2 mb-3">
       <i class="bi bi-check-circle-fill me-1"></i>
-      Telegram skonfigurowany — chat_id: <code>{{ telegram_config.chat_id }}</code>
+      Telegram configured — chat_id: <code>{{ telegram_config.chat_id }}</code>
     </div>
     {% else %}
     <div class="alert alert-secondary py-2 mb-3">
       <i class="bi bi-info-circle me-1"></i>
-      Telegram nie skonfigurowany — alerty monitorowania nie będą wysyłane.
+      Telegram not configured — monitoring alerts will not be sent.
     </div>
     {% endif %}
 
-    {# Opisy alertów #}
+    {# Alert descriptions #}
     <div class="mb-3">
-      <p class="small text-muted mb-2"><strong>Jakie alerty trafiają na Telegram:</strong></p>
+      <p class="small text-muted mb-2"><strong>Which alerts are sent to Telegram:</strong></p>
       <div class="row g-2 small">
         <div class="col-md-6">
           <div class="d-flex gap-2 align-items-start mb-1">
             <span class="badge bg-danger mt-1" style="min-width:24px">⬇</span>
-            <span><strong>Urządzenie niedostępne</strong> — ping-worker wykryje że monitorowane urządzenie przestało odpowiadać (po ok. 5 min ciszy). Alert zawiera IP, hostname i czas niedostępności.</span>
+            <span><strong>Device unavailable</strong> — ping-worker detects that a monitored device has stopped responding (after approx. 5 min of silence). Alert includes IP, hostname and downtime.</span>
           </div>
           <div class="d-flex gap-2 align-items-start mb-1">
             <span class="badge bg-success mt-1" style="min-width:24px">⬆</span>
-            <span><strong>Urządzenie dostępne ponownie</strong> — wysyłany gdy urządzenie wróci do sieci po przerwie.</span>
+            <span><strong>Device available again</strong> — sent when a device returns to the network after an outage.</span>
           </div>
           <div class="d-flex gap-2 align-items-start mb-1">
             <span class="badge bg-warning text-dark mt-1" style="min-width:24px">🔓</span>
-            <span><strong>Nowe domyślne hasło</strong> — cred-worker odkrył że urządzenie loguje się na domyślnych danych (admin/admin, root/root itp.).</span>
+            <span><strong>New default password</strong> — cred-worker discovered that a device accepts default credentials (admin/admin, root/root etc.).</span>
           </div>
         </div>
         <div class="col-md-6">
           <div class="d-flex gap-2 align-items-start mb-1">
             <span class="badge bg-danger mt-1" style="min-width:24px">🛡</span>
-            <span><strong>Nowa podatność</strong> — vuln-worker wykrył otwartą lukę: Telnet, FTP bez hasła, Redis bez auth, IPMI, VNC bez hasła i inne (ponad 25 typów).</span>
+            <span><strong>New vulnerability</strong> — vuln-worker detected an open issue: Telnet, FTP without password, Redis without auth, IPMI, VNC without password and others (over 25 types).</span>
           </div>
           <div class="d-flex gap-2 align-items-start mb-1">
             <span class="badge bg-info mt-1" style="min-width:24px">📡</span>
-            <span><strong>Nowe nieznane urządzenie</strong> — skaner wykrył nowe IP w sieci, które jeszcze nie było w bazie.</span>
+            <span><strong>New unknown device</strong> — scanner detected a new IP on the network that was not yet in the database.</span>
           </div>
           <div class="d-flex gap-2 align-items-start">
             <span class="badge bg-secondary mt-1" style="min-width:24px">🧪</span>
-            <span><strong>Testowy</strong> — możesz wysłać testową wiadomość przyciskiem poniżej, aby sprawdzić połączenie.</span>
+            <span><strong>Test</strong> — you can send a test message using the button below to verify the connection.</span>
           </div>
         </div>
       </div>
       <p class="text-muted mt-2 mb-0" style="font-size:.75rem">
         <i class="bi bi-info-circle me-1"></i>
-        Alerty DOWN/UP wysyłane są tylko dla urządzeń z włączoną flagą <strong>monitoruj</strong>
-        (Urządzenia → Akcje → Monitoruj). Alerty podatności — dla wszystkich aktywnych urządzeń.
+        DOWN/UP alerts are sent only for devices with the <strong>monitor</strong> flag enabled
+        (Devices → Actions → Monitor). Vulnerability alerts — for all active devices.
       </p>
     </div>
 
@@ -900,30 +900,30 @@
           <input type="text" name="bot_token" class="form-control form-control-sm"
                  placeholder="np. 1234567890:AABBccDDeeFFggHHiiJJ..."
                  value="{{ telegram_config.bot_token if telegram_config else '' }}">
-          <div class="form-text">Token z <code>@BotFather</code></div>
+          <div class="form-text">Token from <code>@BotFather</code></div>
         </div>
         <div class="col-md-4">
           <label class="form-label small">Chat ID</label>
           <input type="text" name="chat_id" class="form-control form-control-sm"
-                 placeholder="np. -1001234567890"
+                 placeholder="e.g. -1001234567890"
                  value="{{ telegram_config.chat_id if telegram_config else '' }}">
-          <div class="form-text">Twoje ID lub ID grupy. Uzyskaj przez <code>@userinfobot</code></div>
+          <div class="form-text">Your ID or group ID. Get it via <code>@userinfobot</code></div>
         </div>
         <div class="col-md-2 d-flex align-items-end">
           <div class="form-check ms-1 mb-2">
             <input class="form-check-input" type="checkbox" name="is_active" id="telegramActive"
                    value="1" {% if telegram_active %}checked{% endif %}>
-            <label class="form-check-label small" for="telegramActive">Aktywny</label>
+            <label class="form-check-label small" for="telegramActive">Active</label>
           </div>
         </div>
       </div>
       <div class="mt-3 d-flex gap-2">
         <button type="submit" class="btn btn-primary btn-sm">
-          <i class="bi bi-save me-1"></i>Zapisz konfigurację
+          <i class="bi bi-save me-1"></i>Save configuration
         </button>
         {% if telegram_config %}
         <a href="/settings/telegram/test" class="btn btn-outline-info btn-sm">
-          <i class="bi bi-send me-1"></i>Wyślij testowy alert
+          <i class="bi bi-send me-1"></i>Send test alert
         </a>
         {% endif %}
       </div>
@@ -937,9 +937,9 @@
 <div class="card mb-4" id="scan-advanced">
   <div class="card-header d-flex align-items-center gap-2">
     <i class="bi bi-shield-shaded text-warning"></i>
-    <span>Zaawansowane techniki skanowania</span>
-    <span class="badge bg-secondary ms-1" style="font-size:.7rem">EKSPERYMENTALNE</span>
-    <span class="ms-auto text-muted small">Każda opcja jest domyślnie wyłączona</span>
+    <span>Advanced scanning techniques</span>
+    <span class="badge bg-secondary ms-1" style="font-size:.7rem">EXPERIMENTAL</span>
+    <span class="ms-auto text-muted small">Each option is disabled by default</span>
   </div>
   <div class="card-body p-0">
 
@@ -953,7 +953,7 @@
     {# ── SEKCJA: Wydajność i ochrona urządzeń ─────────────────────────────── #}
     <div class="px-3 pt-3 pb-1">
       <h6 class="text-muted border-bottom pb-1 mb-0 small text-uppercase" style="letter-spacing:.05em">
-        <i class="bi bi-speedometer2 me-1"></i>Wydajność i ochrona urządzeń
+        <i class="bi bi-speedometer2 me-1"></i>Performance and device protection
       </h6>
     </div>
 
@@ -963,50 +963,49 @@
         <div class="flex-grow-1">
           <div class="d-flex align-items-center gap-2 mb-1">
             <i class="bi bi-clock-history text-info"></i>
-            <strong class="small">Tryb skanowania (Timing Preset)</strong>
-            <span class="badge bg-secondary" style="font-size:.65rem">PLANOWANE</span>
+            <strong class="small">Scan mode (Timing Preset)</strong>
+            <span class="badge bg-secondary" style="font-size:.65rem">PLANNED</span>
             <code class="text-muted" style="font-size:.68rem">nmap -T[0-4] --max-rate N --scan-delay Nms</code>
           </div>
           <p class="small text-muted mb-2">
-            Kontroluje agresywność skanera — ile pakietów wysyła na sekundę i jak długo czeka na odpowiedź.
-            Szybkie skanowanie może przeciążyć lub zawiesić wrażliwe urządzenia przemysłowe (PLC, konwertery
-            RS-485, starsze switche), natomiast wolne tryby są bezpieczniejsze i trudniejsze do wykrycia
-            przez systemy IDS.
+            Controls scanner aggressiveness — how many packets it sends per second and how long it waits for a response.
+            Fast scanning can overload or freeze sensitive industrial devices (PLCs, RS-485 converters,
+            older switches), while slow modes are safer and harder to detect by IDS systems.
           </p>
           <div class="row g-2 mb-2" style="max-width:700px">
             <div class="col-6 col-md-3">
               <div class="border rounded p-2 text-center bg-body-secondary opacity-50">
-                <div class="small fw-bold text-danger">⚡ Szybkie</div>
-                <div style="font-size:.7rem" class="text-muted">-T4, max-rate 500<br>Serwery, LAN office<br>Może przeciążyć IoT</div>
+                <div class="small fw-bold text-danger">⚡ Fast</div>
+                <div style="font-size:.7rem" class="text-muted">-T4, max-rate 500<br>Servers, office LAN<br>May overload IoT</div>
               </div>
             </div>
             <div class="col-6 col-md-3">
               <div class="border rounded p-2 text-center bg-body-secondary opacity-50">
-                <div class="small fw-bold text-warning">▶ Normalne</div>
-                <div style="font-size:.7rem" class="text-muted">-T3, max-rate 200<br>Biuro, mieszane sieci<br>Obecny domyślny</div>
+                <div class="small fw-bold text-warning">▶ Normal</div>
+                <div style="font-size:.7rem" class="text-muted">-T3, max-rate 200<br>Office, mixed networks<br>Current default</div>
               </div>
             </div>
             <div class="col-6 col-md-3">
               <div class="border rounded p-2 text-center bg-body-secondary opacity-50">
-                <div class="small fw-bold text-info">🛡 Ostrożne</div>
-                <div style="font-size:.7rem" class="text-muted">-T2, max-rate 50<br>Sieci z IoT<br>Bezpieczne dla kamer</div>
+                <div class="small fw-bold text-info">🛡 Cautious</div>
+                <div style="font-size:.7rem" class="text-muted">-T2, max-rate 50<br>Networks with IoT<br>Safe for cameras</div>
               </div>
             </div>
             <div class="col-6 col-md-3">
               <div class="border rounded p-2 text-center bg-body-secondary opacity-50">
-                <div class="small fw-bold text-success">🏭 Przemysłowe</div>
-                <div style="font-size:.7rem" class="text-muted">-T1, max-rate 5<br>PLC, SCADA, OT<br>1 pakiet naraz</div>
+                <div class="small fw-bold text-success">🏭 Industrial</div>
+                <div style="font-size:.7rem" class="text-muted">-T1, max-rate 5<br>PLC, SCADA, OT<br>1 packet at a time</div>
               </div>
             </div>
           </div>
           <div class="alert alert-secondary py-1 px-2 mb-0 small d-inline-flex align-items-center gap-2">
             <i class="bi bi-info-circle"></i>
-            <span>Funkcja w przygotowaniu. Planowane w kolejnej wersji NetDoc.</span>
+            <span>Feature in preparation. Planned for the next version of NetDoc.</span>
           </div>
         </div>
         <div class="flex-shrink-0">
-          <button class="btn btn-outline-secondary btn-sm" disabled title="Dostępne wkrótce">
-            <i class="bi bi-toggles me-1"></i>Konfiguruj
+          <button class="btn btn-outline-secondary btn-sm" disabled title="Available soon">
+            <i class="bi bi-toggles me-1"></i>Configure
           </button>
         </div>
       </div>
@@ -1015,7 +1014,7 @@
     {# ── SEKCJA: Wykrywanie hostów ─────────────────────────────────────────── #}
     <div class="px-3 pt-3 pb-1">
       <h6 class="text-muted border-bottom pb-1 mb-0 small text-uppercase" style="letter-spacing:.05em">
-        <i class="bi bi-search me-1"></i>Wykrywanie hostów
+        <i class="bi bi-search me-1"></i>Host discovery
       </h6>
     </div>
 
@@ -1025,39 +1024,39 @@
         <div class="flex-grow-1">
           <div class="d-flex align-items-center gap-2 mb-1">
             <i class="bi bi-diagram-3 text-info"></i>
-            <strong class="small">Wielometodowe wykrywanie hostów</strong>
-            <span class="badge bg-secondary" style="font-size:.65rem">PLANOWANE</span>
+            <strong class="small">Multi-method host discovery</strong>
+            <span class="badge bg-secondary" style="font-size:.65rem">PLANNED</span>
             <code class="text-muted" style="font-size:.68rem">nmap -PE -PP -PS80,443 -PA80 -PU161</code>
           </div>
           <p class="small text-muted mb-2">
-            Standardowe odkrywanie opiera się wyłącznie na odpowiedzi ICMP (klasycznym "ping"). Problem polega
-            na tym, że wiele urządzeń — kamer IP, kamer Hikvision/Dahua, PLC Siemens, drukarek HP —
-            <strong>blokuje ICMP w firmware lub przez reguły firewalla</strong>. Takie urządzenia "wyglądają"
-            jakby nie istniały, mimo że działają normalnie.
+            Standard discovery relies solely on ICMP responses (classic "ping"). The problem is
+            that many devices — IP cameras, Hikvision/Dahua cameras, Siemens PLCs, HP printers —
+            <strong>block ICMP in firmware or via firewall rules</strong>. Such devices "look"
+            as if they don't exist, even though they are working normally.
           </p>
           <p class="small text-muted mb-2">
-            Wielometodowe wykrywanie próbuje kilka technik naraz:
+            Multi-method discovery tries several techniques at once:
           </p>
           <ul class="small text-muted mb-2" style="padding-left:1.2rem">
-            <li><strong>ICMP Echo</strong> (-PE) — klasyczny ping</li>
-            <li><strong>ICMP Timestamp</strong> (-PP) — alternatywny typ ICMP, omija niektóre firewalle</li>
-            <li><strong>TCP SYN ping</strong> (-PS22,80,443) — "puka" w popularne porty TCP</li>
-            <li><strong>TCP ACK ping</strong> (-PA80) — wygląda jak odpowiedź na istniejące połączenie, trudny do odfiltrowania</li>
-            <li><strong>UDP ping</strong> (-PU161) — dla urządzeń z SNMP (PLC, switche)</li>
+            <li><strong>ICMP Echo</strong> (-PE) — classic ping</li>
+            <li><strong>ICMP Timestamp</strong> (-PP) — alternative ICMP type, bypasses some firewalls</li>
+            <li><strong>TCP SYN ping</strong> (-PS22,80,443) — "knocks" on popular TCP ports</li>
+            <li><strong>TCP ACK ping</strong> (-PA80) — looks like a response to an existing connection, hard to filter out</li>
+            <li><strong>UDP ping</strong> (-PU161) — for devices with SNMP (PLCs, switches)</li>
           </ul>
           <div class="alert alert-warning py-1 px-2 mb-0 small d-inline-flex align-items-center gap-2">
             <i class="bi bi-exclamation-triangle"></i>
-            <span><strong>Ryzyko:</strong> więcej ruchu sieciowego, dłuższy czas skanowania. Niektóre urządzenia mogą
-            reagować nieprzewidywalnie na TCP SYN do zamkniętych portów (rzadkie).</span>
+            <span><strong>Risk:</strong> more network traffic, longer scan time. Some devices may
+            react unpredictably to TCP SYN on closed ports (rare).</span>
           </div>
           <div class="alert alert-secondary py-1 px-2 mt-2 mb-0 small d-inline-flex align-items-center gap-2">
             <i class="bi bi-info-circle"></i>
-            <span>Funkcja w przygotowaniu. Może wykryć 15–30% więcej urządzeń w sieciach z filtrowanym ICMP.</span>
+            <span>Feature in preparation. May detect 15–30% more devices on networks with filtered ICMP.</span>
           </div>
         </div>
         <div class="flex-shrink-0">
-          <button class="btn btn-outline-secondary btn-sm" disabled title="Dostępne wkrótce">
-            <i class="bi bi-toggles me-1"></i>Włącz
+          <button class="btn btn-outline-secondary btn-sm" disabled title="Available soon">
+            <i class="bi bi-toggles me-1"></i>Enable
           </button>
         </div>
       </div>
@@ -1069,27 +1068,27 @@
         <div class="flex-grow-1">
           <div class="d-flex align-items-center gap-2 mb-1">
             <i class="bi bi-shuffle text-info"></i>
-            <strong class="small">Losowa kolejność skanowania hostów</strong>
-            <span class="badge bg-secondary" style="font-size:.65rem">PLANOWANE</span>
+            <strong class="small">Randomize host scan order</strong>
+            <span class="badge bg-secondary" style="font-size:.65rem">PLANNED</span>
             <code class="text-muted" style="font-size:.68rem">nmap --randomize-hosts</code>
           </div>
           <p class="small text-muted mb-2">
-            Domyślnie nmap skanuje hosty sekwencyjnie (192.168.1.1, .2, .3…). Przy dużych sieciach może to
-            oznaczać, że przez kilkadziesiąt sekund "atakuje" tylko jeden switch lub jeden segment sieci,
-            co może go przeciążyć lub wyzwolić alarmy IDS. Losowa kolejność rozkłada ruch równomiernie.
+            By default nmap scans hosts sequentially (192.168.1.1, .2, .3…). On large networks this can
+            mean that for tens of seconds it "attacks" only one switch or one network segment,
+            which may overload it or trigger IDS alarms. Random order distributes traffic evenly.
           </p>
           <p class="small text-muted mb-2">
-            Szczególnie przydatne przy sieciach /16 i większych, gdzie sekwencyjne skanowanie obciąża
-            kolejno każdy z dziesiątek przełączników.
+            Particularly useful for /16 and larger networks, where sequential scanning loads
+            each of dozens of switches one after another.
           </p>
           <div class="alert alert-secondary py-1 px-2 mb-0 small d-inline-flex align-items-center gap-2">
             <i class="bi bi-info-circle"></i>
-            <span>Funkcja w przygotowaniu. Brak ryzyk, zalecane dla sieci powyżej /24.</span>
+            <span>Feature in preparation. No risks, recommended for networks larger than /24.</span>
           </div>
         </div>
         <div class="flex-shrink-0">
-          <button class="btn btn-outline-secondary btn-sm" disabled title="Dostępne wkrótce">
-            <i class="bi bi-toggles me-1"></i>Włącz
+          <button class="btn btn-outline-secondary btn-sm" disabled title="Available soon">
+            <i class="bi bi-toggles me-1"></i>Enable
           </button>
         </div>
       </div>
@@ -1098,7 +1097,7 @@
     {# ── SEKCJA: Omijanie filtrów i firewalli ─────────────────────────────── #}
     <div class="px-3 pt-3 pb-1">
       <h6 class="text-muted border-bottom pb-1 mb-0 small text-uppercase" style="letter-spacing:.05em">
-        <i class="bi bi-shield-x me-1"></i>Omijanie filtrów sieciowych
+        <i class="bi bi-shield-x me-1"></i>Bypassing network filters
       </h6>
     </div>
 
@@ -1108,33 +1107,33 @@
         <div class="flex-grow-1">
           <div class="d-flex align-items-center gap-2 mb-1">
             <i class="bi bi-arrow-left-right text-warning"></i>
-            <strong class="small">Spoofing portu źródłowego</strong>
-            <span class="badge bg-secondary" style="font-size:.65rem">PLANOWANE</span>
+            <strong class="small">Source port spoofing</strong>
+            <span class="badge bg-secondary" style="font-size:.65rem">PLANNED</span>
             <code class="text-muted" style="font-size:.68rem">nmap -g 53</code>
           </div>
           <p class="small text-muted mb-2">
-            Reguły firewalla często działają w obie strony: "zablokuj wszystko, ale przepuść ruch z/do
-            portu 53 (DNS)". Wysyłając pakiety skanujące z portu 53 jako źródłowego, skaner "podaje się"
-            za zapytanie DNS — proste firewalle traktują taki ruch jako dozwolony i przepuszczają
-            odpowiedź z badanego hosta.
+            Firewall rules often work in both directions: "block everything, but allow traffic from/to
+            port 53 (DNS)". By sending scanning packets from port 53 as the source, the scanner "pretends"
+            to be a DNS query — simple firewalls treat such traffic as permitted and let through
+            the response from the target host.
           </p>
           <p class="small text-muted mb-2">
-            Przykładowe "zaufane" porty, które można wskazać: <code>53</code> (DNS), <code>80</code> (HTTP),
+            Example "trusted" ports that can be specified: <code>53</code> (DNS), <code>80</code> (HTTP),
             <code>443</code> (HTTPS), <code>20</code> (FTP data).
           </p>
           <div class="alert alert-warning py-1 px-2 mb-0 small d-inline-flex align-items-center gap-2">
             <i class="bi bi-exclamation-triangle"></i>
-            <span><strong>Ryzyko:</strong> może powodować konflikty z działającymi usługami na tych portach
-            (np. lokalny serwer DNS na porcie 53). Stosować tylko gdy standardowe skanowanie nie daje wyników.</span>
+            <span><strong>Risk:</strong> may cause conflicts with services running on those ports
+            (e.g. local DNS server on port 53). Use only when standard scanning yields no results.</span>
           </div>
           <div class="alert alert-secondary py-1 px-2 mt-2 mb-0 small d-inline-flex align-items-center gap-2">
             <i class="bi bi-info-circle"></i>
-            <span>Funkcja w przygotowaniu. Pomaga odkryć hosty/porty za prostymi regułami ACL.</span>
+            <span>Feature in preparation. Helps discover hosts/ports behind simple ACL rules.</span>
           </div>
         </div>
         <div class="flex-shrink-0">
-          <button class="btn btn-outline-secondary btn-sm" disabled title="Dostępne wkrótce">
-            <i class="bi bi-toggles me-1"></i>Konfiguruj
+          <button class="btn btn-outline-secondary btn-sm" disabled title="Available soon">
+            <i class="bi bi-toggles me-1"></i>Configure
           </button>
         </div>
       </div>
@@ -1146,32 +1145,32 @@
         <div class="flex-grow-1">
           <div class="d-flex align-items-center gap-2 mb-1">
             <i class="bi bi-puzzle text-warning"></i>
-            <strong class="small">Fragmentacja pakietów IP</strong>
-            <span class="badge bg-secondary" style="font-size:.65rem">PLANOWANE</span>
+            <strong class="small">IP packet fragmentation</strong>
+            <span class="badge bg-secondary" style="font-size:.65rem">PLANNED</span>
             <code class="text-muted" style="font-size:.68rem">nmap -f</code> &nbsp;
             <code class="text-muted" style="font-size:.68rem">nmap --mtu 16</code>
           </div>
           <p class="small text-muted mb-2">
-            Pakiety TCP są dzielone na małe fragmenty (domyślnie 8 bajtów) przed wysłaniem.
-            Proste systemy Intrusion Detection (IDS) i firewalle z inspekcją pakietów
-            <strong>analizują każdy pakiet osobno</strong> — nie składają fragmentów przed analizą.
-            Dzięki temu fragmentowane skanowanie "prześlizguje się" przez filtry, które normalnie
-            blokowałyby pakiety SYN.
+            TCP packets are split into small fragments (default 8 bytes) before sending.
+            Simple Intrusion Detection Systems (IDS) and firewalls with packet inspection
+            <strong>analyze each packet individually</strong> — they do not reassemble fragments before analysis.
+            This allows fragmented scanning to "slip through" filters that would normally
+            block SYN packets.
           </p>
           <div class="alert alert-danger py-1 px-2 mb-0 small d-inline-flex align-items-center gap-2">
             <i class="bi bi-exclamation-octagon"></i>
-            <span><strong>Wysokie ryzyko dla urządzeń przemysłowych:</strong> PLC, konwertery przemysłowe
-            i stare switche mogą nie obsługiwać składania fragmentów IP — odbierają niekompletne pakiety
-            i mogą zawiesić się lub zrestartować. Używać tylko w biurowych sieciach IT, nigdy w OT/SCADA.</span>
+            <span><strong>High risk for industrial devices:</strong> PLCs, industrial converters
+            and old switches may not support IP fragment reassembly — they receive incomplete packets
+            and may freeze or restart. Use only on office IT networks, never on OT/SCADA.</span>
           </div>
           <div class="alert alert-secondary py-1 px-2 mt-2 mb-0 small d-inline-flex align-items-center gap-2">
             <i class="bi bi-info-circle"></i>
-            <span>Funkcja w przygotowaniu. Wyłączona domyślnie — wymaga świadomego włączenia.</span>
+            <span>Feature in preparation. Disabled by default — requires deliberate enabling.</span>
           </div>
         </div>
         <div class="flex-shrink-0">
-          <button class="btn btn-outline-secondary btn-sm" disabled title="Dostępne wkrótce">
-            <i class="bi bi-toggles me-1"></i>Włącz
+          <button class="btn btn-outline-secondary btn-sm" disabled title="Available soon">
+            <i class="bi bi-toggles me-1"></i>Enable
           </button>
         </div>
       </div>
@@ -1180,7 +1179,7 @@
     {# ── SEKCJA: Analiza bezpieczeństwa sieci ─────────────────────────────── #}
     <div class="px-3 pt-3 pb-1">
       <h6 class="text-muted border-bottom pb-1 mb-0 small text-uppercase" style="letter-spacing:.05em">
-        <i class="bi bi-bug me-1"></i>Analiza bezpieczeństwa sieci
+        <i class="bi bi-bug me-1"></i>Network security analysis
       </h6>
     </div>
 
@@ -1190,29 +1189,29 @@
         <div class="flex-grow-1">
           <div class="d-flex align-items-center gap-2 mb-1">
             <i class="bi bi-calculator text-warning"></i>
-            <strong class="small">Test sum kontrolnych (Bad Checksum)</strong>
-            <span class="badge bg-secondary" style="font-size:.65rem">PLANOWANE</span>
+            <strong class="small">Checksum test (Bad Checksum)</strong>
+            <span class="badge bg-secondary" style="font-size:.65rem">PLANNED</span>
             <code class="text-muted" style="font-size:.68rem">nmap --badsum</code>
           </div>
           <p class="small text-muted mb-2">
-            Wysyła pakiety TCP/UDP z <strong>celowo błędną sumą kontrolną</strong>. Każdy prawidłowo
-            zaimplementowany stos sieciowy powinien je po prostu zignorować — jeśli tak jest, brak
-            odpowiedzi oznacza "prawdziwy" host. Jeśli jednak host lub firewall <em>odpowie</em>,
-            oznacza to poważną lukę: urządzenie nie weryfikuje integralności pakietów, co może
-            być exploitowane przez atakujących.
+            Sends TCP/UDP packets with a <strong>deliberately incorrect checksum</strong>. Every correctly
+            implemented network stack should simply ignore them — if so, no response means a "real" host.
+            However, if the host or firewall <em>responds</em>,
+            it indicates a serious vulnerability: the device does not verify packet integrity, which can
+            be exploited by attackers.
           </p>
           <p class="small text-muted mb-2">
-            Wynik testu trafia jako nowy typ podatności: <code>firewall_no_checksum_validation</code>.
-            Jest to informacja szczególnie ważna dla regulacji NERC CIP i IEC 62443 w środowiskach OT.
+            The test result is recorded as a new vulnerability type: <code>firewall_no_checksum_validation</code>.
+            This is particularly important for NERC CIP and IEC 62443 regulations in OT environments.
           </p>
           <div class="alert alert-secondary py-1 px-2 mb-0 small d-inline-flex align-items-center gap-2">
             <i class="bi bi-info-circle"></i>
-            <span>Funkcja w przygotowaniu. Bezpieczna — nie powoduje efektów ubocznych na urządzeniach.</span>
+            <span>Feature in preparation. Safe — causes no side effects on devices.</span>
           </div>
         </div>
         <div class="flex-shrink-0">
-          <button class="btn btn-outline-secondary btn-sm" disabled title="Dostępne wkrótce">
-            <i class="bi bi-toggles me-1"></i>Włącz
+          <button class="btn btn-outline-secondary btn-sm" disabled title="Available soon">
+            <i class="bi bi-toggles me-1"></i>Enable
           </button>
         </div>
       </div>
@@ -1222,7 +1221,7 @@
     <div class="px-3 pt-3 pb-1">
       <h6 class="border-bottom pb-1 mb-0 small text-uppercase d-flex align-items-center gap-2" style="letter-spacing:.05em">
         <i class="bi bi-lock-fill text-warning"></i>
-        <span class="text-warning">Techniki ukrywania skanowania</span>
+        <span class="text-warning">Scan concealment techniques</span>
         <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem">NETDOC PRO</span>
       </h6>
     </div>
@@ -1233,32 +1232,32 @@
         <div class="flex-grow-1">
           <div class="d-flex align-items-center gap-2 mb-1">
             <i class="bi bi-person-bounding-box text-warning"></i>
-            <strong class="small">Skanowanie z wabika (Decoy Scan)</strong>
+            <strong class="small">Decoy scan</strong>
             <span class="badge bg-warning text-dark" style="font-size:.65rem">PRO</span>
             <code class="text-muted" style="font-size:.68rem">nmap -D RND:5,ME</code>
           </div>
           <p class="small text-muted mb-2">
-            Do każdego wysyłanego pakietu skanującego dołączane są kopie z fałszywymi adresami IP (wabiki).
-            System monitoringu lub firewall widzi <strong>kilkanaście "skanerów" naraz</strong> — trudno
-            odróżnić, który jest prawdziwy. Przydatne podczas autoryzowanych testów penetracyjnych własnej
-            infrastruktury, gdy chcemy sprawdzić skuteczność systemu wykrywania intruzji (IDS/SIEM) —
-            czy potrafi wyizolować prawdziwe źródło z szumu.
+            Every outgoing scan packet is accompanied by copies with fake IP addresses (decoys).
+            The monitoring system or firewall sees <strong>a dozen "scanners" at once</strong> — it is hard
+            to tell which is real. Useful during authorized penetration tests of your own
+            infrastructure when you want to verify the effectiveness of the intrusion detection system (IDS/SIEM) —
+            whether it can isolate the real source from the noise.
           </p>
           <div class="alert alert-warning py-1 px-2 mb-0 small d-inline-flex align-items-center gap-2">
             <i class="bi bi-exclamation-triangle"></i>
-            <span><strong>Wymaga autoryzacji:</strong> technika może wyzwolić alerty bezpieczeństwa i
-            powinna być stosowana tylko w ramach udokumentowanego testu penetracyjnego. Fałszywe IP
-            muszą być osiągalne w sieci, inaczej technika jest nieskuteczna.</span>
+            <span><strong>Requires authorization:</strong> this technique may trigger security alerts and
+            should only be used within a documented penetration test. Fake IPs
+            must be reachable on the network, otherwise the technique is ineffective.</span>
           </div>
         </div>
         <div class="flex-shrink-0">
           {% if PRO_ENABLED %}
-          <button class="btn btn-outline-warning btn-sm" disabled title="Konfiguracja w przygotowaniu">
-            <i class="bi bi-toggles me-1"></i>Konfiguruj
+          <button class="btn btn-outline-warning btn-sm" disabled title="Configuration in preparation">
+            <i class="bi bi-toggles me-1"></i>Configure
           </button>
           {% else %}
           <button class="btn btn-outline-warning btn-sm" disabled
-                  title="Dostępne wyłącznie w NetDoc Pro">
+                  title="Available exclusively in NetDoc Pro">
             <i class="bi bi-lock me-1"></i>NetDoc Pro
           </button>
           {% endif %}
@@ -1272,35 +1271,35 @@
         <div class="flex-grow-1">
           <div class="d-flex align-items-center gap-2 mb-1">
             <i class="bi bi-ethernet text-warning"></i>
-            <strong class="small">Spoofing adresu MAC</strong>
+            <strong class="small">MAC address spoofing</strong>
             <span class="badge bg-warning text-dark" style="font-size:.65rem">PRO</span>
             <code class="text-muted" style="font-size:.68rem">nmap --spoof-mac Cisco</code>
           </div>
           <p class="small text-muted mb-2">
-            Skaner wysyła pakiety podszywając się pod adres MAC innego producenta lub konkretnego
-            urządzenia. Używane gdy środowisko sieciowe stosuje <strong>kontrolę dostępu opartą na MAC</strong>
-            (802.1X, MAC-based ACL) — skaner "udaje" zatwierdzone urządzenie i uzyskuje dostęp do
-            segmentów sieci niedostępnych przy standardowym skanie.
+            The scanner sends packets impersonating the MAC address of another vendor or a specific
+            device. Used when the network environment applies <strong>MAC-based access control</strong>
+            (802.1X, MAC-based ACL) — the scanner "pretends" to be an approved device and gains access to
+            network segments inaccessible with a standard scan.
           </p>
           <p class="small text-muted mb-2">
-            Możliwe tryby: podszywanie się pod producenta (np. <code>Cisco</code>, <code>Dell</code>),
-            losowy MAC (<code>0</code>) lub konkretny adres (<code>AA:BB:CC:DD:EE:FF</code>).
+            Available modes: impersonate a vendor (e.g. <code>Cisco</code>, <code>Dell</code>),
+            random MAC (<code>0</code>) or a specific address (<code>AA:BB:CC:DD:EE:FF</code>).
           </p>
           <div class="alert alert-warning py-1 px-2 mb-0 small d-inline-flex align-items-center gap-2">
             <i class="bi bi-exclamation-triangle"></i>
-            <span><strong>Ryzyko:</strong> może zakłócić tablice ARP przełączników i powodować
-            konflikty adresów. Stosować tylko w środowiskach testowych lub przy pełnej autoryzacji.
-            Nieefektywne gdy przełącznik używa Port Security (blokuje nieznane MAC).</span>
+            <span><strong>Risk:</strong> may disrupt switch ARP tables and cause
+            address conflicts. Use only in test environments or with full authorization.
+            Ineffective when the switch uses Port Security (blocks unknown MACs).</span>
           </div>
         </div>
         <div class="flex-shrink-0">
           {% if PRO_ENABLED %}
-          <button class="btn btn-outline-warning btn-sm" disabled title="Konfiguracja w przygotowaniu">
-            <i class="bi bi-toggles me-1"></i>Konfiguruj
+          <button class="btn btn-outline-warning btn-sm" disabled title="Configuration in preparation">
+            <i class="bi bi-toggles me-1"></i>Configure
           </button>
           {% else %}
           <button class="btn btn-outline-warning btn-sm" disabled
-                  title="Dostępne wyłącznie w NetDoc Pro">
+                  title="Available exclusively in NetDoc Pro">
             <i class="bi bi-lock me-1"></i>NetDoc Pro
           </button>
           {% endif %}
@@ -1314,36 +1313,36 @@
         <div class="flex-grow-1">
           <div class="d-flex align-items-center gap-2 mb-1">
             <i class="bi bi-person-x text-warning"></i>
-            <strong class="small">Skan przez hosta-zombie (Idle/Zombie Scan)</strong>
+            <strong class="small">Zombie host scan (Idle/Zombie Scan)</strong>
             <span class="badge bg-warning text-dark" style="font-size:.65rem">PRO</span>
             <code class="text-muted" style="font-size:.68rem">nmap -sI [zombie] [cel]</code>
           </div>
           <p class="small text-muted mb-2">
-            Najbardziej zaawansowana i "cicha" technika skanowania. Skaner <strong>nigdy nie wysyła pakietów
-            bezpośrednio do celu</strong> — zamiast tego używa trzeciego hosta ("zombie") jako pośrednika.
-            Dzięki temu w logach firewalla celu pojawia się tylko adres IP zombie, nie adres prawdziwego
-            skanera. Technika wymaga znalezienia hosta o niskim ruchu sieciowym i przewidywalnej sekwencji
-            numerów IP (IPID).
+            The most advanced and "silent" scanning technique. The scanner <strong>never sends packets
+            directly to the target</strong> — instead it uses a third host ("zombie") as an intermediary.
+            As a result, only the zombie's IP address appears in the target's firewall logs, not the real
+            scanner's address. The technique requires finding a host with low network traffic and a predictable
+            IP sequence number (IPID).
           </p>
           <p class="small text-muted mb-2">
-            Zastosowanie w NetDoc: weryfikacja co widzi "neutralny" host w sieci — czy firewall blokuje
-            ruch tylko z znanych IP skanerów, czy faktycznie filtruje porty niezależnie od źródła.
+            Use in NetDoc: verifying what a "neutral" host sees on the network — whether the firewall blocks
+            traffic only from known scanner IPs, or actually filters ports regardless of source.
           </p>
           <div class="alert alert-danger py-1 px-2 mb-0 small d-inline-flex align-items-center gap-2">
             <i class="bi bi-exclamation-octagon"></i>
-            <span><strong>Tylko do autoryzowanych testów penetracyjnych:</strong> technika jest uznawana
-            za metodę ataku w wielu jurysdykcjach — wymaga pisemnej zgody właściciela sieci. Host zombie
-            musi być urządzeniem własnym lub objętym zakresem audytu.</span>
+            <span><strong>Authorized penetration tests only:</strong> this technique is considered
+            an attack method in many jurisdictions — requires written consent from the network owner. The zombie host
+            must be your own device or one covered by the audit scope.</span>
           </div>
         </div>
         <div class="flex-shrink-0">
           {% if PRO_ENABLED %}
-          <button class="btn btn-outline-warning btn-sm" disabled title="Konfiguracja w przygotowaniu">
-            <i class="bi bi-toggles me-1"></i>Konfiguruj
+          <button class="btn btn-outline-warning btn-sm" disabled title="Configuration in preparation">
+            <i class="bi bi-toggles me-1"></i>Configure
           </button>
           {% else %}
           <button class="btn btn-outline-warning btn-sm" disabled
-                  title="Dostępne wyłącznie w NetDoc Pro">
+                  title="Available exclusively in NetDoc Pro">
             <i class="bi bi-lock me-1"></i>NetDoc Pro
           </button>
           {% endif %}
@@ -1378,7 +1377,7 @@ function labAction(action) {
         .then(function(r) { return r.json(); })
         .then(function(d) {
           const el = document.getElementById("labLiveStatus");
-          if (el) el.textContent = d.running + "/" + d.total + " kontenerów aktywnych";
+          if (el) el.textContent = d.running + "/" + d.total + " containers active";
           if (reloadWhenDone && d.running >= d.total) {
             _stopPoll();
             setTimeout(function() { location.reload(); }, 800);
@@ -1392,7 +1391,7 @@ function labAction(action) {
     result.style.display = "";
     result.innerHTML = '<div class="alert alert-secondary py-2 mb-0 small">' +
       '<span class="spinner-border spinner-border-sm me-2"></span>' +
-      'Uruchamianie kontenerów lab\u2026 <span id="labLiveStatus" class="fw-semibold"></span>' +
+      'Starting lab containers\u2026 <span id="labLiveStatus" class="fw-semibold"></span>' +
       '</div>';
     _pollStatus(false);
   } else {
@@ -1425,7 +1424,7 @@ function labAction(action) {
     .catch(function(err) {
       _stopPoll();
       result.style.display = "";
-      result.innerHTML = '<div class="alert alert-danger py-2 mb-0 small">Błąd połączenia: ' + err + '</div>';
+      result.innerHTML = '<div class="alert alert-danger py-2 mb-0 small">Connection error: ' + err + '</div>';
       if (btnStart) btnStart.disabled = false;
       if (btnStop)  btnStop.disabled  = false;
     });
@@ -1451,7 +1450,7 @@ function startDockerNuke() {
   const footer    = document.getElementById("nukeModalFooter");
 
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Trwa reset…';
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Resetting…';
   cancelBtn.disabled = true;
   warning.style.display = "none";
   output.style.display  = "block";
@@ -1468,24 +1467,24 @@ function startDockerNuke() {
       footer.innerHTML =
         '<div class="alert alert-success mb-0 small w-100">' +
         '<i class="bi bi-check-circle-fill me-2"></i>' +
-        '<strong>Reset zakończony.</strong> Strona wkrótce przestanie odpowiadać.<br>' +
+        '<strong>Reset complete.</strong> The page will stop responding shortly.<br>' +
         'Uruchom ponownie: <code>docker compose up -d --build</code>' +
         '</div>';
     } else if (e.data === "ERROR") {
       es.close();
       footer.innerHTML =
-        '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>';
+        '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>';
     }
   };
 
   es.onerror = function () {
     // BUG-GUI6: re-enable cancelBtn + dodaj przycisk zamknięcia
     if (cancelBtn) cancelBtn.disabled = false;
-    output.textContent += "\n[Połączenie zerwane — kontener web zatrzymany]\n";
-    output.textContent += "Uruchom ponownie: docker compose up -d --build\n";
+    output.textContent += "\n[Connection lost — web container stopped]\n";
+    output.textContent += "Restart with: docker compose up -d --build\n";
     es.close();
     footer.innerHTML =
-      '<button type="button" class="btn btn-secondary btn-sm me-2" data-bs-dismiss="modal">Zamknij</button>' +
+      '<button type="button" class="btn btn-secondary btn-sm me-2" data-bs-dismiss="modal">Close</button>' +
       '<div class="text-muted small d-inline">' +
       '<code>docker compose up -d --build</code>' +
       '</div>';
@@ -1503,7 +1502,7 @@ function startDockerNuke() {
 
 function dsAction(mode) {
   const checks = Array.from(document.querySelectorAll(".ds-check:checked")).map(cb => cb.value);
-  if (!checks.length) { alert("Zaznacz co najmniej jeden kontener."); return; }
+  if (!checks.length) { alert("Select at least one container."); return; }
 
   const modal  = new bootstrap.Modal(document.getElementById("dsModal"));
   const title  = document.getElementById("dsModalTitle");
@@ -1511,8 +1510,8 @@ function dsAction(mode) {
   const footer = document.getElementById("dsModalFooter");
 
   title.innerHTML = mode === "rebuild"
-    ? '<i class="bi bi-hammer me-2"></i>Przebuduj obraz + restart'
-    : '<i class="bi bi-arrow-clockwise me-2"></i>Restart kontenerów';
+    ? '<i class="bi bi-hammer me-2"></i>Rebuild image + restart'
+    : '<i class="bi bi-arrow-clockwise me-2"></i>Restart containers';
   output.textContent = "";
   footer.innerHTML = '<span class="text-muted small"><span class="spinner-border spinner-border-sm me-1"></span>Trwa operacja…</span>';
   modal.show();
@@ -1520,8 +1519,8 @@ function dsAction(mode) {
   // BUG-GUI11: safety timeout — jeśli SSE nie wyemituje DONE/ERROR, pokaż przycisk zamknięcia
   var _dsTimeout = setTimeout(function() {
     if (footer.querySelector('.spinner-border')) {
-      footer.innerHTML = '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>' +
-        '<span class="text-warning small ms-2">Przekroczono czas oczekiwania</span>';
+      footer.innerHTML = '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>' +
+        '<span class="text-warning small ms-2">Timeout exceeded</span>';
     }
   }, 120000);  // 2 minuty
 
@@ -1540,31 +1539,31 @@ function dsAction(mode) {
         footer.innerHTML =
           '<div class="alert alert-info mb-0 small w-100">' +
           '<i class="bi bi-arrow-clockwise me-2"></i>' +
-          '<strong>Kontener web jest restartowany.</strong> Strona odświeży się za chwilę…' +
+          '<strong>Web container is restarting.</strong> The page will refresh shortly…' +
           '</div>';
         setTimeout(() => location.reload(), 5000);
       } else {
         footer.innerHTML =
-          '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>' +
-          '<span class="text-success small ms-2"><i class="bi bi-check-circle-fill me-1"></i>Gotowe</span>';
+          '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>' +
+          '<span class="text-success small ms-2"><i class="bi bi-check-circle-fill me-1"></i>Done</span>';
       }
     } else if (e.data === "ERROR") {
       es.close();
       clearTimeout(_dsTimeout);
       footer.innerHTML =
-        '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>';
+        '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>';
     }
   };
 
   es.onerror = function () {
     clearTimeout(_dsTimeout);
     if (checks.includes("web")) {
-      output.textContent += "\n[Połączenie zerwane — kontener web się restartuje]\n";
-      footer.innerHTML = '<div class="text-muted small w-100 text-center">Odświeżam stronę…</div>';
+      output.textContent += "\n[Connection lost — web container is restarting]\n";
+      footer.innerHTML = '<div class="text-muted small w-100 text-center">Refreshing page…</div>';
       setTimeout(() => location.reload(), 4000);
     } else {
-      output.textContent += "\n[Połączenie zerwane]\n";
-      footer.innerHTML = '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>';
+      output.textContent += "\n[Connection lost]\n";
+      footer.innerHTML = '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>';
     }
     es.close();
   };
@@ -1573,7 +1572,7 @@ function dsAction(mode) {
 
 {# ── Backup & Restore bazy danych ─────────────────────────────────────────── #}
 <div class="card mt-4" id="dbBackup">
-  <div class="card-header"><i class="bi bi-database-down me-2 text-info"></i>Backup &amp; Restore bazy danych</div>
+  <div class="card-header"><i class="bi bi-database-down me-2 text-info"></i>Backup &amp; Restore database</div>
   <div class="card-body">
 
     {# BUG-GUI3: flash messages są już renderowane w base.html — duplikat usunieto #}
@@ -1582,37 +1581,37 @@ function dsAction(mode) {
 
       {# Eksport #}
       <div class="col-12 col-md-6">
-        <h6 class="text-muted border-bottom pb-1 mb-3"><i class="bi bi-download me-2"></i>Eksport (zrzut bazy)</h6>
+        <h6 class="text-muted border-bottom pb-1 mb-3"><i class="bi bi-download me-2"></i>Export (database dump)</h6>
         <p class="small text-muted mb-3">
-          Tworzy pełny zrzut PostgreSQL (<code>pg_dump</code>) spakowany do <code>.sql.gz</code>.
-          Plik zawiera schemat i wszystkie dane — możesz go zaimportować na innym komputerze.
+          Creates a full PostgreSQL dump (<code>pg_dump</code>) compressed to <code>.sql.gz</code>.
+          The file contains the schema and all data — you can import it on another computer.
         </p>
         <a href="/settings/db/backup" class="btn btn-outline-info btn-sm">
-          <i class="bi bi-cloud-download me-1"></i>Pobierz backup (.sql.gz)
+          <i class="bi bi-cloud-download me-1"></i>Download backup (.sql.gz)
         </a>
       </div>
 
       {# Import #}
       <div class="col-12 col-md-6">
-        <h6 class="text-muted border-bottom pb-1 mb-3"><i class="bi bi-upload me-2"></i>Import (przywróć backup)</h6>
+        <h6 class="text-muted border-bottom pb-1 mb-3"><i class="bi bi-upload me-2"></i>Import (restore backup)</h6>
         <div class="alert alert-warning py-2 small mb-3">
           <i class="bi bi-exclamation-triangle-fill me-1"></i>
-          <strong>Uwaga:</strong> Importowanie nadpisze istniejące dane. Wykonaj wcześniej export!
+          <strong>Warning:</strong> Importing will overwrite existing data. Export first!
         </div>
         <form method="post" action="/settings/db/restore" enctype="multipart/form-data">
           <div class="mb-2">
-            <label class="form-label small mb-1">Plik backupu (<code>.sql</code> lub <code>.sql.gz</code>)</label>
+            <label class="form-label small mb-1">Backup file (<code>.sql</code> or <code>.sql.gz</code>)</label>
             <input type="file" name="backup_file" class="form-control form-control-sm"
                    accept=".sql,.sql.gz,.gz" required>
           </div>
           <div class="form-check mb-3">
             <input class="form-check-input" type="checkbox" name="confirm_restore" value="1" id="confirmRestore" required>
             <label class="form-check-label small text-warning" for="confirmRestore">
-              Rozumiem, że import nadpisze aktualne dane bazy
+              I understand that import will overwrite the current database data
             </label>
           </div>
           <button type="submit" class="btn btn-warning btn-sm">
-            <i class="bi bi-cloud-upload me-1"></i>Przywróć backup
+            <i class="bi bi-cloud-upload me-1"></i>Restore backup
           </button>
         </form>
       </div>
@@ -1625,18 +1624,18 @@ function dsAction(mode) {
     <div class="d-flex align-items-start gap-3">
       <i class="bi bi-journal-code text-secondary mt-1" style="font-size:1.2rem"></i>
       <div>
-        <h6 class="mb-1">Logi syslog (ClickHouse)</h6>
+        <h6 class="mb-1">Syslog data (ClickHouse)</h6>
         <p class="small text-muted mb-1">
-          Dane syslog przechowywane są w ClickHouse — osobnej bazie kolumnowej zoptymalizowanej pod logi sieciowe.
-          Nie są objęte powyższym backupem PostgreSQL.
+          Syslog data is stored in ClickHouse — a separate columnar database optimized for network logs.
+          It is not covered by the PostgreSQL backup above.
         </p>
         <p class="small text-muted mb-0">
           <i class="bi bi-shield-lock me-1"></i>
-          Eksport i długoterminowa retencja logów (wymagana przez <strong>NIS2 Art. 21</strong> — min. 12 miesięcy)
-          dostępne w wersji <span class="badge bg-warning text-dark">Pro — Compliance Pack</span>.
-          Dla bieżących potrzeb możesz eksportować logi ręcznie przez
+          Log export and long-term retention (required by <strong>NIS2 Art. 21</strong> — min. 12 months)
+          available in <span class="badge bg-warning text-dark">Pro — Compliance Pack</span>.
+          For current needs you can export logs manually via
           <a href="http://localhost:8123/play" target="_blank" rel="noopener" class="text-info">ClickHouse UI</a>
-          lub <code>clickhouse-client</code>.
+          or <code>clickhouse-client</code>.
         </p>
       </div>
     </div>
