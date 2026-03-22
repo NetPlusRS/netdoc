@@ -1633,7 +1633,11 @@ def _save_cred(db, device_id: int, method: CredentialMethod, u: str, p: str) -> 
     dev = db.query(Device).filter(Device.id == device_id).first()
     if dev:
         dev.last_credential_ok_at = now
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 def _mark_checked(db, device_id: int) -> None:

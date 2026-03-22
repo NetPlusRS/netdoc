@@ -333,7 +333,7 @@ def _fill_missing_screenshots(max_devices: int = 5, delay_s: float = 3.0) -> int
         early_candidates = (
             db.query(Device)
             .filter(
-                Device.is_active == True,
+                Device.is_active.is_(True),
                 Device.id.notin_(existing_ids),
                 Device.id.notin_(devices_with_scan),
                 Device.first_seen >= _early_cutoff,
@@ -359,7 +359,7 @@ def _fill_missing_screenshots(max_devices: int = 5, delay_s: float = 3.0) -> int
             if captured >= max_devices:
                 break
             dev = db.query(Device).filter(
-                Device.id == device_id, Device.is_active == True
+                Device.id == device_id, Device.is_active.is_(True)
             ).first()
             if not dev:
                 continue
@@ -423,7 +423,7 @@ def _fill_missing_screenshots(max_devices: int = 5, delay_s: float = 3.0) -> int
             if vuln.device_id in existing_ids:
                 continue
             dev = db.query(Device).filter(
-                Device.id == vuln.device_id, Device.is_active == True
+                Device.id == vuln.device_id, Device.is_active.is_(True)
             ).first()
             if not dev:
                 continue
@@ -490,7 +490,7 @@ def _start_screenshot_fill_worker(interval_s: int = 1800, startup_delay_s: int =
             with_scan = {r[0] for r in db2.query(ScanResult.device_id).filter(
                 ScanResult.device_id.isnot(None)).all()}
             return db2.query(Device).filter(
-                Device.is_active == True,
+                Device.is_active.is_(True),
                 Device.id.notin_(existing),
                 Device.id.notin_(with_scan),
                 Device.first_seen >= cutoff,
@@ -631,9 +631,9 @@ def create_app():
             device_count = db.query(Device).count()
             network_count = db.query(DiscoveredNetwork).count()
             credential_count = db.query(Credential).count()
-            active_devices = db.query(Device).filter(Device.is_active == True).count()
+            active_devices = db.query(Device).filter(Device.is_active.is_(True)).count()
             credentialed_devices = db.query(Device).filter(
-                Device.is_active == True,
+                Device.is_active.is_(True),
                 Device.last_credential_ok_at.isnot(None)
             ).count()
             status = {r.key: r.value for r in db.query(SystemStatus).all()}
@@ -650,15 +650,15 @@ def create_app():
                 internet_speed = {}
 
             vuln_critical = db.query(Vulnerability).filter(
-                Vulnerability.is_open == True, Vulnerability.suppressed == False,
+                Vulnerability.is_open.is_(True), Vulnerability.suppressed.is_(False),
                 Vulnerability.severity == "critical"
             ).count()
             vuln_high = db.query(Vulnerability).filter(
-                Vulnerability.is_open == True, Vulnerability.suppressed == False,
+                Vulnerability.is_open.is_(True), Vulnerability.suppressed.is_(False),
                 Vulnerability.severity == "high"
             ).count()
             vuln_open = db.query(Vulnerability).filter(
-                Vulnerability.is_open == True, Vulnerability.suppressed == False,
+                Vulnerability.is_open.is_(True), Vulnerability.suppressed.is_(False),
             ).count()
         finally:
             db.close()
@@ -718,7 +718,7 @@ def create_app():
             # Liczba otwartych podatnosci per urzadzenie
             vuln_counts = dict(
                 db.query(Vulnerability.device_id, func.count(Vulnerability.id))
-                  .filter(Vulnerability.is_open == True, Vulnerability.suppressed == False)
+                  .filter(Vulnerability.is_open.is_(True), Vulnerability.suppressed.is_(False))
                   .group_by(Vulnerability.device_id)
                   .all()
             )
@@ -727,7 +727,7 @@ def create_app():
             vuln_severity = {}
             vuln_details: dict = {}  # device_id → [{name, severity, port}, ...] sorted
             for v in db.query(Vulnerability).filter(
-                Vulnerability.is_open == True, Vulnerability.suppressed == False
+                Vulnerability.is_open.is_(True), Vulnerability.suppressed.is_(False)
             ).all():
                 sev = getattr(v.severity, "value", str(v.severity))
                 cur = vuln_severity.get(v.device_id, "")
@@ -1180,8 +1180,8 @@ def create_app():
             # Podatnosci
             vuln_counts = dict(
                 db.query(Vulnerability.device_id, _func.count(Vulnerability.id))
-                  .filter(Vulnerability.is_open == True,
-                          Vulnerability.suppressed == False,
+                  .filter(Vulnerability.is_open.is_(True),
+                          Vulnerability.suppressed.is_(False),
                           Vulnerability.device_id.in_(dev_id_set))
                   .group_by(Vulnerability.device_id)
                   .all()
@@ -1190,7 +1190,7 @@ def create_app():
             vuln_severity = {}
             vuln_details: dict = {}
             for v in db.query(Vulnerability).filter(
-                Vulnerability.is_open == True, Vulnerability.suppressed == False,
+                Vulnerability.is_open.is_(True), Vulnerability.suppressed.is_(False),
                 Vulnerability.device_id.in_(dev_id_set),
             ).all():
                 sev = getattr(v.severity, "value", str(v.severity))
@@ -1922,7 +1922,7 @@ def create_app():
     def network_pause_all():
         db = SessionLocal()
         try:
-            nets = db.query(DiscoveredNetwork).filter(DiscoveredNetwork.is_active == True).all()
+            nets = db.query(DiscoveredNetwork).filter(DiscoveredNetwork.is_active.is_(True)).all()
             count = len(nets)
             for net in nets:
                 net.is_active = False
@@ -3016,7 +3016,7 @@ def create_app():
     def syslog():
         db = SessionLocal()
         try:
-            devices_list = db.query(Device).filter(Device.is_active == True).order_by(Device.ip).all()
+            devices_list = db.query(Device).filter(Device.is_active.is_(True)).order_by(Device.ip).all()
         finally:
             db.close()
         return render_template("syslog.html", devices=devices_list)
@@ -3170,7 +3170,7 @@ def create_app():
         try:
             status = {r.key: r.value for r in db.query(SystemStatus).all()}
             device_count = db.query(Device).count()
-            active = db.query(Device).filter(Device.is_active == True).count()
+            active = db.query(Device).filter(Device.is_active.is_(True)).count()
         finally:
             db.close()
         return jsonify({
@@ -3510,7 +3510,7 @@ def create_app():
                     Device.is_active,
                 )
                 .join(Device, VulnModel.device_id == Device.id)
-                .filter(VulnModel.is_open == True)
+                .filter(VulnModel.is_open.is_(True))
                 .order_by(Device.hostname, Device.ip)
                 .all()
             )
@@ -4574,7 +4574,7 @@ Dla urządzeń nieobsoletes: "replacements": []"""
             # ── Aktywne podatności ───────────────────────────────────────────────
             active_vulns = (
                 db.query(_Vuln)
-                .filter(_Vuln.device_id == dev.id, _Vuln.is_open == True, _Vuln.suppressed == False)
+                .filter(_Vuln.device_id == dev.id, _Vuln.is_open.is_(True), _Vuln.suppressed.is_(False))
                 .all()
             )
             if active_vulns:
