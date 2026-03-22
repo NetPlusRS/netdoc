@@ -57,6 +57,8 @@ backups/
 scanner.pid
 coverage.json
 netdoc_fallback.db
+scan_batch_status.json
+scan_progress.json
 
 # OS
 .DS_Store
