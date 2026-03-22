@@ -1297,10 +1297,10 @@ def check_unauth_reboot(ip: str) -> Optional[dict]:
     """
     # Slowa kluczowe w body JSON/text wskazujace na brak dostepu (nie podatnosc)
     _DENY_BODY = (
-        b"unauthorized", b"Unauthorized",
-        b"forbidden", b"Forbidden",
-        b"permission denied", b"Permission denied",
-        b"access denied", b"Access denied",
+        b"unauthorized", b"Unauthorized", b"UNAUTHORIZED",
+        b"forbidden", b"Forbidden", b"FORBIDDEN",
+        b"permission denied", b"Permission denied", b"PERMISSION DENIED",
+        b"access denied", b"Access denied", b"ACCESS DENIED",
         b"not authenticated", b"Not authenticated",
         b"\"error\"", b"'error'",
     )

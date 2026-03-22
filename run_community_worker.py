@@ -167,6 +167,7 @@ def scan_once() -> None:
             return
 
         stale_threshold = datetime.utcnow() - timedelta(days=recheck_days)
+        stale_count = 0   # inicjalizacja przed try — zabezpieczenie przed NameError przy błędzie DB
 
         # Urzadzenia do sprawdzenia community SNMP:
         #   - typ = znane urzadzenie sieciowe (router/switch/ap/firewall)
