@@ -277,9 +277,9 @@ def test_credentials_page_has_per_device_scan_panel_in_template():
     """Template credentials.html musi zawierac kod panelu rotacji per urzadzenie."""
     import pathlib
     tmpl = pathlib.Path("netdoc/web/templates/credentials.html").read_text(encoding="utf-8")
-    assert "Rotacja" in tmpl and "cred_scan_devices" in tmpl, \
+    assert "rotation" in tmpl.lower() and "cred_scan_devices" in tmpl, \
         "Brak panelu rotacji haseł per urzadzenie w credentials.html"
-    assert "Ostatni skan" in tmpl, "Brak kolumny 'Ostatni skan' w panelu rotacji"
+    assert "Last scan" in tmpl, "Brak kolumny 'Last scan' w panelu rotacji"
     assert "ssh_tried" in tmpl or "ssh_total" in tmpl, "Brak danych SSH w panelu rotacji"
 
 def test_api_status(client):
@@ -407,7 +407,7 @@ def test_networks_shows_device_counts(client):
     """GET /networks renderuje strone z kolumna liczby urzadzen."""
     r = client.get("/networks")
     assert r.status_code == 200
-    assert b"Urzadzenia" in r.data  # kolumna obecna
+    assert b"Devices" in r.data  # kolumna obecna
 
 
 def test_networks_has_search_field(client):
@@ -554,9 +554,9 @@ def test_flash_success_renders_success(client):
 # -- Index vulnerability summary tests --
 def test_index_shows_vuln_counts(client):
     html = client.get("/").data.decode()
-    assert "Krytyczne podatnosci" in html
-    assert "Wysokie podatnosci" in html
-    assert "Wszystkie otwarte" in html
+    assert "Critical vulnerabilities" in html
+    assert "High vulnerabilities" in html
+    assert "All open" in html
 
 
 def test_index_vuln_link_to_security(client):
@@ -1099,10 +1099,10 @@ def test_devices_up_badge_has_popover():
             html = c.get("/devices").data.decode()
 
     assert 'data-bs-title="Status: UP"' in html,  "Badge UP musi miec popover z titulem 'Status: UP'"
-    assert "Ostatni kontakt" in html,              "Popover musi zawierac 'Ostatni kontakt'"
+    assert "Last contact" in html,                 "Popover musi zawierac 'Last contact'"
     assert "DOWN 7d" in html,                      "Popover musi zawierac licznik DOWN 7d"
     assert "DOWN 30d" in html,                     "Popover musi zawierac licznik DOWN 30d"
-    assert "Znany od" in html,                     "Popover musi zawierac 'Znany od'"
+    assert "Known since" in html,                  "Popover musi zawierac 'Known since'"
     assert "Monitoring" in html,                   "Popover musi zawierac sekcje Monitoring"
 
 
@@ -1241,7 +1241,7 @@ def test_devices_popover_shows_open_ports_when_scan_available():
         with app.test_client() as c:
             html = c.get("/devices").data.decode()
 
-    assert "Porty (nmap)" in html, "Popover musi zawierac sekcje 'Porty (nmap)'"
+    assert "Ports (nmap)" in html, "Popover musi zawierac sekcje 'Ports (nmap)'"
     assert "22(ssh)" in html,      "Popover musi zawierac port 22 z nazwa uslugi"
     assert "80(http)" in html,     "Popover musi zawierac port 80"
 
@@ -1256,7 +1256,7 @@ def test_devices_popover_no_ports_when_no_scan():
         with app.test_client() as c:
             html = c.get("/devices").data.decode()
 
-    assert "Porty (nmap)" not in html, "Bez skanu nie powinno byc sekcji portow"
+    assert "Ports (nmap)" not in html, "Bez skanu nie powinno byc sekcji portow"
 
 
 def test_devices_popover_vendor_source_oui_when_mac_set():
@@ -1271,7 +1271,7 @@ def test_devices_popover_vendor_source_oui_when_mac_set():
         with app.test_client() as c:
             html = c.get("/devices").data.decode()
 
-    assert "Vendor z" in html,  "Popover musi zawierac 'Vendor z'"
+    assert "Vendor from" in html,  "Popover musi zawierac 'Vendor from'"
     assert "OUI (MAC)" in html, "Gdy MAC jest ustawiony — zrodlo vendora to OUI (MAC)"
 
 
@@ -1321,7 +1321,7 @@ def test_devices_popover_last_scan_date_shown():
         with app.test_client() as c:
             html = c.get("/devices").data.decode()
 
-    assert "Ost. skan" in html,  "Popover musi zawierac date ostatniego skanu"
+    assert "Last scan" in html,  "Popover musi zawierac date ostatniego skanu"
     assert "2026-03-05" in html, "Data skanu musi byc widoczna w popoverze"
 
 
@@ -1341,7 +1341,7 @@ def test_devices_uncertain_badge_shown_when_last_seen_stale():
 
     # Sprawdzamy element (nie definicje CSS)
     assert 'badge-uncertain' in html, "Stale last_seen + is_active=True musi dac badge-uncertain"
-    assert 'data-bs-title="Status: NIEPEWNY"' in html, "Amber badge musi miec popover tytul NIEPEWNY"
+    assert 'data-bs-title="Status: UNCERTAIN"' in html, "Amber badge musi miec popover tytul UNCERTAIN"
 
 
 def test_devices_up_badge_shown_when_last_seen_fresh():
@@ -1393,7 +1393,7 @@ def test_devices_monitoring_stale_banner_always_starts_hidden():
         with app.test_client() as c:
             html_stale = c.get("/devices").data.decode()
 
-    assert "Ping-worker moze nie dzialac" in html_stale, "Tekst baneru musi byc w HTML"
+    assert "Ping-worker may not be running" in html_stale, "Tekst baneru musi byc w HTML"
     assert 'id="monitoring-stale-banner"' in html_stale, "Banner musi miec ID"
     banner_stale = re.search(r'id="monitoring-stale-banner"[^>]*>', html_stale)
     assert banner_stale, "Baner musi byc w HTML"
@@ -1414,7 +1414,7 @@ def test_devices_monitoring_stale_banner_not_shown_when_last_seen_fresh():
         with app.test_client() as c:
             html = c.get("/devices").data.decode()
 
-    assert "Ping-worker moze nie dzialac" in html, "Tekst baneru zawsze jest w HTML (ale ukryty)"
+    assert "Ping-worker may not be running" in html, "Tekst baneru zawsze jest w HTML (ale ukryty)"
     assert 'style="display:none"' in html, "Swiezy last_seen: baner powinien miec display:none"
 
 
@@ -1558,7 +1558,7 @@ def test_devices_page_has_delete_dropdown_item():
             _setup_mock_api(mr, {})
             with app.test_client() as c:
                 html = c.get("/devices").data.decode()
-    assert "Usuń urządzenie" in html or "Usun urzadzenie" in html
+    assert "Delete device" in html
 
 
 def test_devices_page_script_tags_balanced():
@@ -2754,14 +2754,14 @@ def test_summary_strip_present(client):
     html = client.get("/devices").data.decode()
     # Badge z liczba urzadzen i statusem UP musi byc widoczny
     assert "UP" in html
-    assert "bez podatności" in html
+    assert "without vulnerabilities" in html
 
 
 def test_summary_strip_shows_total_count(client):
     """Pasek podsumowania pokazuje liczbę urządzeń zgodną z listą."""
     html = client.get("/devices").data.decode()
-    # Tytul strony i badge powinny byc zgodne — oba pokazuja liczbe urzadzen
-    assert "Urzadzenia" in html
+    # Przycisk Summary toggle musi byc na stronie
+    assert "summaryBar" in html
 
 
 def test_summary_strip_no_full_scan_badge_present(db_engine):
@@ -2785,7 +2785,7 @@ def test_summary_strip_no_full_scan_badge_present(db_engine):
             with app2.test_client() as c:
                 html = c.get("/devices").data.decode()
 
-    assert "bez pełnego skanu" in html
+    assert "without full scan" in html
 
 
 def test_summary_strip_all_full_scanned(db_engine):
@@ -2812,13 +2812,13 @@ def test_summary_strip_all_full_scanned(db_engine):
             with app2.test_client() as c:
                 html = c.get("/devices").data.decode()
 
-    assert "Pełny skan: wszystkie" in html
+    assert "Full scan: all" in html
 
 
 def test_port_count_column_header_present(client):
     """Tabela urządzeń ma nagłówek kolumny liczby otwartych portów."""
     html = client.get("/devices").data.decode()
-    assert "Liczba otwartych portów" in html
+    assert "open ports" in html.lower()
 
 
 def test_port_count_badge_shown_for_device_with_scan(db_engine):
@@ -2961,22 +2961,22 @@ def test_devices_tpl_summary_down_conditional():
 
 
 def test_devices_tpl_summary_no_full_scan_badge():
-    """Szablon obsługuje badge 'bez pełnego skanu' i 'Pełny skan: wszystkie'."""
+    """Szablon obsługuje badge 'without full scan' i 'Full scan: all'."""
     assert "summary.no_full_scan" in _DEVICES_TPL
-    assert "bez pełnego skanu" in _DEVICES_TPL
-    assert "Pełny skan: wszystkie" in _DEVICES_TPL
+    assert "without full scan" in _DEVICES_TPL
+    assert "Full scan: all" in _DEVICES_TPL
 
 
 def test_devices_tpl_summary_no_vulns_badge():
-    """Szablon wyświetla badge 'bez podatności'."""
+    """Szablon wyświetla badge 'without vulnerabilities'."""
     assert "summary.no_vulns" in _DEVICES_TPL
-    assert "bez podatności" in _DEVICES_TPL
+    assert "without vulnerabilities" in _DEVICES_TPL
 
 
 def test_devices_tpl_summary_critical_conditional():
     """Badge krytycznych pojawia się warunkowo (only gdy > 0)."""
     assert "summary.critical > 0" in _DEVICES_TPL
-    assert "krytyczne" in _DEVICES_TPL
+    assert "critical" in _DEVICES_TPL
 
 
 def test_devices_tpl_uwaga_section():
@@ -3432,7 +3432,7 @@ class TestSettingsPageStructure:
     # ── Naglowki sekcji ──────────────────────────────────────────────────────
 
     def test_has_workers_section(self):
-        assert "Ustawienia worker" in self.html
+        assert "Worker settings" in self.html
 
     def test_has_credential_worker_heading(self):
         assert "Credential Worker" in self.html
@@ -3447,10 +3447,10 @@ class TestSettingsPageStructure:
         assert "Vulnerability Worker" in self.html
 
     def test_has_scan_intensity_heading(self):
-        assert "intensywno" in self.html.lower()
+        assert "intensity" in self.html.lower()
 
     def test_has_lab_section(self):
-        assert "laboratoryjna" in self.html
+        assert "Lab network" in self.html
 
     def test_has_docker_nuke_section(self):
         assert "docker-nuke" in self.html
@@ -3513,7 +3513,7 @@ class TestSettingsPageStructure:
 
     # ── Sekcja lab ──────────────────────────────────────────────────────────
 
-    def test_lab_table_header_name(self):      assert "Kontener" in self.html
+    def test_lab_table_header_name(self):      assert "Container" in self.html
     def test_lab_table_header_ip(self):        assert "IP" in self.html
     def test_lab_btn_start(self):              assert "btnLabStart" in self.html
     def test_lab_btn_stop(self):               assert "btnLabStop" in self.html
@@ -3594,7 +3594,7 @@ class TestSettingsPageStructure:
 
     def test_submit_button_workers(self):
         """Przycisk zapisu ustawien workerow jest obecny."""
-        assert "Zapisz ustawienia" in self.html
+        assert "Save worker settings" in self.html
 
     def test_no_jinja_error_markers(self):
         """Strona nie zawiera sladow bledu szablonu Jinja2."""
@@ -3615,8 +3615,8 @@ class TestScanPageStructure:
     def test_page_ok(self):                    assert self.html
 
     def test_heading_exists(self):
-        """Naglowek 'Kontrola skanowania' jest widoczny."""
-        assert "Kontrola skanowania" in self.html
+        """Naglowek 'Scan control' jest widoczny."""
+        assert "Scan control" in self.html
 
     # Trzy formularze wyzwalania skanowania
     def test_form_trigger_standard(self):
@@ -3659,13 +3659,13 @@ class TestNetworksPageStructure:
     def test_page_ok(self):                    assert self.html
 
     def test_heading_sieci(self):
-        assert "Sieci" in self.html
+        assert "Networks" in self.html
 
     # Kolumny tabeli
     def test_col_cidr(self):                   assert "CIDR" in self.html
     def test_col_status(self):                 assert "Status" in self.html
-    def test_col_urzadzenia(self):             assert "Urzadzenia" in self.html or "rzadzenia" in self.html
-    def test_col_akcje(self):                  assert "Akcje" in self.html
+    def test_col_urzadzenia(self):             assert "Devices" in self.html
+    def test_col_akcje(self):                  assert "Actions" in self.html or "action" in self.html.lower()
 
     # Modalne
     def test_modal_add_net(self):              assert "addNetModal" in self.html
@@ -3830,17 +3830,17 @@ class TestInventoryPageStructure:
     def test_page_ok(self):                    assert self.html
 
     def test_heading(self):
-        assert "Inwentarz" in self.html
+        assert "Inventory" in self.html
 
     # Kluczowe kolumny tabeli (15 kolumn)
     def test_col_ip(self):                     assert "IP" in self.html
     def test_col_hostname(self):               assert "Hostname" in self.html
     def test_col_serial(self):                 assert "S/N" in self.html
     def test_col_asset_tag(self):              assert "Asset tag" in self.html
-    def test_col_warranty(self):               assert "gwarancji" in self.html or "Gwarancji" in self.html
-    def test_col_support(self):                assert "wsparcia" in self.html or "Wsparcia" in self.html
+    def test_col_warranty(self):               assert "Warranty" in self.html
+    def test_col_support(self):                assert "Support" in self.html
     def test_col_vendor_model(self):           assert "Vendor" in self.html or "Model" in self.html
-    def test_col_responsible(self):            assert "Osoba" in self.html
+    def test_col_responsible(self):            assert "Responsible" in self.html
 
     # Eksport CSV
     def test_export_csv_link(self):
@@ -3866,7 +3866,7 @@ class TestLogsPageStructure:
     def test_page_ok(self):                    assert self.html
 
     def test_heading(self):
-        assert "Logi" in self.html or "logi" in self.html
+        assert "Logs" in self.html
 
     # Zakladki
     def test_tab_events(self):                 assert "tab-events" in self.html

@@ -334,3 +334,17 @@ class TestSaveFoundCommunity:
         assert device.hostname == "RouterA"
         assert "Cisco IOS" in device.os_version
         db_mock.commit.assert_called_once()
+
+
+# ─── BUG-WRK-09: no 'stale_count' in locals() check ─────────────────────────
+
+def test_scan_once_no_locals_check_for_stale_count():
+    """BUG-WRK-09 regresja: scan_once() nie uzywa 'stale_count' in locals().
+    stale_count = 0 jest inicjalizowane przed blokiem try wiec in locals() jest
+    zawsze True — zbedny check sygnalizuje blad w logice inicjalizacji."""
+    import inspect
+    source = inspect.getsource(cw.scan_once)
+    assert "'stale_count' in locals()" not in source, (
+        "BUG-WRK-09: scan_once() zawiera zbedny 'stale_count' in locals() — "
+        "stale_count jest zawsze zainicjalizowane przed tym miejscem"
+    )

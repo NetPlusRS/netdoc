@@ -8,7 +8,7 @@ from typing import Optional, List
 from datetime import datetime
 
 from netdoc.storage.database import get_db
-from netdoc.storage.models import Credential, CredentialMethod, Device, SystemStatus
+from netdoc.storage.models import Credential, CredentialMethod, Device, SystemStatus, ScanResult
 
 router = APIRouter(prefix="/api/credentials", tags=["credentials"])
 
@@ -167,7 +167,32 @@ def cred_scan_stats(db: Session = Depends(get_db)):
     last_cycle_at = _ss("cred_last_cycle_at")
     interval_s    = int(_ss("cred_interval_s_current") or _ss("cred_interval_s") or 60)
 
-    # 4. Lista aktywnych urzadzen z tried stats
+    # 4a. Latest scan_result per device — one query, used for port availability flags
+    _SSH_PORTS = {22, 2222, 22222}
+    _WEB_PORTS = {80, 8080, 8008, 443, 8443, 8888, 5000, 3000, 4000, 9090, 7070, 7443}
+    _RDP_PORTS = {3389}
+    _FTP_PORTS = {21}
+
+    latest_sq = (
+        db.query(ScanResult.device_id, func.max(ScanResult.scan_time).label("last"))
+        .group_by(ScanResult.device_id)
+        .subquery()
+    )
+    latest_scans = db.query(ScanResult).join(
+        latest_sq,
+        (ScanResult.device_id == latest_sq.c.device_id) &
+        (ScanResult.scan_time  == latest_sq.c.last),
+    ).all()
+    # device_id -> set of open port numbers (int)
+    open_ports_by_device: dict[int, set] = {}
+    for sr in latest_scans:
+        if sr.open_ports:
+            try:
+                open_ports_by_device[sr.device_id] = {int(p) for p in sr.open_ports.keys()}
+            except (ValueError, TypeError):
+                pass
+
+    # 4b. Lista aktywnych urzadzen z tried stats
     devices = db.query(Device).filter(Device.is_active == True).all()
     dev_stats = []
     for d in devices:
@@ -176,17 +201,27 @@ def cred_scan_stats(db: Session = Depends(get_db)):
             v = tried.get(key)
             return len(v) if isinstance(v, list) else 0
 
+        ports = open_ports_by_device.get(d.id, set())
+        has_ssh = bool(ports & _SSH_PORTS)
+        has_web = bool(ports & _WEB_PORTS)
+        has_rdp = bool(ports & _RDP_PORTS)
+        has_ftp = bool(ports & _FTP_PORTS)
+
         dev_stats.append({
             "device_id":     d.id,
             "ip":            d.ip,
             "hostname":      d.hostname or "",
-            "ssh_total":     cred_totals["ssh"],
+            "ssh_total":     cred_totals["ssh"] if has_ssh else 0,
             "ssh_tried":     _tried_count("ssh"),
-            "api_total":     cred_totals["api"],
+            "api_total":     cred_totals["api"] if has_web else 0,
             "api_tried":     _tried_count("api"),
-            "rdp_total":     cred_totals["rdp"],
+            "rdp_total":     cred_totals["rdp"] if has_rdp else 0,
             "rdp_tried":     _tried_count("rdp"),
             "ftp_tried":     _tried_count("ftp"),
+            "has_ssh":       has_ssh,
+            "has_web":       has_web,
+            "has_rdp":       has_rdp,
+            "has_ftp":       has_ftp,
             "last_attempt_at": tried.get("_at"),
             "last_cred_ok_at": d.last_credential_ok_at.isoformat() if d.last_credential_ok_at else None,
         })

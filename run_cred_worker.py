@@ -42,9 +42,17 @@ logging.getLogger("paramiko").setLevel(logging.CRITICAL)  # wycisz "Error readin
 _protection_events: dict = {}
 _protection_lock = threading.Lock()
 
+# In-memory cooldown: ip → time.monotonic() when ban expires.
+# Gdy _record_protection wykryje blokadę, IP jest pomijane przez BAN_COOLDOWN_S sekund.
+# Zapobiega natychmiastowemu ponawianiu prób po ban/rate-limit, co gwarantuje odblokowanie.
+_ip_ban_until: dict[str, float] = {}
+_BAN_COOLDOWN_S = int(os.getenv("CRED_BAN_COOLDOWN_S", "300"))  # 5 minut domyślnie
+
 
 def _record_protection(ip: str, service: str, port: int, reason: str) -> None:
-    """Rejestruje wykrycie ochrony aktywnej na porcie serwisu (thread-safe)."""
+    """Rejestruje wykrycie ochrony aktywnej na porcie serwisu (thread-safe).
+    Ustawia in-memory cooldown — IP jest pomijane przez BAN_COOLDOWN_S sekund.
+    """
     with _protection_lock:
         key = (ip, service)
         evt = _protection_events.setdefault(
@@ -54,6 +62,16 @@ def _record_protection(ip: str, service: str, port: int, reason: str) -> None:
         evt["port"] = port
         evt["reason"] = reason
         evt["last"] = datetime.utcnow()
+        # Cooldown: przesuń granicę do przodu (max, nie nadpisuj krótszym)
+        _ip_ban_until[ip] = max(
+            _ip_ban_until.get(ip, 0.0),
+            time.monotonic() + _BAN_COOLDOWN_S,
+        )
+        logger.info(
+            "PROTECTION %s service=%s reason=%s → cooldown %ds (until +%.0fs)",
+            ip, service, reason, _BAN_COOLDOWN_S,
+            _ip_ban_until[ip] - time.monotonic(),
+        )
 
 
 def _drain_protection_events(ip: str) -> list:
@@ -397,15 +415,23 @@ _total_new = 0
 
 
 def _read_settings() -> tuple:
-    from netdoc.storage.models import SystemStatus
+    _KEYS = (
+        "cred_interval_s", "cred_ssh_workers", "cred_web_workers",
+        "cred_retry_days", "cred_max_creds_per_dev", "cred_pairs_per_cycle",
+        "cred_min_delay_s", "cred_max_delay_s", "cred_device_timeout_s",
+    )
     db = SessionLocal()
     try:
+        rows = db.query(SystemStatus).filter(SystemStatus.key.in_(_KEYS)).all()
+        vals = {r.key: r.value for r in rows}
+
         def _i(key, default):
-            row = db.query(SystemStatus).filter(SystemStatus.key == key).first()
+            v = vals.get(key)
             try:
-                return int(row.value) if (row and row.value not in (None, "")) else default
+                return int(v) if (v not in (None, "")) else default
             except (ValueError, TypeError):
                 return default
+
         return (max(10, _i("cred_interval_s",         _DEFAULT_INTERVAL)),
                 max(1,  _i("cred_ssh_workers",        _DEFAULT_SSH_W)),
                 max(1,  _i("cred_web_workers",        _DEFAULT_WEB_W)),
@@ -629,6 +655,11 @@ def discover_ssh(ip: str, pairs: list, open_ports: dict | None = None) -> Option
     open_ports: dict z ostatniego ScanResult (klucze to numery portow jako str lub int).
     Jesli podany, testuje tylko faktycznie otwarte porty SSH.
     """
+    ban_until = _ip_ban_until.get(ip, 0.0)
+    if ban_until > time.monotonic():
+        remaining = ban_until - time.monotonic()
+        logger.info("SSH skip:  %-18s ban cooldown aktywny (jeszcze %.0fs)", ip, remaining)
+        return None
     ports = _open_ssh_ports(ip, open_ports if open_ports is not None else {})
     if not ports:
         logger.info("SSH skip:  %-18s brak otwartych portow SSH", ip)
@@ -925,6 +956,11 @@ def discover_web(ip: str, pairs: list,
             _moxa_challenge[port] = _web_moxa_get_challenge(base)
         return _moxa_challenge[port]
 
+    ban_until = _ip_ban_until.get(ip, 0.0)
+    if ban_until > time.monotonic():
+        remaining = ban_until - time.monotonic()
+        logger.info("WEB skip:  %-18s ban cooldown aktywny (jeszcze %.0fs)", ip, remaining)
+        return None
     # Uzyj portow przekazanych przez wywolujacego (juz sprawdzonych) albo sprawdz sam
     _open_web_ports: list = open_ports_hint if open_ports_hint is not None \
         else [p for p in _WEB_PORTS if _tcp_open(ip, p, timeout=1.5)]
@@ -1651,15 +1687,22 @@ def _mark_checked(db, device_id: int) -> None:
 # Per-device ------------------------------------------------------------------
 def _process_device(device_id: int, ip: str,
                     ssh_pairs: list, web_pairs: list, ftp_pairs: list,
-                    rdp_pairs: list = [],
-                    vnc_pairs: list = [],
-                    mssql_pairs: list = [],
-                    mysql_pairs: list = [],
-                    postgres_pairs: list = [],
+                    rdp_pairs: list | None = None,
+                    vnc_pairs: list | None = None,
+                    mssql_pairs: list | None = None,
+                    mysql_pairs: list | None = None,
+                    postgres_pairs: list | None = None,
                     pairs_per_cycle: int = 1) -> dict:
     """Testuje credentials na jednym urzadzeniu.
     Uzywa rotacji: per cykl testuje max `pairs_per_cycle` nowych par (dotad nieprobowanych).
     """
+    # BUG-WRK-05: mutable default arguments replaced with None — coerce here
+    if rdp_pairs      is None: rdp_pairs      = []
+    if vnc_pairs      is None: vnc_pairs      = []
+    if mssql_pairs    is None: mssql_pairs    = []
+    if mysql_pairs    is None: mysql_pairs    = []
+    if postgres_pairs is None: postgres_pairs = []
+
     res = {"ssh": False, "telnet": False, "web": False, "ftp": False,
            "rdp": False, "vnc": False,
            "mssql": False, "mysql": False, "postgres": False, "new": 0}
@@ -1876,9 +1919,15 @@ _MAX_DANGLING = 50            # limit zanim zaczniemy spowalniać
 def _process_device_with_timeout(timeout_s: int, device_id: int, ip: str,
                                   ssh_pairs: list, web_pairs: list, ftp_pairs: list,
                                   rdp_pairs: list, vnc_pairs: list, pairs_per_cycle: int,
-                                  mssql_pairs: list = [], mysql_pairs: list = [],
-                                  postgres_pairs: list = []) -> dict:
+                                  mssql_pairs: list | None = None,
+                                  mysql_pairs: list | None = None,
+                                  postgres_pairs: list | None = None) -> dict:
     """Uruchamia _process_device w watku z timeoutem. Jesli przekroczy — zwraca timeout=True."""
+    # BUG-WRK-05: mutable default arguments replaced with None — coerce here
+    if mssql_pairs    is None: mssql_pairs    = []
+    if mysql_pairs    is None: mysql_pairs    = []
+    if postgres_pairs is None: postgres_pairs = []
+
     # BUG-CONC-2: prune zakończonych wątków z listy dangling przed dodaniem nowych
     global _dangling_threads
     _dangling_threads = [t for t in _dangling_threads if t.is_alive()]

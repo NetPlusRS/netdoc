@@ -358,7 +358,19 @@ def _port_scan_one_host_batched(ip: str, port_batches: list,
                     arguments=f"-p {port_str} -sV --version-intensity {nmap_vi} "
                                f"-O --min-rate {nmap_rate}")
         except UnicodeDecodeError as exc:
-            logger.warning("Batch scan: %s partia %d — encoding error: %s", ip, batch_idx + 1, exc)
+            # nmap na Windows zwraca bajty CP1250 (np. ³) w nazwach serwisów mimo XML UTF-8.
+            # Ponów bez -sV — tracimy wersję serwisu, ale zachowujemy stany portów.
+            logger.warning("Batch scan: %s partia %d — encoding error: %s — retry bez -sV", ip, batch_idx + 1, exc)
+            try:
+                nm2 = nmap.PortScanner(nmap_search_path=_NMAP_SEARCH_PATH)
+                nm2.scan(hosts=ip, arguments=f"-p {port_str} --min-rate {nmap_rate}")
+                if ip in nm2.all_hosts() and "tcp" in nm2[ip]:
+                    for port, info in nm2[ip]["tcp"].items():
+                        if info["state"] == "open":
+                            accumulated[port] = {"service": info.get("name", ""),
+                                                 "version": "", "product": ""}
+            except Exception as retry_exc:
+                logger.debug("Batch scan: %s partia %d — retry bez -sV nieudany: %s", ip, batch_idx + 1, retry_exc)
         except nmap.PortScannerError as exc:
             logger.warning("Batch scan: %s partia %d — nmap error: %s", ip, batch_idx + 1, exc)
         else:

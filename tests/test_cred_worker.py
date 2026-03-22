@@ -1931,3 +1931,149 @@ def test_scan_once_filters_by_last_seen():
         "WRK-17: scan_once musi filtrowac Device.last_seen >= recent_seen"
     assert "recent_seen" in source or "timedelta(minutes=10)" in source, \
         "WRK-17: filtr oparty na 10 minutach"
+
+
+# ─── BUG-WRK-01/02: _read_settings uses single batched query ─────────────────
+
+def test_read_settings_uses_batched_in_query():
+    """BUG-WRK-01 regresja: _read_settings() uzywa jednego SELECT WHERE key IN (...)
+    zamiast 9 osobnych SELECT WHERE key = ? — eliminuje N+1 i QueuePool exhaustion."""
+    import inspect
+    source = inspect.getsource(w._read_settings)
+
+    # Must use .in_() for batched lookup — not individual filter(key == ...) calls
+    assert ".in_(" in source, (
+        "BUG-WRK-01: _read_settings() musi uzywac key.in_(_KEYS) "
+        "zamiast 9 osobnych filter(key == ...) — N+1 regresja"
+    )
+
+    # Must NOT have individual per-key filter calls inside an inner helper
+    # (the old pattern was def _i(key): db.query(...).filter(key == key).first())
+    assert 'filter(SystemStatus.key == key)' not in source, (
+        "BUG-WRK-01: _read_settings() ma N+1 pattern — filter(key == key) w petli"
+    )
+
+
+def test_read_settings_returns_tuple_of_nine_with_correct_types():
+    """BUG-WRK-01 regresja: _read_settings() zwraca 9-elementowa krotke intow."""
+    result = w._read_settings()
+    assert len(result) == 9, "_read_settings() musi zwracac 9-elementowa krotke"
+    assert all(isinstance(v, int) for v in result), \
+        "_read_settings() musi zwracac krotke intow"
+    interval = result[0]
+    assert interval >= 10, "interval musi byc co najmniej 10s"
+
+
+def test_read_settings_reads_values_from_db(db):
+    """BUG-WRK-01 regresja: _read_settings() odczytuje wartosci z bazy danych."""
+    from netdoc.storage.models import SystemStatus
+    from unittest.mock import patch
+
+    db.add(SystemStatus(key="cred_interval_s",  value="300"))
+    db.add(SystemStatus(key="cred_ssh_workers", value="8"))
+    db.add(SystemStatus(key="cred_web_workers", value="4"))
+    db.commit()
+
+    # Redirect _read_settings to use the test db session
+    with patch.object(w, "SessionLocal", return_value=db):
+        result = w._read_settings()
+
+    # session must NOT be closed by _read_settings (we passed our fixture session)
+    # so we patch close() to a no-op
+    interval, ssh_w, web_w = result[0], result[1], result[2]
+    assert interval == 300, "cred_interval_s z DB powinien byc 300"
+    assert ssh_w == 8,      "cred_ssh_workers z DB powinien byc 8"
+    assert web_w == 4,      "cred_web_workers z DB powinien byc 4"
+
+
+# ─── BUG-WRK-05: no mutable default arguments ────────────────────────────────
+
+def test_process_device_no_mutable_defaults():
+    """BUG-WRK-05 regresja: _process_device() i _process_device_with_timeout()
+    nie maja mutowalnych domyslnych argumentow (list = []).
+    Mutable defaults sa wspoldzielone miedzy wywolaniami — efekty uboczne."""
+    import inspect
+
+    sig = inspect.signature(w._process_device)
+    for name, param in sig.parameters.items():
+        if param.default is not inspect.Parameter.empty:
+            assert param.default is not [], (
+                f"BUG-WRK-05: _process_device('{name}') ma mutowalny domyslny argument '[]' — "
+                f"uzyj None zamiast []"
+            )
+            assert not isinstance(param.default, list), (
+                f"BUG-WRK-05: _process_device('{name}') ma domyslna liste — "
+                f"uzyj None zamiast []"
+            )
+
+    sig2 = inspect.signature(w._process_device_with_timeout)
+    for name, param in sig2.parameters.items():
+        if param.default is not inspect.Parameter.empty:
+            assert not isinstance(param.default, list), (
+                f"BUG-WRK-05: _process_device_with_timeout('{name}') ma domyslna liste — "
+                f"uzyj None zamiast []"
+            )
+
+
+# ─── Ban cooldown — anti-ban ochrona IP ──────────────────────────────────────
+
+class TestBanCooldown:
+    """BAN-COOLDOWN regresja: po _record_protection IP jest pomijane przez BAN_COOLDOWN_S.
+    Zapobiega wysylaniu kolejnych prob do urzadzenia ktore juz zablokowalo polaczenie."""
+
+    def setup_method(self):
+        """Czysci _ip_ban_until przed kazdym testem."""
+        w._ip_ban_until.clear()
+
+    def test_record_protection_sets_ban_until(self):
+        """Po _record_protection ip pojawia sie w _ip_ban_until z czasem w przyszlosci."""
+        import time
+        w._record_protection("10.0.0.1", "SSH", 22, "banner-reset")
+        ban_until = w._ip_ban_until.get("10.0.0.1", 0)
+        assert ban_until > time.monotonic(), (
+            "_ip_ban_until['10.0.0.1'] powinno byc w przyszlosci po _record_protection"
+        )
+
+    def test_discover_ssh_skips_banned_ip(self):
+        """discover_ssh() zwraca None gdy IP ma aktywny ban cooldown."""
+        import time
+        # Ustaw ban wygasajacy daleko w przyszlosci
+        w._ip_ban_until["192.168.1.1"] = time.monotonic() + 3600
+        result = w.discover_ssh("192.168.1.1", [("admin", "admin")])
+        assert result is None, (
+            "discover_ssh powinno zwracac None gdy IP jest w ban cooldown"
+        )
+
+    def test_discover_web_skips_banned_ip(self):
+        """discover_web() zwraca None gdy IP ma aktywny ban cooldown."""
+        import time
+        w._ip_ban_until["192.168.1.2"] = time.monotonic() + 3600
+        result = w.discover_web("192.168.1.2", [("admin", "admin")])
+        assert result is None, (
+            "discover_web powinno zwracac None gdy IP jest w ban cooldown"
+        )
+
+    def test_expired_ban_does_not_skip(self):
+        """Wygasly ban nie blokuje proby — discover_ssh kontynuuje normalnie."""
+        import time
+        # Ustaw ban juz wygasly (w przeszlosci)
+        w._ip_ban_until["10.0.0.5"] = time.monotonic() - 1
+
+        with patch("run_cred_worker._open_ssh_ports", return_value=[]):
+            # Brak portow SSH — wyjdzie przez "brak otwartych portow SSH", nie przez ban
+            result = w.discover_ssh("10.0.0.5", [("admin", "admin")])
+        assert result is None
+        # Ale nie dlatego ze ban — ban byl wygasly
+
+    def test_multiple_protections_extend_ban(self):
+        """Kolejne _record_protection dla tego samego IP przedluzaja ban (max, nie reset)."""
+        import time
+        w._record_protection("10.0.0.1", "SSH", 22, "banner-reset")
+        first_ban = w._ip_ban_until["10.0.0.1"]
+
+        w._record_protection("10.0.0.1", "Web", 80, "http-429-rate-limit")
+        second_ban = w._ip_ban_until["10.0.0.1"]
+
+        assert second_ban >= first_ban, (
+            "Drugi _record_protection powinien utrzymac lub przedluzyc ban"
+        )

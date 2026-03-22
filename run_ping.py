@@ -55,6 +55,21 @@ _events_down = 0
 _fail_counts: dict = {}   # device_id (int) -> liczba kolejnych nieudanych prob
 
 
+def _wait_for_schema(max_retries: int = 12, wait_s: int = 10) -> None:
+    """Wait until the devices table is accessible (race condition on fresh install)."""
+    from sqlalchemy import text
+    from netdoc.storage.database import engine
+    for attempt in range(1, max_retries + 1):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1 FROM devices LIMIT 1"))
+            return
+        except Exception:
+            logger.warning("Schema not ready (attempt %d/%d) — waiting %ds...",
+                           attempt, max_retries, wait_s)
+            time.sleep(wait_s)
+    logger.warning("Schema still unavailable after %ds — continuing anyway",
+                   max_retries * wait_s)
 
 
 def _icmp_alive(ip: str):
@@ -170,6 +185,13 @@ def poll_once() -> int:
     db = SessionLocal()
     try:
         devices = db.query(Device).all()
+
+        # BUG-WRK-06: prune _fail_counts entries for devices that no longer
+        # exist in the DB — prevents unbounded memory growth over time.
+        active_ids = {d.id for d in devices}
+        for stale_id in set(_fail_counts) - active_ids:
+            del _fail_counts[stale_id]
+
         if not devices:
             return interval
 
@@ -305,6 +327,7 @@ def poll_once() -> int:
 def main() -> None:
     logger.info("Netdoc Ping Worker start — default_interval=%ds workers=%d metrics=:%d",
                 _DEFAULT_INTERVAL, _DEFAULT_WORKERS, METRICS_PORT)
+    _wait_for_schema()
     init_db()
     start_http_server(METRICS_PORT)
     logger.info("Metryki: http://0.0.0.0:%d/metrics", METRICS_PORT)

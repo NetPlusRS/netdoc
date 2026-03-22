@@ -98,10 +98,15 @@ def check_dns(ip: str, port: int = 53, timeout: float = DNS_TIMEOUT) -> dict:
 
 
 def check_http(url: str, timeout: float = HTTP_TIMEOUT) -> dict:
-    """Pojedyncza proba HTTP GET z pomiarem czasu."""
+    """Pojedyncza proba HTTP GET z pomiarem czasu.
+
+    follow_redirects=False — liczymy latencje pierwszej odpowiedzi (301/200).
+    Podazanie za przekierowaniami zafalszowaloby pomiar i trafialoby w
+    nieprawidlowe URL generowane przez niektore serwery (np. Cloudflare 1.1.1.1).
+    """
     t0 = time.monotonic()
     try:
-        r = httpx.get(url, timeout=timeout, follow_redirects=True,
+        r = httpx.get(url, timeout=timeout, follow_redirects=False,
                       headers={"User-Agent": "NetDoc-InternetWorker/1.0"})
         ms = round((time.monotonic() - t0) * 1000)
         return {"ok": r.status_code < 500, "ms": ms, "code": r.status_code}

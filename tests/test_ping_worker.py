@@ -1451,3 +1451,72 @@ def test_ping_main_has_try_except_in_loop():
     assert "try:" in source, "WRK-02: main() musi miec try/except wokol poll_once()"
     assert "except Exception" in source, \
         "WRK-02: main() musi lapac Exception w petli while True"
+
+
+# ─── BUG-WRK-07: ping worker has _wait_for_schema() ─────────────────────────
+
+def test_ping_worker_has_wait_for_schema():
+    """BUG-WRK-07 regresja: run_ping ma _wait_for_schema() i wywoluje je w main().
+    Brak tej funkcji powoduje race condition przy swiezej instalacji — ping worker
+    startuje zanim scanner/api zdazy stworzyc tabele."""
+    assert hasattr(run_ping, "_wait_for_schema"), \
+        "BUG-WRK-07: run_ping musi definiowac _wait_for_schema()"
+    import inspect
+    source = inspect.getsource(run_ping.main)
+    assert "_wait_for_schema" in source, \
+        "BUG-WRK-07: main() musi wywolywac _wait_for_schema() przed init_db()"
+
+
+# ─── BUG-WRK-06: _fail_counts is pruned of deleted devices ───────────────────
+
+def test_fail_counts_pruned_when_device_removed(db):
+    """BUG-WRK-06 regresja: _fail_counts jest czyszczony z wpisow usunietych urzadzen
+    na poczatku kazdego cyklu pollingu — zapobiega nieograniczonemu wzrostowi pamieci."""
+    from netdoc.storage.models import Device
+    from unittest.mock import patch
+
+    _reset_globals()
+
+    # Pre-populate _fail_counts with a device that no longer exists
+    run_ping._fail_counts[99999] = 5   # stale entry — device_id that is not in DB
+    run_ping._fail_counts[88888] = 3   # another stale entry
+
+    # DB has no devices — poll_once() should prune the stale entries
+    with patch.object(run_ping, "SessionLocal", return_value=db), \
+         patch.object(run_ping, "_read_settings", return_value=(18, 4, 10, 1.0, 3)):
+        run_ping.poll_once()
+
+    assert 99999 not in run_ping._fail_counts, (
+        "BUG-WRK-06: _fail_counts[99999] nie zostal usunieta po usunieciu urzadzenia"
+    )
+    assert 88888 not in run_ping._fail_counts, (
+        "BUG-WRK-06: _fail_counts[88888] nie zostal usunieta po usunieciu urzadzenia"
+    )
+
+
+def test_fail_counts_keeps_active_devices(db):
+    """BUG-WRK-06 regresja: _fail_counts zachowuje wpisy dla aktywnych urzadzen."""
+    from netdoc.storage.models import Device
+    from unittest.mock import patch
+
+    _reset_globals()
+
+    dev = Device(ip="10.0.0.1", is_active=True, last_seen=datetime.utcnow())
+    db.add(dev)
+    db.commit()
+    db.refresh(dev)
+    dev_id = dev.id  # save before session may be closed by poll_once
+
+    run_ping._fail_counts[dev_id] = 2   # active device — must be kept
+    run_ping._fail_counts[99999]  = 5   # stale — must be removed
+
+    with patch.object(run_ping, "SessionLocal", return_value=db), \
+         patch.object(run_ping, "_read_settings", return_value=(18, 4, 10, 1.0, 3)), \
+         patch.object(run_ping, "_check", return_value=10.0):
+        run_ping.poll_once()
+
+    # After a successful ping the fail counter is reset to 0 (not removed)
+    assert run_ping._fail_counts.get(dev_id, 0) == 0, \
+        "BUG-WRK-06: fail_count dla aktywnego urzadzenia powinien byc 0 po sukcesie pingu"
+    assert 99999 not in run_ping._fail_counts, \
+        "BUG-WRK-06: stale entry 99999 powinien zostac usuniety"

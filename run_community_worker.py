@@ -217,7 +217,7 @@ def scan_once() -> None:
 
     if not device_map:
         logger.info("Brak urzadzen do sprawdzenia (wszystkie maja aktualna community)")
-        g_scanned.set(0); g_found.set(0); g_stale.set(stale_count if 'stale_count' in locals() else 0)
+        g_scanned.set(0); g_found.set(0); g_stale.set(stale_count)
         return
 
     logger.info(

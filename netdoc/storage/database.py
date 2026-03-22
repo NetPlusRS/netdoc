@@ -9,11 +9,14 @@ logger = logging.getLogger(__name__)
 
 
 def _make_postgres_engine():
+    import os
+    pool_size   = int(os.getenv("DB_POOL_SIZE",    "10"))
+    max_overflow= int(os.getenv("DB_MAX_OVERFLOW", "20"))
     return create_engine(
         settings.database_url,
         pool_pre_ping=True,
-        pool_size=5,
-        max_overflow=10,
+        pool_size=pool_size,
+        max_overflow=max_overflow,
         echo=False,
         connect_args={"connect_timeout": 10},
     )

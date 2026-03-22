@@ -3076,7 +3076,8 @@ def create_app():
     def logs_docker_proxy(container):
         """Czyta stdout/stderr kontenera Docker przez Python Docker SDK (socket /var/run/docker.sock)."""
         _ALLOWED = {"netdoc-ping", "netdoc-snmp", "netdoc-community", "netdoc-vuln",
-                    "netdoc-internet", "netdoc-cred", "netdoc-web", "netdoc-api"}
+                    "netdoc-internet", "netdoc-cred", "netdoc-web", "netdoc-api",
+                    "netdoc-nginx", "netdoc-rsyslog", "netdoc-vector", "netdoc-clickhouse"}
         if container not in _ALLOWED:
             return "Niedozwolona nazwa kontenera.", 400, {"Content-Type": "text/plain; charset=utf-8"}
         tail = request.args.get("tail", 200, type=int)

@@ -25,6 +25,9 @@ logging.getLogger("httpx").setLevel(logging.WARNING)    # wycisz INFO o kazdym H
 _DEFAULT_INTERVAL = int(os.getenv("VULN_INTERVAL_S",  "120"))
 _DEFAULT_WORKERS  = int(os.getenv("VULN_WORKERS",      "16"))
 METRICS_PORT      = int(os.getenv("VULN_METRICS_PORT", "8004"))
+# Minimum pause between consecutive scans even when a scan overshoots the interval.
+# Prevents back-to-back scans with sleep(0) when the system is under load.
+_MIN_PAUSE_S = 10
 _TCP_TIMEOUT = 3.0
 _HTTP_TIMEOUT = 5.0
 g_scanned  = Gauge("netdoc_vuln_scanned",    "Urzadzenia przeskanowane")
@@ -939,8 +942,10 @@ def check_default_credentials(ip: str, device_id: int):
         last_ok = cred.last_success_at
         # Weryfikacja sieciowa — zapobiega false positive z bazy danych
         if not _verify_cred_network(ip, meth, cred.username or "", cred.password_encrypted or ""):
-            logger.info("DEFAULT_CRED %s method=%s user=%r — nie potwierdzono sieciowo → pomijam",
-                        ip, meth, uname)
+            # DEBUG level — this is an expected negative outcome that fires every scan cycle
+            # for the same device; INFO caused log spam for devices with unverifiable creds.
+            logger.debug("DEFAULT_CRED %s method=%s user=%r — not confirmed over network → skipping",
+                         ip, meth, uname)
             return None
         return {
             "vuln_type": VulnType.default_credentials, "severity": VulnSeverity.critical,
@@ -1610,16 +1615,18 @@ def main() -> None:
     init_db()
     start_http_server(METRICS_PORT)
     logger.info("Metryki: http://0.0.0.0:%d/metrics", METRICS_PORT)
-    # PERF-02: sleep-until-next-run zamiast sleep-after-work
+    # PERF-02: sleep-until-next-run instead of sleep-after-work.
+    # _MIN_PAUSE_S guarantees a short break even when a scan overshoots the
+    # configured interval (prevents back-to-back scans with sleep(0)).
     interval = _DEFAULT_INTERVAL
     while True:
         next_run = time.monotonic() + interval
         try:
             scan_once()
         except Exception as exc:
-            logger.exception("Nieobsluzony wyjatek w scan_once (vuln): %s", exc)
+            logger.exception("Unhandled exception in scan_once (vuln): %s", exc)
         interval, *_ = _read_settings()
-        time.sleep(max(0.0, next_run - time.monotonic()))
+        time.sleep(max(_MIN_PAUSE_S, next_run - time.monotonic()))
 
 
 if __name__ == "__main__":

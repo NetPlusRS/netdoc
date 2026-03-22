@@ -216,9 +216,12 @@
           {% set ssh_q  = [ssh_total - ssh_tried, 0] | max %}
           {% set api_q  = [api_total - api_tried, 0] | max %}
           {% set rdp_q  = [rdp_total - rdp_tried, 0] | max %}
+          {% set has_ssh = cscan.get('has_ssh', ssh_total > 0) %}
+          {% set has_web = cscan.get('has_web', api_total > 0) %}
+          {% set has_rdp = cscan.get('has_rdp', rdp_total > 0) %}
           {% set _lat   = cscan.get('last_attempt_at','') %}
           {% set _lat_s = (_lat[0:10] ~ ' ' ~ _lat[11:16]) if _lat else '—' %}
-          {% set _scan_detail %}<b>SSH</b> {{ ssh_tried }}/{{ ssh_total }} passwords <span style='color:#8b949e'>({{ ssh_q }} queued)</span><br><b>WEB</b> {{ api_tried }}/{{ api_total }} passwords <span style='color:#8b949e'>({{ api_q }} queued)</span><br><b>RDP</b> {{ rdp_tried }}/{{ rdp_total }} passwords <span style='color:#8b949e'>({{ rdp_q }} queued)</span><br><hr style='margin:4px 0'><small style='color:#8b949e'>Last scan: {{ _lat_s }}</small>{% endset %}
+          {% set _scan_detail %}{% if has_ssh %}<b>SSH</b> {{ ssh_tried }}/{{ ssh_total }} passwords <span style='color:#8b949e'>({{ ssh_q }} queued)</span><br>{% endif %}{% if has_web %}<b>WEB</b> {{ api_tried }}/{{ api_total }} passwords <span style='color:#8b949e'>({{ api_q }} queued)</span><br>{% endif %}{% if has_rdp %}<b>RDP</b> {{ rdp_tried }}/{{ rdp_total }} passwords <span style='color:#8b949e'>({{ rdp_q }} queued)</span><br>{% endif %}{% if not has_ssh and not has_web and not has_rdp %}<span style='color:#8b949e'>No scannable ports detected</span><br>{% endif %}<hr style='margin:4px 0'><small style='color:#8b949e'>Last scan: {{ _lat_s }}</small>{% endset %}
           <td class="text-center">
             {% if cred %}
               {% set cred_method = cred.method.value %}

@@ -258,6 +258,8 @@ services:
       CRED_MIN_DELAY_S: "2"
       CRED_MAX_DELAY_S: "10"
       CRED_DEVICE_TIMEOUT_S: "120"
+      DB_POOL_SIZE: "20"
+      DB_MAX_OVERFLOW: "20"
     env_file:
       - path: .env
         required: false   # dziala bez .env — uzyj do nadpisania domyslnych wartosci
@@ -370,11 +372,13 @@ services:
     container_name: netdoc-rsyslog
     restart: unless-stopped
     <<: *log-limit
-    # network_mode: host — rsyslog słucha bezpośrednio na interfejsie hosta,
-    # dzięki czemu fromhost-ip zawiera prawdziwe IP urządzenia źródłowego
-    # zamiast adresu Docker NAT (172.18.0.1). Działa poprawnie na Linux.
-    # Na Windows z Docker Desktop NAT pozostaje w warstwie WSL2 (ograniczenie platformy).
-    network_mode: host
+    # Note: network_mode: host preserves the real source IP of syslog senders
+    # but does not work on Windows/Docker Desktop (WSL2 limitation).
+    # Using bridge networking with explicit port bindings instead —
+    # src_ip will show the Docker NAT address (172.18.0.1) on Windows.
+    ports:
+      - "514:514/udp"
+      - "514:514/tcp"
     environment:
       TZ: "${TZ:-UTC}"
     volumes:
@@ -394,7 +398,7 @@ services:
     volumes:
       - ./config/vector/syslog.toml:/etc/vector/vector.toml:ro
     ports:
-      - "6514:6514"     # TCP od rsyslog (wewnętrzny)
+      - "6514:6514"     # TCP from rsyslog (internal)
       - "8688:8688"     # Vector API (health check)
     depends_on:
       clickhouse:

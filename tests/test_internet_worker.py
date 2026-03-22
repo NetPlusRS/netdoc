@@ -329,3 +329,35 @@ def test_constants_exist_and_are_positive():
     assert run_internet.SPEED_BYTES > 0
     assert run_internet.UPLOAD_BYTES > 0
     assert run_internet.JITTER_PINGS >= 2
+
+
+# ── BUG-WRK-04: check_http must not follow redirects ─────────────────────────
+
+def test_check_http_does_not_follow_redirects():
+    """BUG-WRK-04 regresja: check_http() uzywa follow_redirects=False.
+
+    Cloudflare zwraca 301 z Location zawierajacym przecinek (malformed URL),
+    co powoduje 404 i zafalszowanie pomiaru latencji. Bez podazania za
+    przekierowaniami 3xx jest traktowane jako ok=True (status < 500).
+    """
+    import inspect
+    source = inspect.getsource(run_internet.check_http)
+    assert "follow_redirects=False" in source, (
+        "BUG-WRK-04: check_http() musi uzywac follow_redirects=False "
+        "aby unikac malformed redirect URL z Cloudflare"
+    )
+
+
+def test_check_http_301_is_ok():
+    """BUG-WRK-04 regresja: odpowiedz 301 (redirect) jest traktowana jako ok=True."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 301
+
+    with patch("httpx.get", return_value=mock_resp):
+        result = run_internet.check_http("https://1.1.1.1")
+
+    assert result["ok"] is True, (
+        "BUG-WRK-04: 301 Moved Permanently to ok=True (status < 500) — "
+        "przekierowanie nie jest bledem polaczenia"
+    )
+    assert result["code"] == 301
