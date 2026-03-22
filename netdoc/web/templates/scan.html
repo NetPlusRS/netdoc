@@ -242,6 +242,59 @@
   </div>
 </div>
 
+{# ── Konserwacja wyników skanowania ──────────────────────────────────────── #}
+<div class="card mb-3">
+  <div class="card-header"><i class="bi bi-eraser me-2 text-secondary"></i>Konserwacja wyników skanowania</div>
+  <div class="card-body">
+    <p class="small text-muted mb-3">
+      Usuwa zapisane wyniki skanowania portów z bazy danych. Przy następnym skanie dane zostaną odświeżone.
+      Przydatne gdy urządzenie zmieniło konfigurację lub wyniki są nieaktualne.
+    </p>
+    <div class="row g-3">
+      <div class="col-12 col-md-6">
+        <h6 class="small text-muted border-bottom pb-1 mb-2">Wszystkie urządzenia</h6>
+        <div class="d-flex gap-2 flex-wrap">
+          <form method="post" action="/devices/clear-ports">
+            <input type="hidden" name="scan_type" value="nmap_full">
+            <button class="btn btn-sm btn-outline-secondary" type="submit"
+                    onclick="return confirm('Usunąć wyniki pełnego skanu (1-65535) dla WSZYSTKICH urządzeń?')"
+                    title="Usuwa wyniki pełnego skanu 1-65535 dla wszystkich urządzeń.">
+              <i class="bi bi-eraser me-1"></i>Wyczyść pełny skan — wszystkie
+            </button>
+          </form>
+          <form method="post" action="/devices/clear-ports">
+            <button class="btn btn-sm btn-outline-secondary" type="submit"
+                    onclick="return confirm('Usunąć WSZYSTKIE wyniki skanowania portów dla wszystkich urządzeń?')"
+                    title="Usuwa wyniki szybkiego i pełnego skanu dla wszystkich urządzeń.">
+              <i class="bi bi-x-circle me-1"></i>Wyczyść wszystkie skany — wszystkie
+            </button>
+          </form>
+        </div>
+      </div>
+      <div class="col-12 col-md-6">
+        <h6 class="small text-muted border-bottom pb-1 mb-2">Konkretne urządzenie (po ID lub IP)</h6>
+        <form method="post" action="" id="clearSingleForm" class="d-flex gap-2 align-items-end flex-wrap">
+          <div>
+            <label class="form-label small mb-1">IP urządzenia</label>
+            <input type="text" id="clearDeviceIp" class="form-control form-control-sm" style="width:160px"
+                   placeholder="np. 192.168.1.1" autocomplete="off">
+          </div>
+          <div>
+            <label class="form-label small mb-1">Typ skanu</label>
+            <select id="clearScanType" class="form-select form-select-sm" style="width:160px">
+              <option value="nmap_full">Tylko pełny (1-65535)</option>
+              <option value="">Wszystkie</option>
+            </select>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="clearSingleBtn">
+            <i class="bi bi-eraser me-1"></i>Wyczyść
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% block scripts %}
 <script>
 // ── Live postęp skanowania (polling /api/status co 3s) ────────────────────
@@ -338,6 +391,33 @@
   poll();
   setInterval(poll, 3000);
 })();
+
+// ── Czyszczenie skanów dla konkretnego urządzenia (po IP) ─────────────────
+document.getElementById("clearSingleBtn").addEventListener("click", async function() {
+  const ip = document.getElementById("clearDeviceIp").value.trim();
+  if (!ip) { alert("Podaj adres IP urządzenia."); return; }
+  const scanType = document.getElementById("clearScanType").value;
+  try {
+    const r = await fetch("/api/devices/?ip=" + encodeURIComponent(ip) + "&limit=1");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const data = await r.json();
+    const items = data.items || data;
+    if (!Array.isArray(items) || items.length === 0) { alert("Nie znaleziono urządzenia o IP: " + ip); return; }
+    const devId = items[0].id;
+    const label = scanType === "nmap_full" ? "pełnego skanu" : "wszystkich skanów";
+    if (!confirm("Usunąć wyniki " + label + " dla " + ip + " (ID=" + devId + ")?")) return;
+    const form = document.createElement("form");
+    form.method = "post";
+    form.action = "/devices/" + devId + "/clear-ports";
+    if (scanType) {
+      const inp = document.createElement("input");
+      inp.type = "hidden"; inp.name = "scan_type"; inp.value = scanType;
+      form.appendChild(inp);
+    }
+    document.body.appendChild(form);
+    form.submit();
+  } catch(e) { alert("Błąd: " + e.message); }
+});
 </script>
 {% endblock %}
 {% endblock %}

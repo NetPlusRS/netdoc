@@ -531,23 +531,6 @@
                     </button>
                   </form>
                 </li>
-                <li>
-                  <form method="post" action="/devices/{{ d.id }}/clear-ports">
-                    <input type="hidden" name="scan_type" value="nmap_full">
-                    <button class="dropdown-item" type="submit"
-                            title="Usuwa zapisane wyniki pełnego skanu (1-65535) dla tego urządzenia. Dane zostaną odświeżone przy następnym skanie.">
-                      <i class="bi bi-eraser me-2 text-secondary"></i>Wyczyść wyniki pełnego skanu
-                    </button>
-                  </form>
-                </li>
-                <li>
-                  <form method="post" action="/devices/{{ d.id }}/clear-ports">
-                    <button class="dropdown-item" type="submit"
-                            title="Usuwa wszystkie wyniki skanowania portów (szybki + pełny) dla tego urządzenia.">
-                      <i class="bi bi-x-circle me-2 text-secondary"></i>Wyczyść wszystkie wyniki portów
-                    </button>
-                  </form>
-                </li>
                 <li><hr class="dropdown-divider"></li>
                 <li>
                   <button class="dropdown-item text-danger"
