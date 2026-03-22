@@ -171,7 +171,7 @@ def poll_once() -> int:
     try:
         devices = db.query(Device).all()
         if not devices:
-            return
+            return interval
 
         now                = datetime.utcnow()
         inactive_threshold = now - timedelta(minutes=inactive_after)

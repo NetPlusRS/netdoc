@@ -962,8 +962,8 @@ def _read_discovery_overrides(db):
         raw_laa       = _s("ignore_laa_macs")
 
         extra_ranges  = [r.strip() for r in raw_ranges.split(",") if r.strip()] if raw_ranges else None
-        include_vpn   = (raw_vpn    == "1") if raw_vpn    is not None else None
-        include_virtual = (raw_virtual == "1") if raw_virtual is not None else None
+        include_vpn     = (raw_vpn     != "0") if raw_vpn     is not None else None
+        include_virtual = (raw_virtual != "0") if raw_virtual is not None else None
         ignore_laa    = (raw_laa != "0")  if raw_laa is not None else None  # domyslnie True
         return extra_ranges, include_vpn, include_virtual, ignore_laa
     except Exception:
@@ -2262,7 +2262,7 @@ def _ensure_lab_monitoring(db) -> int:
     from datetime import datetime
     try:
         row = db.query(SystemStatus).filter(SystemStatus.key == "lab_monitoring_enabled").first()
-        if not (row and row.value == "1"):
+        if not (row and row.value != "0"):
             return 0
         # Aktywuj monitorowanie dla urzadzen lab ktore go nie maja
         lab_devices = (

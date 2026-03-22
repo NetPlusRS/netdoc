@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # SNMP_DEBUG=1 → loguj kazda probe community na poziomie INFO (widoczne w logach workera)
 # Domyslnie proby sa na DEBUG — nie zasmiecaja logow produkcyjnych
-_SNMP_DEBUG = _os.getenv("SNMP_DEBUG", "1") == "1"
+_SNMP_DEBUG = _os.getenv("SNMP_DEBUG", "0") == "1"
 _log_probe = logger.info if _SNMP_DEBUG else logger.debug
 
 # ─── BER encoding ─────────────────────────────────────────────────────────────

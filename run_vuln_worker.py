@@ -239,7 +239,7 @@ def check_http_management(ip: str, device_type):
             loc = r.headers.get("location", "")
             if r.status_code in (301, 302) and "https://" in loc:
                 continue
-            if r.status_code < 500:
+            if r.status_code < 400:
                 return {
                     "vuln_type": VulnType.http_management, "severity": VulnSeverity.medium,
                     "title": f"HTTP management bez HTTPS (port {port})",
@@ -466,7 +466,7 @@ def check_mysql(ip: str):
             db_creds = db.query(Credential).filter(
                 Credential.method == CredentialMethod.mysql,
                 Credential.device_id.is_(None),
-            ).order_by(Credential.priority.desc()).all()
+            ).order_by(Credential.priority).all()
             users = [cr.username for cr in db_creds if cr.username] or DEFAULT_USERS
         finally:
             db.close()
@@ -590,7 +590,7 @@ def check_postgres_weak(ip: str):
             db_creds = db.query(Credential).filter(
                 Credential.method == CredentialMethod.postgres,
                 Credential.device_id.is_(None),
-            ).order_by(Credential.priority.desc()).all()
+            ).order_by(Credential.priority).all()
             CREDS = [(cr.username or "", cr.password_encrypted or "") for cr in db_creds] or DEFAULT_CREDS
         finally:
             db.close()
@@ -636,7 +636,7 @@ def check_mssql_weak(ip: str):
             db_creds = db.query(Credential).filter(
                 Credential.method == CredentialMethod.mssql,
                 Credential.device_id.is_(None),
-            ).order_by(Credential.priority.desc()).all()
+            ).order_by(Credential.priority).all()
             CREDS = [(cr.username or "", cr.password_encrypted or "") for cr in db_creds] or DEFAULT_CREDS
         finally:
             db.close()
@@ -690,7 +690,7 @@ def check_vnc_weak(ip: str):
             db_creds = db.query(Credential).filter(
                 Credential.method == CredentialMethod.vnc,
                 Credential.device_id.is_(None),
-            ).order_by(Credential.priority.desc()).all()
+            ).order_by(Credential.priority).all()
             WEAK_PWD = [c.password_encrypted for c in db_creds if c.password_encrypted] or DEFAULT_PWD
         finally:
             db.close()
@@ -790,7 +790,7 @@ def check_rtsp_weak(ip: str):
             db_creds = db.query(Credential).filter(
                 Credential.method == CredentialMethod.rtsp,
                 Credential.device_id.is_(None),
-            ).order_by(Credential.priority.desc()).all()
+            ).order_by(Credential.priority).all()
             CREDS = [(cr.username or "", cr.password_encrypted or "") for cr in db_creds] or DEFAULT_CREDS
         finally:
             db.close()

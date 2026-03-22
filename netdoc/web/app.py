@@ -4589,7 +4589,7 @@ Dla urządzeń nieobsoletes: "replacements": []"""
             from netdoc.storage.models import Credential as _Cred
             found_creds = (
                 db.query(_Cred)
-                .filter(_Cred.device_id == dev.id, _Cred.last_success_at != None)
+                .filter(_Cred.device_id == dev.id, _Cred.last_success_at.isnot(None))
                 .all()
             )
             if found_creds:
