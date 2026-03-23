@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # netdoc-setup.sh
-# Instalator NetDoc dla Linux i macOS.
-# Sprawdza wymagania, konfiguruje środowisko i uruchamia system.
+# NetDoc installer for Linux and macOS.
+# Checks requirements, configures the environment, and starts the system.
 #
-# Użycie:
+# Usage:
 #   chmod +x netdoc-setup.sh
 #   ./netdoc-setup.sh
 
 set -euo pipefail
 
-# ── Kolory ────────────────────────────────────────────────────────────────────
+# ── Colors ────────────────────────────────────────────────────────────────────
 
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
@@ -21,10 +21,10 @@ NC='\033[0m'
 step()  { echo -e "\n${CYAN}  >> $*${NC}"; }
 ok()    { echo -e "${GREEN}     [OK] $*${NC}"; }
 warn()  { echo -e "${YELLOW}     [!!] $*${NC}"; }
-fail()  { echo -e "${RED}     [BLAD] $*${NC}"; }
+fail()  { echo -e "${RED}     [FAIL] $*${NC}"; }
 info()  { echo -e "${GRAY}           $*${NC}"; }
 
-# ── Wykrywanie OS i package managera ──────────────────────────────────────────
+# ── OS and package manager detection ──────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OS="unknown"
@@ -50,69 +50,69 @@ detect_os() {
     fi
 }
 
-# ── Nagłówek ──────────────────────────────────────────────────────────────────
+# ── Header ────────────────────────────────────────────────────────────────────
 
 clear
 echo -e "${CYAN}"
 echo "  ================================================"
-echo "   NetDoc  —  Instalator Linux / macOS"
+echo "   NetDoc  —  Installer for Linux / macOS"
 echo "  ================================================"
 echo -e "${NC}"
-echo -e "${GRAY}  Katalog projektu: $SCRIPT_DIR${NC}"
+echo -e "${GRAY}  Project directory: $SCRIPT_DIR${NC}"
 
 detect_os
 
-echo -e "${GRAY}  System:          $OS${NC}"
+echo -e "${GRAY}  OS:              $OS${NC}"
 [[ "$OS" == "linux" ]] && echo -e "${GRAY}  Package manager: $PKG_MANAGER${NC}"
 echo ""
 
-# ── Funkcja instalacji pakietu ────────────────────────────────────────────────
+# ── Package installation function ────────────────────────────────────────────
 
 install_pkg() {
     local pkg_linux="$1"
     local pkg_brew="$2"
     local label="$3"
 
-    warn "$label nie znaleziony — próbuję zainstalować..."
+    warn "$label not found — attempting to install..."
 
     if [[ "$OS" == "macos" ]]; then
         if command -v brew &>/dev/null; then
-            brew install "$pkg_brew" || { fail "Instalacja $label przez Homebrew nie powiodła się."; return 1; }
+            brew install "$pkg_brew" || { fail "Failed to install $label via Homebrew."; return 1; }
         else
-            fail "Homebrew nie jest zainstalowany. Zainstaluj ze strony https://brew.sh"
-            info "Następnie uruchom: brew install $pkg_brew"
+            fail "Homebrew is not installed. Install it from https://brew.sh"
+            info "Then run: brew install $pkg_brew"
             return 1
         fi
     elif [[ "$PKG_MANAGER" == "apt" ]]; then
-        sudo apt-get update -qq && sudo apt-get install -y "$pkg_linux" || { fail "apt install $pkg_linux nie powiodło się."; return 1; }
+        sudo apt-get update -qq && sudo apt-get install -y "$pkg_linux" || { fail "apt install $pkg_linux failed."; return 1; }
     elif [[ "$PKG_MANAGER" == "dnf" ]]; then
-        sudo dnf install -y "$pkg_linux" || { fail "dnf install $pkg_linux nie powiodło się."; return 1; }
+        sudo dnf install -y "$pkg_linux" || { fail "dnf install $pkg_linux failed."; return 1; }
     elif [[ "$PKG_MANAGER" == "yum" ]]; then
-        sudo yum install -y "$pkg_linux" || { fail "yum install $pkg_linux nie powiodło się."; return 1; }
+        sudo yum install -y "$pkg_linux" || { fail "yum install $pkg_linux failed."; return 1; }
     elif [[ "$PKG_MANAGER" == "pacman" ]]; then
-        sudo pacman -S --noconfirm "$pkg_linux" || { fail "pacman -S $pkg_linux nie powiodło się."; return 1; }
+        sudo pacman -S --noconfirm "$pkg_linux" || { fail "pacman -S $pkg_linux failed."; return 1; }
     else
-        fail "Nieznany package manager. Zainstaluj $label ręcznie."
+        fail "Unknown package manager. Please install $label manually."
         return 1
     fi
 }
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 
-step "Sprawdzam Docker..."
+step "Checking Docker..."
 
 if ! command -v docker &>/dev/null; then
-    fail "Docker nie jest zainstalowany."
+    fail "Docker is not installed."
     if [[ "$OS" == "macos" ]]; then
-        info "Pobierz Docker Desktop: https://www.docker.com/products/docker-desktop"
+        info "Download Docker Desktop: https://www.docker.com/products/docker-desktop"
     else
-        info "Zainstaluj Docker: https://docs.docker.com/engine/install/"
-        info "Lub użyj convenience script: curl -fsSL https://get.docker.com | sh"
+        info "Install Docker: https://docs.docker.com/engine/install/"
+        info "Or use the convenience script: curl -fsSL https://get.docker.com | sh"
     fi
     echo ""
-    read -rp "  Naciśnij Enter po zainstalowaniu Dockera..."
+    read -rp "  Press Enter after installing Docker..."
     if ! command -v docker &>/dev/null; then
-        fail "Docker nadal niedostępny. Przerywam."
+        fail "Docker is still unavailable. Aborting."
         exit 1
     fi
 fi
@@ -120,43 +120,43 @@ fi
 DOCKER_VER=$(docker --version 2>&1 | head -1)
 ok "$DOCKER_VER"
 
-# Sprawdź czy Docker daemon działa
+# Check whether the Docker daemon is running
 if ! docker info &>/dev/null; then
-    fail "Docker daemon nie działa."
+    fail "Docker daemon is not running."
     if [[ "$OS" == "macos" ]]; then
-        info "Uruchom Docker Desktop z folderu Aplikacje."
+        info "Launch Docker Desktop from the Applications folder."
     else
-        info "Uruchom: sudo systemctl start docker"
-        info "Autostart: sudo systemctl enable docker"
+        info "Run: sudo systemctl start docker"
+        info "Enable on boot: sudo systemctl enable docker"
     fi
     echo ""
-    read -rp "  Naciśnij Enter gdy Docker będzie uruchomiony..."
+    read -rp "  Press Enter once Docker is running..."
     if ! docker info &>/dev/null; then
-        # Ostatnia szansa z sudo
+        # Last chance — try with sudo
         if sudo docker info &>/dev/null 2>&1; then
-            warn "Docker działa tylko z sudo. Dodaj użytkownika do grupy docker:"
+            warn "Docker works only with sudo. Add your user to the docker group:"
             info "  sudo usermod -aG docker \$USER  && newgrp docker"
         else
-            fail "Docker daemon nadal niedostępny. Przerywam."
+            fail "Docker daemon is still unavailable. Aborting."
             exit 1
         fi
     fi
 fi
 
-ok "Docker daemon działa"
+ok "Docker daemon is running"
 
-# Sprawdź Docker Compose (v2 — 'docker compose')
-step "Sprawdzam Docker Compose..."
+# Check Docker Compose (v2 — 'docker compose')
+step "Checking Docker Compose..."
 
 if docker compose version &>/dev/null 2>&1; then
     COMPOSE_VER=$(docker compose version 2>&1 | head -1)
     ok "$COMPOSE_VER"
 else
-    fail "Docker Compose v2 nie jest dostępny ('docker compose' zamiast 'docker-compose')."
+    fail "Docker Compose v2 is not available ('docker compose' instead of 'docker-compose')."
     if [[ "$OS" == "macos" ]]; then
-        info "Zaktualizuj Docker Desktop do najnowszej wersji."
+        info "Update Docker Desktop to the latest version."
     else
-        info "Zainstaluj docker-compose-plugin:"
+        info "Install docker-compose-plugin:"
         info "  sudo apt-get install docker-compose-plugin   # Ubuntu/Debian"
         info "  sudo dnf install docker-compose-plugin       # Fedora"
     fi
@@ -165,7 +165,7 @@ fi
 
 # ── Python ────────────────────────────────────────────────────────────────────
 
-step "Sprawdzam Python 3.10+..."
+step "Checking Python 3.10+..."
 
 PYTHON_CMD=""
 for cmd in python3.12 python3.11 python3.10 python3 python; do
@@ -182,12 +182,12 @@ for cmd in python3.12 python3.11 python3.10 python3 python; do
 done
 
 if [[ -z "$PYTHON_CMD" ]]; then
-    warn "Python 3.10+ nie znaleziony."
+    warn "Python 3.10+ not found."
     if [[ "$OS" == "macos" ]]; then
         if command -v brew &>/dev/null; then
             brew install python@3.12 && PYTHON_CMD="python3"
         else
-            fail "Zainstaluj Python 3.10+ ze strony https://python.org"
+            fail "Install Python 3.10+ from https://python.org"
             exit 1
         fi
     elif [[ "$PKG_MANAGER" == "apt" ]]; then
@@ -195,94 +195,136 @@ if [[ -z "$PYTHON_CMD" ]]; then
     elif [[ "$PKG_MANAGER" == "dnf" ]]; then
         sudo dnf install -y python3 python3-pip && PYTHON_CMD="python3"
     else
-        fail "Zainstaluj Python 3.10+ ręcznie: https://python.org"
+        fail "Install Python 3.10+ manually: https://python.org"
         exit 1
     fi
 fi
 
 # ── nmap ─────────────────────────────────────────────────────────────────────
 
-step "Sprawdzam nmap (wymagany przez skaner discovery)..."
+step "Checking nmap (required by the discovery scanner)..."
 
 if command -v nmap &>/dev/null; then
     NMAP_VER=$(nmap --version 2>&1 | head -1)
     ok "$NMAP_VER"
 else
-    install_pkg "nmap" "nmap" "nmap" && ok "nmap zainstalowany" || {
-        warn "nmap niedostępny — skaner discovery nie będzie działał."
-        info "Zainstaluj ręcznie: https://nmap.org/download.html"
+    install_pkg "nmap" "nmap" "nmap" && ok "nmap installed" || {
+        warn "nmap unavailable — discovery scanner will not work."
+        info "Install manually: https://nmap.org/download.html"
     }
 fi
 
 # ── git ───────────────────────────────────────────────────────────────────────
 
-step "Sprawdzam git..."
+step "Checking git..."
 
 if command -v git &>/dev/null; then
     ok "$(git --version)"
 else
-    install_pkg "git" "git" "git" && ok "git zainstalowany"
+    install_pkg "git" "git" "git" && ok "git installed"
 fi
 
-# ── Plik .env ─────────────────────────────────────────────────────────────────
+# ── .env file ─────────────────────────────────────────────────────────────────
 
-step "Konfiguruję plik .env..."
+step "Configuring .env file..."
 
 cd "$SCRIPT_DIR"
 
 if [[ -f ".env" ]]; then
-    ok ".env już istnieje — pomijam"
+    ok ".env already exists — skipping"
 else
     if [[ -f ".env.example" ]]; then
         cp .env.example .env
-        ok ".env skopiowany z .env.example"
-        info "Edytuj .env aby ustawić NETWORK_RANGES, TELEGRAM_BOT_TOKEN itp."
-        info "Domyślne ustawienia pozwolą uruchomić system bez zmian."
+        ok ".env copied from .env.example"
+        info "Edit .env to set NETWORK_RANGES, TELEGRAM_BOT_TOKEN, etc."
+        info "Default settings allow the system to start without any changes."
     else
-        fail ".env.example nie znaleziony. Upewnij się że jesteś w katalogu projektu."
+        fail ".env.example not found. Make sure you are in the project directory."
         exit 1
     fi
 fi
 
-# ── Zależności Pythona ────────────────────────────────────────────────────────
+# ── Python dependencies ────────────────────────────────────────────────────────
 
-step "Instaluję zależności Pythona (requirements.txt)..."
+step "Installing Python dependencies (requirements.txt)..."
 
 if [[ -f "requirements.txt" ]]; then
     "$PYTHON_CMD" -m pip install -r requirements.txt -q --break-system-packages 2>/dev/null \
         || "$PYTHON_CMD" -m pip install -r requirements.txt -q \
-        || warn "Część zależności mogła się nie zainstalować — sprawdź ręcznie."
-    ok "Zależności Python zainstalowane"
+        || warn "Some dependencies may not have installed — please check manually."
+    ok "Python dependencies installed"
 else
-    warn "requirements.txt nie znaleziony — pomijam"
+    warn "requirements.txt not found — skipping"
+fi
+
+# ── Detect previous installation ─────────────────────────────────────────────
+
+step "Checking for a previous NetDoc installation..."
+
+OLD_CONTAINERS=$(docker ps -a --filter "name=netdoc" --format "{{.Names}}" 2>/dev/null | grep -v "^$" || true)
+OLD_VOLUMES=$(docker volume ls --filter "name=netdoc" --format "{{.Name}}" 2>/dev/null | grep -v "^$" || true)
+
+if [[ -n "$OLD_CONTAINERS" || -n "$OLD_VOLUMES" ]]; then
+    warn "A previous NetDoc installation was found:"
+    if [[ -n "$OLD_CONTAINERS" ]]; then
+        info "  Containers:"
+        echo "$OLD_CONTAINERS" | while read -r c; do info "    - $c"; done
+    fi
+    if [[ -n "$OLD_VOLUMES" ]]; then
+        info "  Volumes:"
+        echo "$OLD_VOLUMES" | while read -r v; do info "    - $v"; done
+    fi
+
+    echo ""
+    echo "  You have two options:"
+    echo -e "   ${YELLOW}[Y]${NC}  Remove old containers and data (clean install)"
+    echo -e "       ${GRAY}WARNING: this will delete the database, metrics, and configuration!${NC}"
+    echo -e "   ${CYAN}[N]${NC}  Keep existing data (upgrade / restart)"
+    echo -e "       ${GRAY}Old containers will be stopped; data will be preserved.${NC}"
+    echo ""
+
+    read -rp "  Remove old data and perform a clean install? [Y/n]: " CLEAN_UP
+    CLEAN_UP="${CLEAN_UP,,}"
+
+    if [[ "$CLEAN_UP" == "y" ]]; then
+        info "Removing old containers and volumes..."
+        docker compose down --volumes --remove-orphans || true
+        ok "Old containers and data removed — clean install."
+    else
+        info "Stopping old containers (data preserved)..."
+        docker compose down --remove-orphans || true
+        ok "Old containers stopped — volume data preserved."
+    fi
+else
+    ok "No previous installation found — clean install."
 fi
 
 # ── Docker containers ─────────────────────────────────────────────────────────
 
-step "Uruchamiam kontenery Docker (docker compose up -d)..."
+step "Starting Docker containers (docker compose up -d)..."
 
-# Port 514 (syslog) na Linux wymaga root lub CAP_NET_BIND_SERVICE
+# Port 514 (syslog) on Linux requires root or CAP_NET_BIND_SERVICE
 if [[ "$OS" == "linux" ]]; then
     if [[ $EUID -ne 0 ]]; then
-        info "Uwaga: rsyslog nasłuchuje na porcie 514 (syslog)."
-        info "Jeśli kontenery mają problem z portem 514, uruchom:"
-        info "  sudo setcap cap_net_bind_service=+eip \$(which docker)  # zwykle niepotrzebne"
-        info "  lub zmień port w docker-compose.yml na >1024"
+        info "Note: rsyslog listens on port 514 (syslog)."
+        info "If containers have trouble binding port 514, run:"
+        info "  sudo setcap cap_net_bind_service=+eip \$(which docker)  # usually not needed"
+        info "  or change the port in docker-compose.yml to >1024"
     fi
 fi
 
 docker compose up -d
-ok "Kontenery uruchomione"
+ok "Containers started"
 
-# ── Czekaj na panel web ───────────────────────────────────────────────────────
+# ── Wait for the web panel ───────────────────────────────────────────────────
 
-step "Czekam aż panel Web będzie dostępny (http://localhost)..."
+step "Waiting for the Web panel to become available (http://localhost)..."
 
 TIMEOUT=120
 WAITED=0
 until curl -sf "http://localhost/" -o /dev/null 2>/dev/null; do
     if [[ $WAITED -ge $TIMEOUT ]]; then
-        warn "Panel nie odpowiedział po ${TIMEOUT}s — sprawdź: docker compose logs web"
+        warn "Panel did not respond after ${TIMEOUT}s — check: docker compose logs web"
         break
     fi
     printf "."
@@ -292,55 +334,55 @@ done
 echo ""
 
 if curl -sf "http://localhost/" -o /dev/null 2>/dev/null; then
-    ok "Panel Web dostępny: http://localhost"
+    ok "Web panel available: http://localhost"
 fi
 
-# ── Pierwsze skanowanie sieci ─────────────────────────────────────────────────
+# ── Initial network scan ─────────────────────────────────────────────────────
 
-step "Uruchamiam pierwsze skanowanie sieci..."
+step "Running initial network scan..."
 
 if [[ -f "run_scanner.py" ]]; then
     if command -v nmap &>/dev/null; then
-        info "Skanowanie może potrwać 2–5 minut. Uruchamiam w tle..."
+        info "Scan may take 2–5 minutes. Starting in the background..."
         nohup "$PYTHON_CMD" run_scanner.py --once > logs/scanner.log 2>&1 &
         SCANNER_PID=$!
-        ok "Skaner uruchomiony (PID: $SCANNER_PID)"
-        info "Wyniki w panelu: http://localhost/devices"
+        ok "Scanner started (PID: $SCANNER_PID)"
+        info "Results in the panel: http://localhost/devices"
     else
-        warn "nmap niedostępny — pomijam skanowanie."
-        info "Uruchom ręcznie po zainstalowaniu nmap: python run_scanner.py --once"
+        warn "nmap unavailable — skipping scan."
+        info "Run manually after installing nmap: python run_scanner.py --once"
     fi
 else
-    warn "run_scanner.py nie znaleziony — pomijam skanowanie."
+    warn "run_scanner.py not found — skipping scan."
 fi
 
-# ── Autostart skanera ─────────────────────────────────────────────────────────
+# ── Scanner autostart ─────────────────────────────────────────────────────────
 
-step "Konfiguracja autostartu skanera..."
+step "Configuring scanner autostart..."
 
 CRON_CMD="*/5 * * * * cd $SCRIPT_DIR && $PYTHON_CMD run_scanner.py --once >> $SCRIPT_DIR/logs/scanner.log 2>&1"
 
 if command -v crontab &>/dev/null; then
     CURRENT_CRON=$(crontab -l 2>/dev/null || echo "")
     if echo "$CURRENT_CRON" | grep -q "run_scanner.py"; then
-        ok "Cron job już skonfigurowany"
+        ok "Cron job already configured"
     else
         echo ""
-        read -rp "  Dodać autostart skanera do crontab (co 5 minut)? [T/n]: " ADD_CRON
+        read -rp "  Add scanner autostart to crontab (every 5 minutes)? [Y/n]: " ADD_CRON
         if [[ "${ADD_CRON,,}" != "n" ]]; then
             (echo "$CURRENT_CRON"; echo "$CRON_CMD") | grep -v "^$" | crontab -
-            ok "Cron job dodany (co 5 minut)"
+            ok "Cron job added (every 5 minutes)"
         else
-            info "Pomijam crontab. Możesz dodać ręcznie:"
+            info "Skipping crontab. You can add it manually:"
             info "  crontab -e"
-            info "  Dodaj: $CRON_CMD"
+            info "  Add: $CRON_CMD"
         fi
     fi
 else
-    warn "crontab niedostępny. Autostart skanera skonfiguruj ręcznie."
+    warn "crontab is unavailable. Configure scanner autostart manually."
 fi
 
-# ── Otwórz przeglądarkę ────────────────────────────────────────────────────────
+# ── Open browser ──────────────────────────────────────────────────────────────
 
 if curl -sf "http://localhost/" -o /dev/null 2>/dev/null; then
     if [[ "$OS" == "macos" ]]; then
@@ -350,22 +392,22 @@ if curl -sf "http://localhost/" -o /dev/null 2>/dev/null; then
     fi
 fi
 
-# ── Podsumowanie ───────────────────────────────────────────────────────────────
+# ── Summary ────────────────────────────────────────────────────────────────────
 
 echo ""
 echo -e "${CYAN}  ================================================${NC}"
-echo -e "${CYAN}   NetDoc — instalacja zakończona!${NC}"
+echo -e "${CYAN}   NetDoc — installation complete!${NC}"
 echo -e "${CYAN}  ================================================${NC}"
 echo ""
-echo -e "   Panel Admin   ${CYAN}http://localhost${NC}"
+echo -e "   Admin Panel   ${CYAN}http://localhost${NC}"
 echo -e "   API / Swagger ${CYAN}http://localhost:8000/docs${NC}"
 echo -e "   Grafana        ${CYAN}http://localhost/grafana${NC}   ${GRAY}(admin / netdoc)${NC}"
 echo ""
-echo -e "${GRAY}  Zarządzanie kontenerami:${NC}"
+echo -e "${GRAY}  Container management:${NC}"
 echo -e "${GRAY}    docker compose ps          # status${NC}"
-echo -e "${GRAY}    docker compose logs -f web # logi panelu${NC}"
-echo -e "${GRAY}    docker compose down        # zatrzymaj${NC}"
+echo -e "${GRAY}    docker compose logs -f web # panel logs${NC}"
+echo -e "${GRAY}    docker compose down        # stop${NC}"
 echo ""
-echo -e "${GRAY}  Ręczne skanowanie:${NC}"
+echo -e "${GRAY}  Manual scan:${NC}"
 echo -e "${GRAY}    $PYTHON_CMD run_scanner.py --once${NC}"
 echo ""

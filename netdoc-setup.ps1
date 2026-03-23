@@ -1,29 +1,29 @@
 ﻿# netdoc-setup.ps1
-# Pierwszy setup NetDoc na Windows.
-# Sprawdza i instaluje wymagane oprogramowanie (WSL2, Docker Desktop, git, Python),
-# konfiguruje srodowisko i uruchamia system.
+# First-time NetDoc setup on Windows.
+# Checks and installs required software (WSL2, Docker Desktop, git, Python),
+# configures the environment and starts the system.
 #
-# Uzycie:
-#   Kliknij dwukrotnie netdoc-setup.bat
-#   LUB: powershell -ExecutionPolicy Bypass -File netdoc-setup.ps1
+# Usage:
+#   Double-click netdoc-setup.bat
+#   OR: powershell -ExecutionPolicy Bypass -File netdoc-setup.ps1
 
 #Requires -Version 5.1
 
 $ErrorActionPreference = "Continue"
 $ProjectDir = $PSScriptRoot
 
-# ── Self-elevation: wymagaj uprawnien Administratora ──────────────────────────
-#    Musi byc PRZED Start-Transcript — UAC restartuje proces, wiec nowy
-#    wznowi transkrypt samodzielnie.
+# ── Self-elevation: require Administrator privileges ──────────────────────────
+#    Must be BEFORE Start-Transcript — UAC restarts the process, so the new
+#    instance will resume the transcript on its own.
 
 $_currentPrincipal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not $_currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host ""
-    Write-Host "  NetDoc Installer wymaga uprawnien Administratora." -ForegroundColor Yellow
-    Write-Host "  Za chwile pojawi sie okno UAC  -  kliknij Tak aby kontynuowac." -ForegroundColor DarkGray
+    Write-Host "  NetDoc Installer requires Administrator privileges." -ForegroundColor Yellow
+    Write-Host "  A UAC prompt will appear  -  click Yes to continue." -ForegroundColor DarkGray
     Write-Host ""
     Start-Sleep -Seconds 2
-    $scriptPath = $PSCommandPath   # bardziej niezawodne niz $MyInvocation.MyCommand.Path
+    $scriptPath = $PSCommandPath   # more reliable than $MyInvocation.MyCommand.Path
     try {
         Start-Process powershell.exe `
             -Verb RunAs `
@@ -32,23 +32,23 @@ if (-not $_currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Ad
             -ErrorAction Stop
     } catch {
         Write-Host ""
-        Write-Host "  Odmowa uprawnien  -  UAC zostalo odrzucone lub zabronione przez polityki." -ForegroundColor Red
-        Write-Host "  Instalacja wymaga praw Administratora." -ForegroundColor Yellow
-        Write-Host "  Sprobuj: prawy klik na netdoc-setup.bat -> Uruchom jako administrator" -ForegroundColor DarkGray
+        Write-Host "  Access denied  -  UAC was rejected or blocked by policy." -ForegroundColor Red
+        Write-Host "  Installation requires Administrator rights." -ForegroundColor Yellow
+        Write-Host "  Try: right-click netdoc-setup.bat -> Run as administrator" -ForegroundColor DarkGray
         Write-Host ""
-        Read-Host "  Nacisnij Enter aby zamknac..."
+        Read-Host "  Press Enter to close..."
     }
     exit
 }
 
-# ── Plik logu debugowania ─────────────────────────────────────────────────────
+# ── Debug log file ────────────────────────────────────────────────────────────
 
 $LogDir       = Join-Path $ProjectDir "logs"
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
 $LogTimestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $LogFile      = Join-Path $LogDir "netdoc-setup-debug-$LogTimestamp.log"
 
-# Start-Transcript rejestruje WSZYSTKO  -  kazde polecenie, wyjscie, bledy
+# Start-Transcript records EVERYTHING  -  every command, output, and errors
 Start-Transcript -Path $LogFile -Append | Out-Null
 
 function Write-LogSection([string]$title) {
@@ -65,15 +65,15 @@ function Write-LogEntry([string]$level, [string]$msg) {
     Write-Host "[$ts][$level] $msg" -ForegroundColor DarkGray
 }
 
-# Zrzut informacji systemowych na poczatek logu
+# Dump system information at the beginning of the log
 function Write-SystemInfo {
-    Write-LogSection "INFORMACJE SYSTEMOWE"
-    Write-LogEntry "INFO" "Skrypt:     $PSCommandPath"
-    Write-LogEntry "INFO" "Katalog:    $ProjectDir"
+    Write-LogSection "SYSTEM INFORMATION"
+    Write-LogEntry "INFO" "Script:     $PSCommandPath"
+    Write-LogEntry "INFO" "Directory:  $ProjectDir"
     Write-LogEntry "INFO" "PowerShell: $($PSVersionTable.PSVersion)"
     Write-LogEntry "INFO" "OS:         $([System.Environment]::OSVersion.VersionString)"
     Write-LogEntry "INFO" "Build:      $([System.Environment]::OSVersion.Version.Build)"
-    Write-LogEntry "INFO" "Uzytkownik: $([System.Environment]::UserName)"
+    Write-LogEntry "INFO" "User:       $([System.Environment]::UserName)"
     Write-LogEntry "INFO" "Hostname:   $([System.Environment]::MachineName)"
     Write-LogEntry "INFO" "Arch:       $([System.Environment]::Is64BitOperatingSystem)"
 
@@ -83,30 +83,30 @@ function Write-SystemInfo {
         $totalGB = [Math]::Round($ram.TotalVisibleMemorySize / 1MB, 1)
         $freeGB  = [Math]::Round($ram.FreePhysicalMemory     / 1MB, 1)
         Write-LogEntry "INFO" "RAM:        ${totalGB} GB total, ${freeGB} GB free"
-    } catch { Write-LogEntry "WARN" "RAM: nie udalo sie pobrac" }
+    } catch { Write-LogEntry "WARN" "RAM: could not retrieve" }
 
-    # Dysk C:
+    # Drive C:
     try {
         $disk = Get-PSDrive C -ErrorAction Stop
         $freeGB = [Math]::Round($disk.Free / 1GB, 1)
         $usedGB = [Math]::Round($disk.Used / 1GB, 1)
-        Write-LogEntry "INFO" "Dysk C:     ${usedGB} GB uzyte, ${freeGB} GB wolne"
-    } catch { Write-LogEntry "WARN" "Dysk: nie udalo sie pobrac" }
+        Write-LogEntry "INFO" "Drive C:    ${usedGB} GB used, ${freeGB} GB free"
+    } catch { Write-LogEntry "WARN" "Disk: could not retrieve" }
 
     # PATH
     Write-LogEntry "INFO" "PATH:"
     ($env:PATH -split ";") | ForEach-Object { Write-LogEntry "PATH" "  $_" }
 
-    Write-LogSection "ROZPOCZECIE INSTALACJI"
+    Write-LogSection "INSTALLATION START"
 }
 
-# ── Kolory / formatowanie ─────────────────────────────────────────────────────
+# ── Colors / formatting ───────────────────────────────────────────────────────
 
 function Write-Header {
     Clear-Host
     Write-Host ""
     Write-Host "  ================================================" -ForegroundColor Cyan
-    Write-Host "   NetDoc  -  Instalator Windows" -ForegroundColor Cyan
+    Write-Host "   NetDoc  -  Windows Installer" -ForegroundColor Cyan
     Write-Host "  ================================================" -ForegroundColor Cyan
     Write-Host ""
 }
@@ -114,7 +114,7 @@ function Write-Header {
 function Write-Step([string]$msg) {
     Write-Host ""
     Write-Host "  >> $msg" -ForegroundColor Cyan
-    # W pliku logu: widoczna sekcja z timestampem
+    # In the log file: visible section with timestamp
     Write-LogEntry "STEP" $msg
 }
 
@@ -129,7 +129,7 @@ function Write-Warn([string]$msg) {
 }
 
 function Write-Fail([string]$msg) {
-    Write-Host "     [BLAD] $msg" -ForegroundColor Red
+    Write-Host "     [ERROR] $msg" -ForegroundColor Red
     Write-LogEntry "FAIL" $msg
 }
 
@@ -138,40 +138,40 @@ function Write-Info([string]$msg) {
     Write-LogEntry "INFO" $msg
 }
 
-function Show-Pause([string]$msg = "Nacisnij Enter aby kontynuowac...") {
+function Show-Pause([string]$msg = "Press Enter to continue...") {
     Write-Host ""
     Write-Host "  $msg" -ForegroundColor DarkGray
     Read-Host | Out-Null
 }
 
-# ── Uprawnienia (self-elevation wczesniej gwarantuje admina) ──────────────────
+# ── Privileges (self-elevation above ensures admin rights) ───────────────────
 
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
     [Security.Principal.WindowsBuiltInRole]::Administrator
 )
 
 Write-Header
-Write-Host "  Katalog projektu: $ProjectDir" -ForegroundColor DarkGray
-Write-Host "  Log debugowania:  $LogFile" -ForegroundColor DarkGray
+Write-Host "  Project directory: $ProjectDir" -ForegroundColor DarkGray
+Write-Host "  Debug log:         $LogFile" -ForegroundColor DarkGray
 if ($isAdmin) {
-    Write-Host "  Uprawnienia:      Administrator" -ForegroundColor Green
+    Write-Host "  Privileges:        Administrator" -ForegroundColor Green
 }
 Write-Host ""
 
 Write-SystemInfo
 
-# ── Wersja Windows ───────────────────────────────────────────────────────────
+# ── Windows version ───────────────────────────────────────────────────────────
 
-Write-Step "Sprawdzam wersje systemu Windows..."
+Write-Step "Checking Windows version..."
 
 $winver = [System.Environment]::OSVersion.Version
 $build  = $winver.Build
 Write-Info "Windows Build: $build"
 
 if ($build -lt 19041) {
-    Write-Fail "Wymagany Windows 10 v2004 (Build 19041) lub nowszy."
-    Write-Info "Twoja wersja ($build) jest zbyt stara  -  zaktualizuj system."
-    Show-Pause "Nacisnij Enter aby zamknac..."
+    Write-Fail "Windows 10 v2004 (Build 19041) or newer is required."
+    Write-Info "Your version ($build) is too old  -  please update your system."
+    Show-Pause "Press Enter to close..."
     exit 1
 } else {
     Write-OK "Windows $($winver.Major).$($winver.Minor) Build $build  -  OK"
@@ -179,26 +179,26 @@ if ($build -lt 19041) {
 
 # ── winget ───────────────────────────────────────────────────────────────────
 
-Write-Step "Sprawdzam winget (Windows Package Manager)..."
+Write-Step "Checking winget (Windows Package Manager)..."
 
 $wingetPath = Get-Command winget -ErrorAction SilentlyContinue
 if ($wingetPath) {
     $wingetVer = (winget --version 2>&1) -replace "[^0-9\.]", ""
     Write-OK "winget $wingetVer"
 } else {
-    Write-Warn "winget nie jest dostepny."
-    Write-Info "Zainstaluj 'App Installer' z Microsoft Store:"
+    Write-Warn "winget is not available."
+    Write-Info "Install 'App Installer' from the Microsoft Store:"
     Write-Info "  https://apps.microsoft.com/detail/9NBLGGH4NNS1"
-    Write-Info "  LUB zaktualizuj Windows  -  winget jest domyslnie od Windows 10 21H1"
-    Show-Pause "Nacisnij Enter po zainstalowaniu winget..."
+    Write-Info "  OR update Windows  -  winget is included by default from Windows 10 21H1"
+    Show-Pause "Press Enter after installing winget..."
     $wingetPath = Get-Command winget -ErrorAction SilentlyContinue
     if (-not $wingetPath) {
-        Write-Fail "winget nadal niedostepny. Instalacja przerwana."
+        Write-Fail "winget still not available. Installation aborted."
         exit 1
     }
 }
 
-# ── Funkcja instalacji przez winget ──────────────────────────────────────────
+# ── winget installation function ─────────────────────────────────────────────
 
 function Install-WithWinget {
     param(
@@ -211,53 +211,53 @@ function Install-WithWinget {
         $existing = Get-Command $CommandCheck -ErrorAction SilentlyContinue
         if ($existing) {
             $ver = try { (& $CommandCheck --version 2>&1) | Select-Object -First 1 } catch { "?" }
-            Write-OK "$Label zainstalowany: $ver"
+            Write-OK "$Label installed: $ver"
             return $true
         }
     }
 
-    Write-Warn "$Label nie znaleziony  -  instaluje przez winget..."
+    Write-Warn "$Label not found  -  installing via winget..."
     Write-Info "  winget install -e --id $Id --accept-package-agreements --accept-source-agreements"
     winget install -e --id $Id --accept-package-agreements --accept-source-agreements 2>&1 | Out-Host
 
     if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189) {
-        # -1978335189 = juz zainstalowany (WINGET_INSTALLED_STATUS_ALREADY_INSTALLED)
-        Write-OK "$Label zainstalowany pomyslnie."
+        # -1978335189 = already installed (WINGET_INSTALLED_STATUS_ALREADY_INSTALLED)
+        Write-OK "$Label installed successfully."
         return $true
     } else {
-        Write-Fail "Instalacja $Label nie powiodla sie (kod: $LASTEXITCODE)."
+        Write-Fail "Installation of $Label failed (exit code: $LASTEXITCODE)."
         return $false
     }
 }
 
 # ── git ──────────────────────────────────────────────────────────────────────
 
-Write-Step "Sprawdzam git..."
+Write-Step "Checking git..."
 
 $gitOk = Install-WithWinget -Id "Git.Git" -Label "git" -CommandCheck "git"
 if (-not $gitOk) {
-    # Moze byc zainstalowany ale nie w PATH  -  sprawdz typowe lokalizacje
+    # May be installed but not in PATH  -  check common locations
     $gitPaths = @(
         "C:\Program Files\Git\cmd\git.exe",
         "C:\Program Files (x86)\Git\cmd\git.exe"
     )
     foreach ($p in $gitPaths) {
         if (Test-Path $p) {
-            Write-OK "git znaleziony: $p"
+            Write-OK "git found: $p"
             $gitOk = $true
-            # Odswierz PATH w tej sesji
+            # Refresh PATH in this session
             $env:PATH += ";$(Split-Path $p)"
             break
         }
     }
     if (-not $gitOk) {
-        Write-Warn "git nie jest dostepny. Mozesz kontynuowac jesli repo jest juz pobrane."
+        Write-Warn "git is not available. You can continue if the repository is already downloaded."
     }
 }
 
 # ── nmap ─────────────────────────────────────────────────────────────────────
 
-Write-Step "Sprawdzam nmap (wymagany przez python-nmap do skanowania portow)..."
+Write-Step "Checking nmap (required by python-nmap for port scanning)..."
 
 $nmapKnownPaths = @(
     "C:\Program Files (x86)\Nmap\nmap.exe",
@@ -270,19 +270,19 @@ if ($nmapFound) {
     $nmapVer = try { (nmap --version 2>&1 | Select-Object -First 1) } catch { "?" }
     Write-OK "nmap: $nmapVer"
 } else {
-    # Sprawdz typowe lokalizacje instalacji nmap (moze byc zainstalowany bez PATH)
+    # Check common nmap install locations (may be installed without PATH)
     $nmapExe = $nmapKnownPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
     if ($nmapExe) {
         $nmapDir = Split-Path $nmapExe
         $env:PATH += ";$nmapDir"
         $nmapVer  = try { (& $nmapExe --version 2>&1 | Select-Object -First 1) } catch { "?" }
-        Write-OK "nmap znaleziony i dodany do PATH: $nmapDir"
+        Write-OK "nmap found and added to PATH: $nmapDir"
         Write-Info "$nmapVer"
     } else {
-        Write-Warn "nmap nie znaleziony  -  instaluje przez winget..."
+        Write-Warn "nmap not found  -  installing via winget..."
         Install-WithWinget -Id "Insecure.Nmap" -Label "nmap" | Out-Null
 
-        # Odswierz PATH i sprawdz znane lokalizacje po instalacji
+        # Refresh PATH and check known locations after installation
         $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" +
                     [System.Environment]::GetEnvironmentVariable("PATH", "User")
 
@@ -292,23 +292,23 @@ if ($nmapFound) {
             if ($env:PATH -notlike "*$nmapDir*") {
                 $env:PATH += ";$nmapDir"
             }
-            Write-OK "nmap zainstalowany i dodany do PATH: $nmapDir"
+            Write-OK "nmap installed and added to PATH: $nmapDir"
         } elseif (Get-Command nmap -ErrorAction SilentlyContinue) {
-            Write-OK "nmap zainstalowany i dostepny w PATH."
+            Write-OK "nmap installed and available in PATH."
         } else {
-            Write-Warn "nmap zainstalowany ale nie znaleziony w PATH."
-            Write-Info "Po instalacji moze byc wymagany restart terminala."
-            Write-Info "Nmap instaluje sie domyslnie w: C:\Program Files (x86)\Nmap\"
+            Write-Warn "nmap installed but not found in PATH."
+            Write-Info "A terminal restart may be required after installation."
+            Write-Info "Nmap installs by default to: C:\Program Files (x86)\Nmap\"
         }
     }
 }
 
 # ── Python ───────────────────────────────────────────────────────────────────
 
-Write-Step "Sprawdzam Python 3.9+ (wymagany przez NetDoc)..."
+Write-Step "Checking Python 3.9+ (required by NetDoc)..."
 
-# Minimalna wersja wymagana przez host-side skaner NetDoc
-# Docker kontenery uzywaja python:3.11-slim wewnatrz  -  host moze byc 3.9+
+# Minimum version required by the host-side NetDoc scanner
+# Docker containers use python:3.11-slim internally  -  host can be 3.9+
 $MIN_PY_MAJOR = 3
 $MIN_PY_MINOR = 9
 
@@ -327,7 +327,7 @@ $MIN_PY_CODE = $MIN_PY_MAJOR * 100 + $MIN_PY_MINOR   # 309
 $pythonCmd  = $null
 $pythonPath = $null
 
-# Sprawdz takze 'py -3' (Windows Launcher  -  zawsze zwraca najnowszego Pythona 3.x)
+# Also check 'py -3' (Windows Launcher  -  always returns the latest Python 3.x)
 $candidateCmds = @("python", "python3", "py")
 
 foreach ($cmd in $candidateCmds) {
@@ -338,24 +338,24 @@ foreach ($cmd in $candidateCmds) {
     $verStr  = try { (& $cmd --version 2>&1) | Select-Object -First 1 } catch { "?" }
 
     if ($verCode -ge $MIN_PY_CODE) {
-        Write-OK "$verStr (komenda: $cmd)"
+        Write-OK "$verStr (command: $cmd)"
         $pythonCmd  = $cmd
         $pythonPath = $c.Source
         break
     } elseif ($verCode -gt 0) {
-        Write-Info "$verStr  -  za stary (wymagany Python $MIN_PY_MAJOR.$MIN_PY_MINOR+), szukam nowszego..."
+        Write-Info "$verStr  -  too old (Python $MIN_PY_MAJOR.$MIN_PY_MINOR+ required), looking for newer..."
     }
 }
 
 if (-not $pythonCmd) {
-    Write-Warn "Python $MIN_PY_MAJOR.$MIN_PY_MINOR+ nie znaleziony  -  instaluje Python 3.12..."
+    Write-Warn "Python $MIN_PY_MAJOR.$MIN_PY_MINOR+ not found  -  installing Python 3.12..."
     Install-WithWinget -Id "Python.Python.3.12" -Label "Python 3.12" | Out-Null
 
-    # Odswierz PATH po instalacji (winget modyfikuje PATH w rejestrze, nie w biezacej sesji)
+    # Refresh PATH after installation (winget modifies PATH in registry, not in current session)
     $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" +
                 [System.Environment]::GetEnvironmentVariable("PATH", "User")
 
-    # Dodaj typowe lokalizacje Python 3.12 jesli jeszcze nie sa w PATH
+    # Add common Python 3.12 locations if not yet in PATH
     foreach ($pyPath in @(
         "$env:LOCALAPPDATA\Programs\Python\Python312",
         "$env:LOCALAPPDATA\Programs\Python\Python312\Scripts",
@@ -375,7 +375,7 @@ if (-not $pythonCmd) {
         $verStr  = try { (& $cmd --version 2>&1) | Select-Object -First 1 } catch { "?" }
 
         if ($verCode -ge $MIN_PY_CODE) {
-            Write-OK "Python gotowy: $verStr"
+            Write-OK "Python ready: $verStr"
             $pythonCmd  = $cmd
             $pythonPath = $c.Source
             break
@@ -383,94 +383,94 @@ if (-not $pythonCmd) {
     }
 
     if (-not $pythonCmd) {
-        Write-Warn "Python nie jest dostepny w PATH  -  moze byc wymagany restart terminala."
-        Write-Warn "Skaner hosta (run_scanner.py) nie bedzie dzialal bez Pythona."
-        Write-Info "Kontenery Docker zostana uruchomione i beda dzialac normalnie."
-        Write-Info "Po restarcie terminala uruchom: python -m pip install -r requirements.txt"
+        Write-Warn "Python not available in PATH  -  a terminal restart may be required."
+        Write-Warn "Host scanner (run_scanner.py) will not work without Python."
+        Write-Info "Docker containers will start and work normally."
+        Write-Info "After restarting the terminal run: python -m pip install -r requirements.txt"
         $pythonCmd  = "python"
         $pythonPath = $null
     }
 }
 
-# Zapamietaj sciezke do Pythona  -  potrzebna dla install_autostart.ps1
+# Save Python path  -  needed by install_autostart.ps1
 $PythonExeResolved = if ($pythonPath) { $pythonPath } else { "python" }
 
 # ── WSL2 ─────────────────────────────────────────────────────────────────────
 
-Write-Step "Sprawdzam WSL2 (wymagany przez Docker Desktop)..."
+Write-Step "Checking WSL2 (required by Docker Desktop)..."
 
 $wslOk = $false
 
-# Metoda 1: wsl --status (jezyk-niezalezne: exit code 0 = WSL zainstalowany)
+# Method 1: wsl --status (language-independent: exit code 0 = WSL installed)
 try {
     wsl --status 2>&1 | Out-Null
     if ($LASTEXITCODE -eq 0) {
-        Write-OK "WSL2 jest juz zainstalowany."
+        Write-OK "WSL2 is already installed."
         $wslOk = $true
     }
 } catch {}
 
-# Metoda 2: wsl --list (bardziej kompatybilna ze starszymi wersjami)
+# Method 2: wsl --list (more compatible with older versions)
 if (-not $wslOk) {
     try {
         $wslListOut = wsl --list 2>&1
         if ($LASTEXITCODE -eq 0) {
-            # Sprawdz czy jest jakas dystrybucja (nie tylko naglowek)
+            # Check if any distribution exists (not just the header)
             $distros = $wslListOut | Where-Object {
                 $_ -ne "" -and $_ -notmatch "^\s*$"
             }
             if ($distros.Count -gt 1) {
-                # > 1 linia = naglowek + przynajmniej 1 dystrybucja
-                Write-OK "WSL jest zainstalowany z dystrybucja Linux."
-                Write-Info "Wymuszam WSL2 jako domyslny..."
+                # > 1 line = header + at least 1 distribution
+                Write-OK "WSL is installed with a Linux distribution."
+                Write-Info "Setting WSL2 as default..."
                 if ($isAdmin) {
                     wsl --set-default-version 2 2>&1 | Out-Null
                 }
                 $wslOk = $true
             } else {
-                Write-Warn "WSL zainstalowany ale brak dystrybucji Linux."
-                Write-Info "Docker Desktop moze zainstalowac dystrybucje automatycznie."
-                $wslOk = $true   # nie blokujemy  -  Docker Desktop obsluzy reszte
+                Write-Warn "WSL installed but no Linux distribution found."
+                Write-Info "Docker Desktop can install a distribution automatically."
+                $wslOk = $true   # do not block  -  Docker Desktop will handle the rest
             }
         }
     } catch {}
 }
 
 if (-not $wslOk) {
-    Write-Warn "WSL2 nie jest zainstalowany."
+    Write-Warn "WSL2 is not installed."
 
     if ($isAdmin) {
-        Write-Info "Instaluje WSL2 (moze wymagac restartu)..."
-        Write-Info "  Wlaczam funkcje Windows Subsystem for Linux..."
+        Write-Info "Installing WSL2 (may require a restart)..."
+        Write-Info "  Enabling Windows Subsystem for Linux feature..."
         dism /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart 2>&1 | Out-Null
-        Write-Info "  Wlaczam Virtual Machine Platform..."
+        Write-Info "  Enabling Virtual Machine Platform..."
         dism /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart 2>&1 | Out-Null
-        Write-Info "  Ustawiam WSL2 jako domyslny..."
+        Write-Info "  Setting WSL2 as default..."
         wsl --set-default-version 2 2>&1 | Out-Null
-        Write-Info "  Instaluje jadro Linux..."
+        Write-Info "  Installing Linux kernel..."
         wsl --install --no-launch 2>&1 | Out-Null
 
-        Write-Warn "WSL2 zainstalowany  -  wymagany RESTART systemu."
-        Write-Info "Po restarcie uruchom ponownie ten skrypt."
+        Write-Warn "WSL2 installed  -  SYSTEM RESTART required."
+        Write-Info "After restart, run this script again."
         Write-Host ""
-        $restartNow = Read-Host "  Restartowac teraz? [T/N]"
-        if ($restartNow -eq "T" -or $restartNow -eq "t") {
-            Write-Info "Zamykam log i restartuję system..."
-            Stop-Transcript | Out-Null   # zamknij log przed restartem
+        $restartNow = Read-Host "  Restart now? [Y/N]"
+        if ($restartNow -eq "Y" -or $restartNow -eq "y") {
+            Write-Info "Closing log and restarting system..."
+            Stop-Transcript | Out-Null   # close log before restart
             Restart-Computer -Force
         }
-        Write-Info "Pamietaj o restarcie przed uruchomieniem Docker Desktop."
+        Write-Info "Remember to restart before launching Docker Desktop."
     } else {
-        Write-Info "Uruchom PowerShell jako Administrator i wpisz:"
+        Write-Info "Run PowerShell as Administrator and type:"
         Write-Info "  wsl --install"
-        Write-Info "  Nastepnie zrestartuj komputer."
-        Write-Warn "Bez WSL2 Docker Desktop moze nie dzialac."
+        Write-Info "  Then restart your computer."
+        Write-Warn "Without WSL2 Docker Desktop may not work."
     }
 }
 
 # ── Docker Desktop ────────────────────────────────────────────────────────────
 
-Write-Step "Sprawdzam Docker Desktop..."
+Write-Step "Checking Docker Desktop..."
 
 $dockerCli = Get-Command docker -ErrorAction SilentlyContinue
 $dockerInstalled = $false
@@ -480,14 +480,14 @@ if ($dockerCli) {
     $dver = try { (docker --version 2>&1) } catch { "?" }
     Write-OK "Docker CLI: $dver"
 } else {
-    # Sprawdz typowe lokalizacje Docker Desktop
+    # Check common Docker Desktop locations
     $dockerPaths = @(
         "$env:ProgramFiles\Docker\Docker\resources\bin\docker.exe",
         "$env:LOCALAPPDATA\Docker\Docker\resources\bin\docker.exe"
     )
     foreach ($p in $dockerPaths) {
         if (Test-Path $p) {
-            Write-OK "Docker CLI znaleziony: $p"
+            Write-OK "Docker CLI found: $p"
             $env:PATH += ";$(Split-Path $p)"
             $dockerInstalled = $true
             break
@@ -496,45 +496,45 @@ if ($dockerCli) {
 }
 
 if (-not $dockerInstalled) {
-    Write-Warn "Docker Desktop nie jest zainstalowany  -  instaluje..."
+    Write-Warn "Docker Desktop is not installed  -  installing..."
     $ok = Install-WithWinget -Id "Docker.DockerDesktop" -Label "Docker Desktop"
 
     if ($ok) {
-        Write-Info "Docker Desktop zainstalowany."
+        Write-Info "Docker Desktop installed."
 
-        # Odswierz PATH  -  winget dodaje Docker do PATH ale nie w biezacej sesji
+        # Refresh PATH  -  winget adds Docker to PATH but not in the current session
         $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" +
                     [System.Environment]::GetEnvironmentVariable("PATH", "User")
 
-        # Dodaj znane lokalizacje Docker jesli nie sa jeszcze w PATH
+        # Add known Docker locations if not yet in PATH
         foreach ($dockerBinPath in @(
             "$env:ProgramFiles\Docker\Docker\resources\bin",
             "$env:LOCALAPPDATA\Docker\Docker\resources\bin"
         )) {
             if ((Test-Path $dockerBinPath) -and ($env:PATH -notlike "*$dockerBinPath*")) {
                 $env:PATH += ";$dockerBinPath"
-                Write-Info "Dodano do PATH: $dockerBinPath"
+                Write-Info "Added to PATH: $dockerBinPath"
             }
         }
 
-        Write-Info "Uruchamiam Docker Desktop  -  poczekaj az ikonka w zasobniku bedzie gotowa..."
+        Write-Info "Starting Docker Desktop  -  wait until the tray icon is ready..."
         $dockerApp = "${env:ProgramFiles}\Docker\Docker\Docker Desktop.exe"
         if (Test-Path $dockerApp) {
             Start-Process $dockerApp
         }
     } else {
-        Write-Fail "Nie udalo sie zainstalowac Docker Desktop."
-        Write-Info "Pobierz recznie: https://www.docker.com/products/docker-desktop/"
-        Show-Pause "Nacisnij Enter po recznie zainstalowanym Docker Desktop..."
+        Write-Fail "Failed to install Docker Desktop."
+        Write-Info "Download manually: https://www.docker.com/products/docker-desktop/"
+        Show-Pause "Press Enter after installing Docker Desktop manually..."
     }
 }
 
-# ── Poczekaj az Docker daemon odpowie ─────────────────────────────────────────
+# ── Wait for Docker daemon ─────────────────────────────────────────────────────
 
-Write-Step "Czekam az Docker daemon bedzie gotowy..."
+Write-Step "Waiting for Docker daemon to become ready..."
 
 $dockerReady = $false
-$maxWait     = 120   # sekund
+$maxWait     = 120   # seconds
 $waited      = 0
 $dotCount    = 0
 
@@ -558,71 +558,71 @@ while ($waited -lt $maxWait) {
 Write-Host ""
 
 if (-not $dockerReady) {
-    Write-Fail "Docker daemon nie odpowiada po $maxWait sekundach."
-    Write-Info "Upewnij sie ze Docker Desktop jest uruchomiony (ikonka w zasobniku)."
-    Write-Info "Nastepnie uruchom ponownie ten skrypt."
-    Show-Pause "Nacisnij Enter aby zamknac..."
+    Write-Fail "Docker daemon did not respond within $maxWait seconds."
+    Write-Info "Make sure Docker Desktop is running (tray icon)."
+    Write-Info "Then run this script again."
+    Show-Pause "Press Enter to close..."
     exit 1
 } else {
-    Write-OK "Docker daemon dziala."
+    Write-OK "Docker daemon is running."
 }
 
 # ── .env ─────────────────────────────────────────────────────────────────────
 
-Write-Step "Sprawdzam konfiguracje .env..."
+Write-Step "Checking .env configuration..."
 
 $envFile    = Join-Path $ProjectDir ".env"
 $envExample = Join-Path $ProjectDir ".env.example"
 
 if (Test-Path $envFile) {
-    Write-OK ".env juz istnieje  -  pomijam kopiowanie."
+    Write-OK ".env already exists  -  skipping copy."
 } elseif (Test-Path $envExample) {
     Copy-Item $envExample $envFile
-    Write-OK ".env skopiowany z .env.example"
-    Write-Info "Mozesz edytowac $envFile aby dostosowac konfiguracje."
+    Write-OK ".env copied from .env.example"
+    Write-Info "You can edit $envFile to customize the configuration."
 } else {
-    Write-Warn "Brak .env.example  -  tworze minimalny .env..."
+    Write-Warn ".env.example not found  -  creating minimal .env..."
     @"
-# NetDoc konfiguracja  -  wygenerowany automatycznie przez setup
-# Polaczenie z PostgreSQL z HOSTA (port 15432 = zewnetrzny port kontenera)
+# NetDoc configuration  -  auto-generated by setup
+# PostgreSQL connection from HOST (port 15432 = external container port)
 DB_HOST=localhost
 DB_PORT=15432
 DB_NAME=netdoc
 DB_USER=netdoc
 DB_PASSWORD=netdoc
-# Adres bindowania API uvicorn (nie URL  -  nie dodawaj http://)
+# uvicorn API bind address (not a URL  -  do not add http://)
 API_HOST=0.0.0.0
 API_PORT=8000
 NETWORK_RANGES=
 LOG_LEVEL=INFO
 "@ | Set-Content $envFile -Encoding UTF8
-    Write-OK ".env utworzony z domyslnymi wartosciami."
+    Write-OK ".env created with default values."
 }
 
 # ── Python requirements (host-side) ───────────────────────────────────────────
 #
-# Strategia Defender: najpierw probuj zainstalowac bez zmian w konfiguracji AV.
-# Jesli pip zakonczy sie bledem I Defender jest aktywny I mamy uprawnienia admina
-# - dopiero wtedy dodajemy wykluczenia i ponawiamy probe.
-# Dzieki temu nie ingerujemy w ustawienia AV na systemach gdzie nie ma problemu
-# (np. AV wylaczony, inny produkt, uzytkownik ma juz wykluczenia).
+# Defender strategy: first try installing without modifying AV configuration.
+# Only if pip fails AND Defender is active AND we have admin rights
+# do we add exclusions and retry.
+# This avoids touching AV settings on systems where there is no problem
+# (e.g. AV disabled, different product, user already has exclusions).
 
-Write-Step "Instaluje zaleznosci Python (dla skanera na hoscie)..."
-Write-Info "  (kontenery Docker dzialaja niezaleznie  -  ta sekcja dotyczy tylko hosta)"
+Write-Step "Installing Python dependencies (for host-side scanner)..."
+Write-Info "  (Docker containers work independently  -  this section only affects the host)"
 
 $reqFile = Join-Path $ProjectDir "requirements.txt"
 if (-not (Test-Path $reqFile)) {
-    Write-Info "Pomijam  -  brak requirements.txt."
+    Write-Info "Skipping  -  requirements.txt not found."
 } elseif (-not $pythonPath) {
-    Write-Warn "Python niedostepny w PATH  -  pomijam pip install."
-    Write-Info "Uruchom recznie po restarcie: python -m pip install -r requirements.txt"
+    Write-Warn "Python not available in PATH  -  skipping pip install."
+    Write-Info "Run manually after restart: python -m pip install -r requirements.txt"
 } else {
-    # Aktualizuj pip przed instalacja zaleznosci
-    # Stary pip ma wbudowana stara wersje urllib3 ktora koliduje z nowymi pakietami
-    Write-Info "  Aktualizuje pip do najnowszej wersji..."
+    # Update pip before installing dependencies
+    # Old pip has a bundled old urllib3 version that conflicts with newer packages
+    Write-Info "  Updating pip to latest version..."
     & $PythonExeResolved -m pip install --upgrade pip --quiet 2>&1 | Out-Host
     if ($LASTEXITCODE -ne 0) {
-        Write-Warn "Aktualizacja pip nie powiodla sie  -  kontynuuje z biezaca wersja."
+        Write-Warn "pip upgrade failed  -  continuing with current version."
     }
 
     Write-Info "  Instaluje: $PythonExeResolved -m pip install -r requirements.txt"
@@ -630,16 +630,16 @@ if (-not (Test-Path $reqFile)) {
     $pipExitCode = $LASTEXITCODE
 
     if ($pipExitCode -eq 0) {
-        Write-OK "Zaleznosci zainstalowane."
+        Write-OK "Dependencies installed."
     } else {
-        Write-Warn "pip install zakonczyl sie bledem (kod: $pipExitCode)."
+        Write-Warn "pip install failed (exit code: $pipExitCode)."
 
-        # Sprawdz czy Defender moze byc przyczyna i czy mozemy cos zrobic
+        # Check if Defender may be the cause and if we can do anything about it
         $defStatus = Get-MpComputerStatus -ErrorAction SilentlyContinue
         $defActive = ($null -ne $defStatus) -and $defStatus.RealTimeProtectionEnabled
 
         if ($defActive -and $isAdmin) {
-            Write-Info "Wykryto aktywny Windows Defender  -  probuje dodac wykluczenia i powtorzyc..."
+            Write-Info "Active Windows Defender detected  -  adding exclusions and retrying..."
 
             $sitePkg = try {
                 (& $PythonExeResolved -c "import site; print(site.getsitepackages()[0])" 2>&1) |
@@ -659,25 +659,25 @@ if (-not (Test-Path $reqFile)) {
             foreach ($path in $excludePaths) {
                 Add-MpPreference -ExclusionPath $path -ErrorAction SilentlyContinue
                 if ($?) {
-                    Write-OK "Wyjatek Defender: $path"
+                    Write-OK "Defender exclusion added: $path"
                     $addedAny = $true
                 }
             }
 
             if ($addedAny) {
-                Write-Info "Powtarzam instalacje po dodaniu wyjatkow..."
+                Write-Info "Retrying installation after adding exclusions..."
                 & $PythonExeResolved -m pip install -r $reqFile --quiet 2>&1 | Out-Host
                 if ($LASTEXITCODE -eq 0) {
-                    Write-OK "Zaleznosci zainstalowane po dodaniu wyjatkow Defender."
+                    Write-OK "Dependencies installed after adding Defender exclusions."
                 } else {
-                    Write-Warn "pip install nadal konczy sie bledem."
-                    Write-Info "Sprawdz Kwarantanne Defendera i logi powyzej."
+                    Write-Warn "pip install still failing."
+                    Write-Info "Check Defender Quarantine and the log above."
                 }
             }
         } elseif ($defActive -and -not $isAdmin) {
-            Write-Warn "Aktywny Defender i brak uprawnien admina  -  nie mozna dodac wyjatkow."
-            Write-Info "Jesli Defender zablokuje impacket, uruchom instalator jako Administrator"
-            Write-Info "lub dodaj reczne wykluczenia:"
+            Write-Warn "Active Defender and no admin rights  -  cannot add exclusions."
+            Write-Info "If Defender blocks impacket, run the installer as Administrator"
+            Write-Info "or add manual exclusions:"
             $sitePkg2 = try {
                 (& $PythonExeResolved -c "import site; print(site.getsitepackages()[0])" 2>&1) |
                 Select-Object -First 1
@@ -686,23 +686,23 @@ if (-not (Test-Path $reqFile)) {
             Write-Info "  $env:TEMP"
             Write-Info "  $ProjectDir"
         } else {
-            Write-Info "Sprawdz komunikaty powyzej. Typowe przyczyny:"
-            Write-Info "  - Windows Defender blokuje budowanie impacket (dcomexec.py / dacledit.py)"
-            Write-Info "    Rozwiazanie: uruchom instalator jako Administrator"
-            Write-Info "    (instalator automatycznie doda wykluczenia Defender i ponowi probe)"
-            Write-Info "  - Inny AV zablokował impacket (sprawdz Kwarantanne)"
-            Write-Info "  - Brak Visual C++ Build Tools (wymagane przez niektore pakiety)"
-            Write-Info "  - Brak dostepu do internetu (pip.pypa.io)"
-            Write-Info "Mozesz sprobowac recznie: $PythonExeResolved -m pip install -r requirements.txt"
+            Write-Info "Check the messages above. Common causes:"
+            Write-Info "  - Windows Defender blocking impacket build (dcomexec.py / dacledit.py)"
+            Write-Info "    Solution: run installer as Administrator"
+            Write-Info "    (installer will automatically add Defender exclusions and retry)"
+            Write-Info "  - Other AV blocking impacket (check Quarantine)"
+            Write-Info "  - Missing Visual C++ Build Tools (required by some packages)"
+            Write-Info "  - No internet access (pip.pypa.io)"
+            Write-Info "You can retry manually: $PythonExeResolved -m pip install -r requirements.txt"
         }
 
-        Write-Info "Kontenery Docker zostana uruchomione niezaleznie od tego bledu."
+        Write-Info "Docker containers will start independently of this error."
     }
 }
 
-# ── Wykryj i oczyscic poprzednia instalacje NetDoc ────────────────────────────
+# ── Detect and clean previous NetDoc installation ─────────────────────────────
 
-Write-Step "Sprawdzam czy istnieja poprzednie instalacje NetDoc..."
+Write-Step "Checking for existing NetDoc installations..."
 
 Set-Location $ProjectDir
 
@@ -712,80 +712,86 @@ $oldVolumes    = @(docker volume ls --filter "name=netdoc" --format "{{.Name}}" 
                    Where-Object { $_ -ne "" })
 
 if ($oldContainers.Count -gt 0 -or $oldVolumes.Count -gt 0) {
-    Write-Warn "Znaleziono poprzednia instalacje NetDoc:"
+    Write-Warn "Existing NetDoc installation found:"
     if ($oldContainers.Count -gt 0) {
-        Write-Info "  Kontenery ($($oldContainers.Count)):"
+        Write-Info "  Containers ($($oldContainers.Count)):"
         foreach ($c in $oldContainers) { Write-Info "    - $c" }
     }
     if ($oldVolumes.Count -gt 0) {
-        Write-Info "  Voluminy ($($oldVolumes.Count)):"
+        Write-Info "  Volumes ($($oldVolumes.Count)):"
         foreach ($v in $oldVolumes) { Write-Info "    - $v" }
     }
 
     Write-Host ""
-    Write-Host "  Masz dwie opcje:" -ForegroundColor White
-    Write-Host "   [T]  Usun stare kontenery i dane (czysta instalacja)" -ForegroundColor Yellow
-    Write-Host "        UWAGA: usunie baze danych, metryki i konfiguracje!" -ForegroundColor DarkGray
-    Write-Host "   [N]  Zachowaj dane (aktualizacja / restart)" -ForegroundColor Cyan
-    Write-Host "        Stare kontenery zostana zastapione nowymi obrazami," -ForegroundColor DarkGray
-    Write-Host "        ale dane w bazie i konfiguracja zostana zachowane." -ForegroundColor DarkGray
+    Write-Host "  You have two options:" -ForegroundColor White
+    Write-Host "   [Y]  Remove old containers and data (clean install)" -ForegroundColor Yellow
+    Write-Host "        WARNING: deletes the database, metrics and configuration!" -ForegroundColor DarkGray
+    Write-Host "   [N]  Keep data (update / restart)" -ForegroundColor Cyan
+    Write-Host "        Old containers will be replaced with new images," -ForegroundColor DarkGray
+    Write-Host "        but database data and configuration will be preserved." -ForegroundColor DarkGray
     Write-Host ""
 
-    $cleanUp = Read-Host "  Usunac stare dane i wykonac czysta instalacje? [T/N]"
+    $cleanUp = Read-Host "  Remove old data and perform a clean install? [Y/N]"
 
-    if ($cleanUp -eq "T" -or $cleanUp -eq "t") {
-        Write-Info "Usuwam stare kontenery i voluminy..."
+    if ($cleanUp -eq "Y" -or $cleanUp -eq "y") {
+        Write-Info "Removing old containers and volumes..."
         docker compose down --volumes --remove-orphans 2>&1 | Out-Host
         if ($LASTEXITCODE -eq 0) {
-            Write-OK "Stare kontenery i dane usuniete  -  czysta instalacja."
+            Write-OK "Old containers and data removed  -  clean install."
         } else {
-            Write-Warn "Czyszczenie zakonczone z ostrzezeniem (kod: $LASTEXITCODE)."
-            Write-Info "Kontynuuje  -  docker compose up nadpisze stare kontenery."
+            Write-Warn "Cleanup completed with warning (code: $LASTEXITCODE)."
+            Write-Info "Continuing  -  docker compose up will replace old containers."
         }
     } else {
-        Write-OK "Dane zachowane  -  instaluje nowe obrazy (aktualizacja)."
+        Write-Info "Stopping old containers (data preserved)..."
+        docker compose down --remove-orphans 2>&1 | Out-Host
+        if ($LASTEXITCODE -eq 0) {
+            Write-OK "Old containers stopped  -  volume data preserved."
+        } else {
+            Write-Warn "Stop completed with warning (code: $LASTEXITCODE)."
+        }
     }
 } else {
-    Write-OK "Brak poprzedniej instalacji  -  czysta instalacja."
+    Write-OK "No previous installation found  -  clean install."
 }
 
 # ── docker compose up ─────────────────────────────────────────────────────────
 
-Write-Step "Uruchamiam kontenery Docker (docker compose up -d --build)..."
-Write-Info "Pierwsze uruchomienie moze zajac kilka minut  -  pobieranie obrazow bazowych."
+Write-Step "Starting Docker containers (docker compose up -d --build)..."
+Write-Info "First run may take a few minutes  -  downloading base images."
 Write-Host ""
-Write-Warn "WAZNE  -  wymagane ustawienia Docker Desktop przed uruchomieniem:"
+Write-Warn "IMPORTANT  -  required Docker Desktop settings before starting:"
 Write-Info "  1. Docker Desktop -> Settings -> Advanced:"
-Write-Info "     Wlacz: 'Allow the default Docker socket to be used (requires password)'"
-Write-Info "     (wymagane przez serwis web i promtail  -  dostep do /var/run/docker.sock)"
-Write-Info "  2. Kontenery api i ping-worker wymagaja uprawnien NET_RAW (ICMP ping)."
-Write-Info "     Docker Desktop na Windows obsluguje to domyslnie  -  jesli ping nie dziala,"
-Write-Info "     sprawdz ustawienia izolacji Windows Defender Firewall dla Dockera."
+Write-Info "     Enable: 'Allow the default Docker socket to be used (requires password)'"
+Write-Info "     (required by the web service and promtail  -  access to /var/run/docker.sock)"
+Write-Info "  2. The api and ping-worker containers require NET_RAW capability (ICMP ping)."
+Write-Info "     Docker Desktop on Windows handles this by default  -  if ping does not work,"
+Write-Info "     check Windows Defender Firewall isolation settings for Docker."
 Write-Host ""
 
-# Uwaga: NIE uzywamy "2>&1 | Out-Host" bo PowerShell konwertuje stderr native commandow
-# na ErrorRecord i Start-Transcript zapisuje je jako bledy (NativeCommandError).
-# Docker compose wypisuje output samodzielnie — Transcript i tak go przechwytuje.
+# Note: do NOT use "2>&1 | Out-Host" because PowerShell converts stderr of native commands
+# to ErrorRecord and Start-Transcript records them as errors (NativeCommandError).
+# Docker compose writes its own output — Transcript captures it anyway.
 docker compose up -d --build
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Fail "docker compose up zakonczyl sie bledem."
-    Write-Info "Sprawdz komunikaty powyzej. Typowe przyczyny:"
-    Write-Info "  - Port 80/8000 jest zajety przez inna aplikacje"
-    Write-Info "  - Brak pamieci RAM (Docker wymaga min. 4 GB)"
-    Write-Info "  - Docker Desktop nie jest uruchomiony"
-    Write-Info "  - Brak uprawnien Docker socket: Settings -> Advanced ->"
+    Write-Fail "docker compose up failed."
+    Write-Info "Check the messages above. Common causes:"
+    Write-Info "  - Port 80/8000 already in use by another application"
+    Write-Info "  - Insufficient RAM (Docker requires at least 4 GB)"
+    Write-Info "  - Docker Desktop is not running"
+    Write-Info "  - Missing Docker socket permission: Settings -> Advanced ->"
     Write-Info "    'Allow the default Docker socket to be used'"
-    Write-Info "  - Blad budowania obrazu  -  sprawdz dostep do internetu (pip, apt)"
-    Show-Pause "Nacisnij Enter aby zamknac..."
+    Write-Info "  - Image build error  -  check internet access (pip, apt)"
+    Show-Pause "Press Enter to close..."
     exit 1
 }
 
-# ── Sprawdz stan kontenerow ───────────────────────────────────────────────────
+# ── Check container status ────────────────────────────────────────────────────
 
-Write-Step "Sprawdzam stan kontenerow NetDoc..."
+Write-Step "Checking NetDoc container status..."
 
-# Lista oczekiwanych kontenerow (nazwy z docker-compose.yml)
+# List of expected containers (names from docker-compose.yml)
 $ExpectedContainers = @(
     "netdoc-postgres",
     "netdoc-api",
@@ -806,7 +812,7 @@ $ExpectedContainers = @(
     "netdoc-nginx"
 )
 
-$maxContainerWait = 120   # sekund lacznego oczekiwania
+$maxContainerWait = 120   # total seconds to wait
 $containerWaited  = 0
 $allUp            = $false
 
@@ -835,7 +841,7 @@ while ($containerWaited -lt $maxContainerWait) {
 
 Write-Host ""
 
-# Wyswietl status kazdego kontenera
+# Display status of each container
 $running = @(docker ps --filter "name=netdoc" --format "{{.Names}}" 2>&1 |
              Where-Object { $_ -ne "" })
 
@@ -843,22 +849,22 @@ foreach ($c in $ExpectedContainers) {
     if ($running -contains $c) {
         Write-OK $c
     } else {
-        Write-Fail "$c  -  nie dziala!"
+        Write-Fail "$c  -  not running!"
     }
 }
 
 if (-not $allUp) {
     $notUp = $ExpectedContainers | Where-Object { $running -notcontains $_ }
     Write-Host ""
-    Write-Warn "Nastepujace kontenery nie uruchomily sie w czasie $maxContainerWait s:"
+    Write-Warn "The following containers did not start within $maxContainerWait s:"
     foreach ($c in $notUp) { Write-Info "  - $c" }
-    Write-Info "Sprawdz logi: docker logs $($notUp[0])"
-    Write-Info "Lub uzyj: powershell -File netdoc_docker.ps1 -> opcja [6]"
+    Write-Info "Check logs: docker logs $($notUp[0])"
+    Write-Info "Or use: powershell -File netdoc_docker.ps1 -> option [6]"
 }
 
-# ── Poczekaj az Panel Web odpowie ─────────────────────────────────────────────
+# ── Wait for Web Panel ────────────────────────────────────────────────────────
 
-Write-Step "Czekam az Panel Web bedzie dostepny (http://localhost)..."
+Write-Step "Waiting for Web Panel to become available (http://localhost)..."
 
 $webReady = $false
 $maxWait  = 60
@@ -887,23 +893,23 @@ while ($waited -lt $maxWait) {
 Write-Host ""
 
 if ($webReady) {
-    Write-OK "Panel Web dostepny!"
+    Write-OK "Web Panel is available!"
     Write-Host ""
-    Write-Host "  Otwieram karte Urzadzenia w przegladarce..." -ForegroundColor Cyan
-    Write-Info "  (urzadzenia pojawia sie automatycznie po zakonczeniu pierwszego skanu)"
+    Write-Host "  Opening Devices tab in browser..." -ForegroundColor Cyan
+    Write-Info "  (devices will appear automatically after the first scan completes)"
     Start-Process "http://localhost/devices"
 } else {
-    Write-Warn "Panel Web nie odpowiada po $maxWait sekundach."
-    Write-Info "Sprawdz logi: docker logs netdoc-web"
+    Write-Warn "Web Panel did not respond within $maxWait seconds."
+    Write-Info "Check logs: docker logs netdoc-web"
 }
 
-# ── Sprawdz API ──────────────────────────────────────────────────────────────
+# ── Check API ────────────────────────────────────────────────────────────────
 
 try {
     $apiR = Invoke-WebRequest -Uri "http://localhost:8000/api/devices/?limit=1" -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
-    Write-OK "API dostepne (HTTP $($apiR.StatusCode))"
+    Write-OK "API available (HTTP $($apiR.StatusCode))"
 } catch {
-    Write-Warn "API (port 8000) nie odpowiada  -  sprawdz logi: docker logs netdoc-api"
+    Write-Warn "API (port 8000) not responding  -  check logs: docker logs netdoc-api"
 }
 
 # ── Podsumowanie ─────────────────────────────────────────────────────────────
@@ -911,11 +917,11 @@ try {
 Write-Host ""
 if ($allUp -and $webReady) {
     Write-Host "  ================================================" -ForegroundColor Cyan
-    Write-Host "   NetDoc jest gotowy!" -ForegroundColor Green
+    Write-Host "   NetDoc is ready!" -ForegroundColor Green
     Write-Host "  ================================================" -ForegroundColor Cyan
 } else {
     Write-Host "  ================================================" -ForegroundColor Cyan
-    Write-Host "   NetDoc uruchomiony (z ostrzezeniami)" -ForegroundColor Yellow
+    Write-Host "   NetDoc started (with warnings)" -ForegroundColor Yellow
     Write-Host "  ================================================" -ForegroundColor Cyan
 }
 Write-Host ""
@@ -923,60 +929,60 @@ Write-Host "   Panel Admin   http://localhost" -ForegroundColor White
 Write-Host "   API           http://localhost:8000/docs" -ForegroundColor White
 Write-Host "   Grafana        http://localhost/grafana   (admin / netdoc)" -ForegroundColor White
 Write-Host ""
-Write-Host "  Nastepne kroki:" -ForegroundColor Cyan
-Write-Host "   1. Pierwsze skanowanie sieci:" -ForegroundColor White
+Write-Host "  Next steps:" -ForegroundColor Cyan
+Write-Host "   1. First network scan:" -ForegroundColor White
 Write-Host "      $pythonCmd run_scanner.py --once" -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "   2. Zarzadzanie Docker:" -ForegroundColor White
+Write-Host "   2. Docker management:" -ForegroundColor White
 Write-Host "      powershell -ExecutionPolicy Bypass -File netdoc_docker.ps1" -ForegroundColor DarkGray
 Write-Host ""
 
-# ── Pierwsze skanowanie sieci ─────────────────────────────────────────────────
+# ── First network scan ────────────────────────────────────────────────────────
 
 if ($allUp -and $pythonCmd) {
-    Write-Step "Uruchamiam pierwsze skanowanie sieci..."
-    Write-Info "Skaner wykryje urzadzenia w sieci lokalnej (ping + nmap + ARP)."
-    Write-Info "Wyniki pojawia sie w panelu po 2-5 minutach."
+    Write-Step "Running first network scan..."
+    Write-Info "Scanner will discover devices on the local network (ping + nmap + ARP)."
+    Write-Info "Results will appear in the panel within 2-5 minutes."
     Write-Host ""
 
-    # Zaktualizuj sciezke Pythona w install_autostart.ps1 jesli ma hardcoded wartosc
+    # Update Python path in install_autostart.ps1 if it has a hardcoded value
     $autostartFile = Join-Path $ProjectDir "install_autostart.ps1"
     if ((Test-Path $autostartFile) -and $pythonPath) {
         $autostartContent = Get-Content $autostartFile -Raw
         $updated = $autostartContent -replace '\$PythonExe\s*=\s*"[^"]*"', "`$PythonExe       = `"$pythonPath`""
         if ($updated -ne $autostartContent) {
             Set-Content $autostartFile -Value $updated -Encoding UTF8 -NoNewline
-            Write-OK "Zaktualizowano sciezke Pythona w install_autostart.ps1: $pythonPath"
+            Write-OK "Updated Python path in install_autostart.ps1: $pythonPath"
         }
     }
 
     $scanScript = Join-Path $ProjectDir "run_scanner.py"
     if (Test-Path $scanScript) {
-        $env:PYTHONUNBUFFERED = "1"   # wymus natychmiastowe flusowanie logow Pythona do transkryptu
+        $env:PYTHONUNBUFFERED = "1"   # force immediate Python log flushing to transcript
         try {
             & $PythonExeResolved $scanScript --once 2>&1 | Out-Host
         } finally {
             Remove-Item -Path env:PYTHONUNBUFFERED -ErrorAction SilentlyContinue
         }
         if ($LASTEXITCODE -eq 0) {
-            Write-OK "Pierwsze skanowanie zakonczone."
+            Write-OK "First scan completed."
         } else {
-            Write-Warn "Skanowanie zakonczone z ostrzezeniem (kod: $LASTEXITCODE)."
-            Write-Info "Mozesz uruchomic ponownie: $pythonCmd run_scanner.py --once"
+            Write-Warn "Scan completed with warning (code: $LASTEXITCODE)."
+            Write-Info "You can run it again: $pythonCmd run_scanner.py --once"
         }
     } else {
-        Write-Warn "Nie znaleziono run_scanner.py  -  pomijam skanowanie."
+        Write-Warn "run_scanner.py not found  -  skipping scan."
     }
 } elseif (-not $allUp) {
-    Write-Warn "Pomijam skanowanie  -  nie wszystkie kontenery sa uruchomione."
+    Write-Warn "Skipping scan  -  not all containers are running."
 } else {
-    Write-Warn "Pomijam skanowanie  -  Python niedostepny."
-    Write-Info "Uruchom recznie: python run_scanner.py --once"
+    Write-Warn "Skipping scan  -  Python not available."
+    Write-Info "Run manually: python run_scanner.py --once"
 }
 
 # ── Task Scheduler  -  autostart i watchdog ──────────────────────────────────
 
-Write-Step "Rejestruje zadania w Task Scheduler (NetDocScanner + NetDoc Watchdog)..."
+Write-Step "Registering Task Scheduler tasks (NetDocScanner + NetDoc Watchdog)..."
 
 $autostartScript = Join-Path $ProjectDir "install_autostart.ps1"
 $watchdogScript  = Join-Path $ProjectDir "install_watchdog.ps1"
@@ -984,32 +990,32 @@ $watchdogScript  = Join-Path $ProjectDir "install_watchdog.ps1"
 if (Test-Path $autostartScript) {
     & powershell.exe -NonInteractive -ExecutionPolicy Bypass -File $autostartScript 2>&1 | Out-Host
     if ($LASTEXITCODE -eq 0) {
-        Write-OK "Zadanie 'NetDocScanner' zarejestrowane w Task Scheduler."
+        Write-OK "Task 'NetDocScanner' registered in Task Scheduler."
     } else {
-        Write-Warn "Problem z rejestracją 'NetDocScanner'  -  uruchom recznie: install_autostart.ps1"
+        Write-Warn "Failed to register 'NetDocScanner'  -  run manually: install_autostart.ps1"
     }
 } else {
-    Write-Warn "Nie znaleziono install_autostart.ps1  -  pomijam rejestracje skanera."
+    Write-Warn "install_autostart.ps1 not found  -  skipping scanner registration."
 }
 
 if (Test-Path $watchdogScript) {
     & powershell.exe -NonInteractive -ExecutionPolicy Bypass -File $watchdogScript 2>&1 | Out-Host
     if ($LASTEXITCODE -eq 0) {
-        Write-OK "Zadanie 'NetDoc Watchdog' zarejestrowane w Task Scheduler."
+        Write-OK "Task 'NetDoc Watchdog' registered in Task Scheduler."
     } else {
-        Write-Warn "Problem z rejestracją 'NetDoc Watchdog'  -  uruchom recznie: install_watchdog.ps1"
+        Write-Warn "Failed to register 'NetDoc Watchdog'  -  run manually: install_watchdog.ps1"
     }
 } else {
-    Write-Warn "Nie znaleziono install_watchdog.ps1  -  pomijam rejestracje watchdoga."
+    Write-Warn "install_watchdog.ps1 not found  -  skipping watchdog registration."
 }
 
 
 Write-Host ""
-Write-Host "  Log debugowania zapisany w:" -ForegroundColor DarkGray
+Write-Host "  Debug log saved to:" -ForegroundColor DarkGray
 Write-Host "  $LogFile" -ForegroundColor DarkGray
-Write-Host "  (przydatny przy zglaszaniu bledow)" -ForegroundColor DarkGray
+Write-Host "  (attach when reporting issues)" -ForegroundColor DarkGray
 Write-Host ""
 
 Stop-Transcript | Out-Null
 
-Show-Pause "Nacisnij Enter aby zamknac instalator..."
+Show-Pause "Press Enter to close the installer..."

@@ -1,9 +1,9 @@
-﻿# netdoc_watchdog.ps1
-# Watchdog NetDoc - sprawdza stan kontenerow i uruchamia brakujace.
-# Uruchamiaj co 5 min przez Task Scheduler (zainstaluj: opcja [8] w netdoc_docker.ps1).
+# netdoc_watchdog.ps1
+# NetDoc Watchdog - checks container status and starts any missing ones.
+# Run every 5 min via Task Scheduler (install: option [8] in netdoc_docker.ps1).
 
 param(
-    [switch]$Quiet   # Pomija logi gdy wszystko OK
+    [switch]$Quiet   # Suppresses logs when everything is OK
 )
 
 $ProjectDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -49,11 +49,11 @@ function Write-Log {
             $lines | Select-Object -Last ([int]($MaxLogLines / 2)) | Set-Content $LogFile -Encoding UTF8
         }
     } catch {
-        # ignoruj bledy zapisu logu
+        # ignore log write errors
     }
 }
 
-# ── Funkcja: czekaj az Docker odpowie (bez restartu) ───────────────────────────
+# ── Function: wait for Docker to respond (without restarting) ──────────────────
 function Wait-ForDocker {
     param([int]$MaxWaitSec = 180, [int]$AlreadyWaitedSec = 0)
     $waited = $AlreadyWaitedSec
@@ -62,45 +62,45 @@ function Wait-ForDocker {
         $waited += 10
         $result = docker info 2>&1
         if ($LASTEXITCODE -eq 0) {
-            Write-Log "Docker Desktop odpowiada po ${waited}s — OK" "INFO"
+            Write-Log "Docker Desktop responding after ${waited}s — OK" "INFO"
             return $true
         }
-        Write-Log "Czekam na Docker... ${waited}s/${MaxWaitSec}s" "INFO"
+        Write-Log "Waiting for Docker... ${waited}s/${MaxWaitSec}s" "INFO"
     }
     return $false
 }
 
-# ── Funkcja: naprawa Docker Desktop ────────────────────────────────────────────
+# ── Function: repair Docker Desktop ───────────────────────────────────────────
 function Repair-DockerDesktop {
-    Write-Log "Docker nie odpowiada — próba naprawy Docker Desktop..." "WARN"
+    Write-Log "Docker not responding — attempting Docker Desktop repair..." "WARN"
 
-    # Krok 1: Sprawdz czy Docker Desktop juz sie uruchamia (nie zabijaj jesli niedawno startowal)
+    # Step 1: Check if Docker Desktop is already starting (don't kill if recently started)
     $ddProc = Get-Process -Name "Docker Desktop" -ErrorAction SilentlyContinue | Sort-Object StartTime | Select-Object -First 1
     if ($ddProc) {
         $runningSecs = [int]((Get-Date) - $ddProc.StartTime).TotalSeconds
         if ($runningSecs -lt 180) {
-            Write-Log "Docker Desktop uruchamia sie od ${runningSecs}s — czekam zamiast restartowac (moze byc cold start)..." "WARN"
+            Write-Log "Docker Desktop has been starting for ${runningSecs}s — waiting instead of restarting (may be a cold start)..." "WARN"
             $ok = Wait-ForDocker -MaxWaitSec 180 -AlreadyWaitedSec $runningSecs
             if ($ok) { return $true }
-            Write-Log "Docker Desktop nie odpowiedzial po 180s od startu — wymuszam restart." "WARN"
+            Write-Log "Docker Desktop did not respond within 180s of starting — forcing restart." "WARN"
         } else {
-            Write-Log "Docker Desktop dziala od ${runningSecs}s ale nie odpowiada — wymuszam restart." "WARN"
+            Write-Log "Docker Desktop has been running for ${runningSecs}s but is not responding — forcing restart." "WARN"
         }
     }
 
-    # Krok 2: Kill wszystkich procesow Docker Desktop i backendu
+    # Step 2: Kill all Docker Desktop and backend processes
     $dockerProcs = @("Docker Desktop", "com.docker.backend", "dockerd", "com.docker.dev-envs")
     foreach ($proc in $dockerProcs) {
         $p = Get-Process -Name $proc -ErrorAction SilentlyContinue
         if ($p) {
-            Write-Log "Zatrzymuję: $proc (PID $($p.Id -join ','))" "WARN"
+            Write-Log "Stopping: $proc (PID $($p.Id -join ','))" "WARN"
             Stop-Process -Name $proc -Force -ErrorAction SilentlyContinue
         }
     }
 
     Start-Sleep -Seconds 5
 
-    # Krok 3: Upewnij sie ze procesy sa martwe
+    # Step 3: Make sure processes are dead
     foreach ($proc in $dockerProcs) {
         $p = Get-Process -Name $proc -ErrorAction SilentlyContinue
         if ($p) {
@@ -110,168 +110,168 @@ function Repair-DockerDesktop {
 
     Start-Sleep -Seconds 3
 
-    # Krok 4: Uruchom Docker Desktop na nowo
+    # Step 4: Start Docker Desktop again
     $dockerExe = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
     if (-not (Test-Path $dockerExe)) {
-        Write-Log "BLAD: Nie znaleziono Docker Desktop w: $dockerExe" "ERROR"
+        Write-Log "ERROR: Docker Desktop not found at: $dockerExe" "ERROR"
         return $false
     }
 
-    Write-Log "Uruchamiam Docker Desktop..." "WARN"
+    Write-Log "Starting Docker Desktop..." "WARN"
     Start-Process -FilePath $dockerExe
 
-    # Krok 5: Czekaj az Docker pipe bedzie dostepny (max 180s — cold start moze trwac 2-3 min)
+    # Step 5: Wait for Docker pipe to become available (max 180s — cold start can take 2-3 min)
     $ok = Wait-ForDocker -MaxWaitSec 180
 
     if (-not $ok) {
-        Write-Log "BLAD: Docker Desktop nie uruchomił sie w ciagu 180s!" "ERROR"
+        Write-Log "ERROR: Docker Desktop did not start within 180s!" "ERROR"
         return $false
     }
 
-    # Krok 6: Dodatkowe 5s na stabilizacje daemona przed uruchomieniem kontenerow
+    # Step 6: Additional 5s for daemon to stabilize before starting containers
     Start-Sleep -Seconds 5
     return $true
 }
 
-# ── Sprawdz czy Docker daemon dziala — z auto-naprawa ──────────────────────────
+# ── Check if Docker daemon is running — with auto-repair ───────────────────────
 $dockerOk = $false
 $dockerInfo = docker info 2>&1
 if ($LASTEXITCODE -eq 0) {
     $dockerOk = $true
 } else {
-    # Docker nie odpowiada — sprawdz czy to chwilowy problem czy zawieszenie
-    Write-Log "docker info zwrocil blad: $($dockerInfo | Select-Object -First 1)" "WARN"
+    # Docker not responding — check if it's a temporary issue or a hang
+    Write-Log "docker info returned an error: $($dockerInfo | Select-Object -First 1)" "WARN"
 
-    # Proba naprawy
+    # Attempt repair
     $repaired = Repair-DockerDesktop
     if (-not $repaired) {
-        Write-Log "Naprawa Dockera nieudana — watchdog konczy cykl." "ERROR"
+        Write-Log "Docker repair failed — watchdog ending cycle." "ERROR"
         exit 1
     }
     $dockerOk = $true
-    Write-Log "Docker naprawiony pomyslnie." "INFO"
+    Write-Log "Docker repaired successfully." "INFO"
 }
 
-# Pobierz liste dzialajacych kontenerow
+# Get list of running containers
 $runningNames = @(docker ps --filter "name=netdoc" --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" })
 
-# Porownaj z oczekiwana lista
+# Compare with expected list
 $missing = $ExpectedContainers | Where-Object { $runningNames -notcontains $_ }
 
 if ($missing.Count -eq 0) {
     if (-not $Quiet) {
-        Write-Log "Wszystkie $($ExpectedContainers.Count) kontenerow dziala - OK"
+        Write-Log "All $($ExpectedContainers.Count) containers running - OK"
     }
-    # Nie wychodzi — sprawdza jeszcze lab ponizej
+    # Does not exit — checks lab below
 } else {
-    Write-Log "Brakujace/zatrzymane: $($missing -join ', ')" "WARN"
-    Write-Log "Uruchamianie: docker compose up -d ..." "WARN"
+    Write-Log "Missing/stopped: $($missing -join ', ')" "WARN"
+    Write-Log "Starting: docker compose up -d ..." "WARN"
 
-    # Pierwsza proba: up -d (uzywa istniejacych obrazow)
+    # First attempt: up -d (uses existing images)
     $composeOut = docker compose -f $ComposeFile up -d 2>&1
     $composeOk  = ($LASTEXITCODE -eq 0)
 
     if (-not $composeOk) {
-        # Obraz mogl zostac skasowany - proba z przebudowa
-        Write-Log "up -d nie powiodlo sie (brakuje obrazu?) - proba z --build ..." "WARN"
+        # Image may have been deleted — try with rebuild
+        Write-Log "up -d failed (missing image?) — retrying with --build ..." "WARN"
         $composeOut = docker compose -f $ComposeFile up -d --build 2>&1
         $composeOk  = ($LASTEXITCODE -eq 0)
     }
 
     if (-not $composeOk) {
-        Write-Log "BLAD: docker compose up nie powiodlo sie!" "ERROR"
+        Write-Log "ERROR: docker compose up failed!" "ERROR"
         Write-Log ($composeOut | Out-String).Trim() "ERROR"
         exit 1
     }
 
-    # Weryfikacja po 12s
+    # Verify after 12s
     Start-Sleep -Seconds 12
     $nowRunning   = @(docker ps --filter "name=netdoc" --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" })
     $stillMissing = $ExpectedContainers | Where-Object { $nowRunning -notcontains $_ }
 
     if ($stillMissing.Count -eq 0) {
-        Write-Log "Naprawa OK - wszystkie kontenery dzialaja."
+        Write-Log "Repair OK - all containers running."
     } else {
-        Write-Log "BLAD: nadal brakuje: $($stillMissing -join ', ')" "ERROR"
+        Write-Log "ERROR: still missing: $($stillMissing -join ', ')" "ERROR"
         exit 1
     }
 }
 
-# ── Skaner — pilnowanie lock file i regularnosci uruchomien ───────────────────
+# ── Scanner — monitoring lock file and run regularity ─────────────────────────
 $ScannerPid  = Join-Path $ProjectDir "scanner.pid"
 $ScannerLog  = Join-Path $ProjectDir "logs\scanner.log"
 $TaskName    = "NetDocScanner"
 
-# 1. Sprawdz czy lock file istnieje ale proces jest martwy (stale lock)
+# 1. Check if lock file exists but process is dead (stale lock)
 if (Test-Path $ScannerPid) {
     $pidContent = Get-Content $ScannerPid -ErrorAction SilentlyContinue
     $pidValue   = [int]($pidContent -as [int])
     if ($pidValue -gt 0) {
         $proc = Get-Process -Id $pidValue -ErrorAction SilentlyContinue
         if ($null -eq $proc) {
-            Write-Log "Stale lock file scanner.pid (PID=$pidValue martwy) — usuwam." "WARN"
+            Write-Log "Stale scanner.pid lock file (PID=$pidValue is dead) — removing." "WARN"
             Remove-Item $ScannerPid -Force -ErrorAction SilentlyContinue
         } else {
-            Write-Log "Skaner dziala (PID=$pidValue)." "INFO"
+            Write-Log "Scanner is running (PID=$pidValue)." "INFO"
         }
     } else {
-        Write-Log "Nieprawidlowy scanner.pid — usuwam." "WARN"
+        Write-Log "Invalid scanner.pid — removing." "WARN"
         Remove-Item $ScannerPid -Force -ErrorAction SilentlyContinue
     }
 }
 
-# 2. Sprawdz czy task skanera istnieje — jesli nie, zarejestuj go ponownie
+# 2. Check if scanner task exists — if not, re-register it
 $scannerTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($null -eq $scannerTask) {
-    Write-Log "WARN: Brak zadania Task Scheduler '$TaskName' — rejestruje przez install_autostart.ps1..." "WARN"
+    Write-Log "WARN: Task Scheduler task '$TaskName' not found — registering via install_autostart.ps1..." "WARN"
     $installScript = Join-Path $ProjectDir "install_autostart.ps1"
     if (Test-Path $installScript) {
         $installOut = & powershell -ExecutionPolicy Bypass -NonInteractive -File $installScript 2>&1
         if ($LASTEXITCODE -eq 0) {
-            Write-Log "NetDocScanner: zarejestrowano pomyslnie." "INFO"
+            Write-Log "NetDocScanner: registered successfully." "INFO"
             Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-            Write-Log "NetDocScanner: uruchomiono po rejestracji." "INFO"
+            Write-Log "NetDocScanner: started after registration." "INFO"
         } else {
-            Write-Log "BLAD: nie udalo sie zarejestrowac '$TaskName': $($installOut | Select-Object -First 2 | Out-String)" "ERROR"
+            Write-Log "ERROR: failed to register '$TaskName': $($installOut | Select-Object -First 2 | Out-String)" "ERROR"
         }
     } else {
-        Write-Log "BLAD: brak $installScript — nie mozna zarejestrowac skanera!" "ERROR"
+        Write-Log "ERROR: $installScript not found — cannot register scanner!" "ERROR"
     }
 } else {
-    # Task istnieje — sprawdz czy uruchamial sie w ciagu ostatnich 30 min
+    # Task exists — check if it ran within the last 30 min
     try {
         $taskInfo  = Get-ScheduledTaskInfo -TaskName $TaskName -ErrorAction Stop
         $lastRun   = $taskInfo.LastRunTime
         $minsSince = [int]((Get-Date) - $lastRun).TotalMinutes
         if ($minsSince -gt 30) {
-            Write-Log "Skaner nie uruchamial sie od ${minsSince} min — wymuszam uruchomienie." "WARN"
+            Write-Log "Scanner has not run for ${minsSince} min — forcing execution." "WARN"
             if (-not (Test-Path $ScannerPid)) {
                 Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-                Write-Log "NetDocScanner — wymuszone uruchomienie." "WARN"
+                Write-Log "NetDocScanner — forced execution." "WARN"
             } else {
-                Write-Log "scanner.pid istnieje — skan w toku, pomijam wymuszenie." "INFO"
+                Write-Log "scanner.pid exists — scan in progress, skipping forced run." "INFO"
             }
         } else {
             if (-not $Quiet) {
-                Write-Log "Skaner OK — ostatnie uruchomienie $minsSince min temu."
+                Write-Log "Scanner OK — last run $minsSince min ago."
             }
         }
     } catch {
-        Write-Log "Nie mozna odczytac stanu NetDocScanner task: $_" "WARN"
+        Write-Log "Cannot read NetDocScanner task state: $_" "WARN"
     }
 }
 
-# ── Lab environment — pilnowanie wg ustawienia lab_monitoring_enabled ──────────
+# ── Lab environment — monitoring based on lab_monitoring_enabled setting ───────
 $LabComposeFile = Join-Path $ProjectDir "docker-compose.lab.yml"
 
-# Odczytaj ustawienie lab_monitoring_enabled z API (z fallbackiem na 0 gdy API niedostepne)
+# Read lab_monitoring_enabled setting from API (fallback to 0 if API unavailable)
 $labMonitoringEnabled = $false
 try {
     $apiSettings = Invoke-RestMethod -Uri "http://localhost:8000/api/scan/settings" `
         -Method Get -TimeoutSec 4 -ErrorAction Stop
     $labMonitoringEnabled = ($apiSettings.lab_monitoring_enabled -eq 1)
 } catch {
-    Write-Log "Lab: nie mozna odczytac ustawien z API (${_}) — pomijam monitorowanie lab." "INFO"
+    Write-Log "Lab: cannot read settings from API (${_}) — skipping lab monitoring." "INFO"
 }
 
 if ($labMonitoringEnabled) {
@@ -279,45 +279,45 @@ if ($labMonitoringEnabled) {
     $labAll     = @(docker ps -a --filter "name=netdoc-lab-" --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" })
 
     if ($labAll.Count -eq 0) {
-        # Kontenery nie zostaly jeszcze zbudowane
-        Write-Log "Lab monitoring wlaczony, ale kontenery nie istnieja — uruchom: docker compose -f docker-compose.lab.yml up -d --build" "WARN"
+        # Containers have not been built yet
+        Write-Log "Lab monitoring enabled, but containers do not exist — run: docker compose -f docker-compose.lab.yml up -d --build" "WARN"
     } elseif ($labRunning.Count -lt $labAll.Count) {
-        # Czesc lub wszystkie kontenery zatrzymane — uruchom
+        # Some or all containers are stopped — start them
         $stopped = $labAll.Count - $labRunning.Count
-        Write-Log "Lab: $stopped/$($labAll.Count) kontenerow zatrzymanych — uruchamianie..." "WARN"
+        Write-Log "Lab: $stopped/$($labAll.Count) containers stopped — starting..." "WARN"
         if (Test-Path $LabComposeFile) {
             $labOut = docker compose -f $LabComposeFile up -d 2>&1
             if ($LASTEXITCODE -eq 0) {
-                Write-Log "Lab: uruchomiono pomyslnie."
+                Write-Log "Lab: started successfully."
                 Start-Sleep -Seconds 5
                 $labRunning = @(docker ps --filter "name=netdoc-lab-" --format "{{.Names}}" 2>&1 | Where-Object { $_ -ne "" })
             } else {
-                Write-Log "BLAD Lab: docker compose up -d nieudane: $($labOut | Select-Object -First 3 | Out-String)" "ERROR"
+                Write-Log "ERROR Lab: docker compose up -d failed: $($labOut | Select-Object -First 3 | Out-String)" "ERROR"
             }
         } else {
-            Write-Log "WARN: brak pliku $LabComposeFile — nie mozna auto-startowac lab." "WARN"
+            Write-Log "WARN: $LabComposeFile not found — cannot auto-start lab." "WARN"
         }
     } else {
         if (-not $Quiet) {
-            Write-Log "Lab: wszystkie $($labRunning.Count) kontenerow dziala — OK"
+            Write-Log "Lab: all $($labRunning.Count) containers running — OK"
         }
     }
 
-    # Polacz workery z siecia netdoc_lab (idempotentne — "already exists" jest OK)
+    # Connect workers to netdoc_lab network (idempotent — "already exists" is OK)
     if ($labRunning.Count -gt 0) {
         foreach ($worker in @("netdoc-ping", "netdoc-snmp", "netdoc-cred", "netdoc-vuln")) {
             $out = docker network connect netdoc_lab $worker 2>&1
             if ($LASTEXITCODE -eq 0) {
-                Write-Log "Lab: $worker dolaczony do netdoc_lab"
+                Write-Log "Lab: $worker connected to netdoc_lab"
             } elseif ($out -match "already exists") {
-                # Juz podlaczony — OK, pomijamy log
+                # Already connected — OK, skip log
             } else {
-                Write-Log "WARN Lab: nie udalo sie polaczyc $worker z netdoc_lab: $($out | Select-Object -First 1)" "WARN"
+                Write-Log "WARN Lab: failed to connect $worker to netdoc_lab: $($out | Select-Object -First 1)" "WARN"
             }
         }
     }
 } else {
     if (-not $Quiet) {
-        Write-Log "Lab monitoring wylaczony (lab_monitoring_enabled=0) — pomijam kontenery lab."
+        Write-Log "Lab monitoring disabled (lab_monitoring_enabled=0) — skipping lab containers."
     }
 }

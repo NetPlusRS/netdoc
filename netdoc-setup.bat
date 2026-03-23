@@ -1,26 +1,26 @@
 @echo off
-:: NetDoc — Instalator Windows
-:: Kliknij dwukrotnie aby uruchomic.
-:: Sprawdza i instaluje WSL2, Docker Desktop, git, Python,
-:: uruchamia kontenery i otwiera Panel Admin w przegladarce.
+:: NetDoc — Windows Installer
+:: Double-click to run.
+:: Checks and installs WSL2, Docker Desktop, git, Python,
+:: starts containers and opens the Admin Panel in the browser.
 
 chcp 65001 >nul 2>&1
 
-:: Sprawdz czy PowerShell jest dostepny
+:: Check if PowerShell is available
 where powershell >nul 2>&1
 if errorlevel 1 (
-    echo BLAD: PowerShell nie jest dostepny.
-    echo Zainstaluj Windows PowerShell 5.1 lub nowszy.
+    echo ERROR: PowerShell is not available.
+    echo Install Windows PowerShell 5.1 or newer.
     pause
     exit /b 1
 )
 
-:: Uruchom skrypt PowerShell
+:: Launch the PowerShell setup script
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0netdoc-setup.ps1"
 
-:: Jesli skrypt sie zakonczyl z bledem i okno zostaloby zamkniete — zatrzymaj
+:: If the script finished with an error and the window would close — pause
 if errorlevel 1 (
     echo.
-    echo Instalacja zakonczyla sie z bledem. Sprawdz komunikaty powyzej.
+    echo Installation finished with an error. Check the messages above.
     pause
 )

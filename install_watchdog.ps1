@@ -1,24 +1,24 @@
 # install_watchdog.ps1
-# Rejestruje NetDoc Watchdog jako zadanie Task Scheduler (co 5 minut).
-# Uruchom jako Administrator.
+# Registers NetDoc Watchdog as a Task Scheduler task (every 5 minutes).
+# Run as Administrator.
 
 $TaskName    = "NetDoc Watchdog"
 $ScriptPath  = Join-Path $PSScriptRoot "netdoc_watchdog.ps1"
-$Description = "Sprawdza co 5 minut czy kontenery Docker NetDoc dzialaja i uruchamia brakujace."
+$Description = "Checks every 5 minutes whether NetDoc Docker containers are running and starts any missing ones."
 
 if (-not (Test-Path $ScriptPath)) {
-    Write-Error "Nie znaleziono: $ScriptPath"
+    Write-Error "File not found: $ScriptPath"
     exit 1
 }
 
-# Usun stare zadanie jesli istnieje
+# Remove old task if it exists
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
 
 $action  = New-ScheduledTaskAction `
     -Execute "powershell.exe" `
     -Argument "-NonInteractive -ExecutionPolicy Bypass -File `"$ScriptPath`" -Quiet"
 
-# Wyzwalacz: co 5 minut, przez nieskonczona ilosc czasu
+# Trigger: every 5 minutes, indefinitely
 $trigger = New-ScheduledTaskTrigger -RepetitionInterval (New-TimeSpan -Minutes 5) -Once -At (Get-Date)
 
 $settings = New-ScheduledTaskSettingsSet `
@@ -44,12 +44,12 @@ $task = Register-ScheduledTask `
     -Force
 
 if ($task) {
-    Write-Host "OK: Zadanie '$TaskName' zarejestrowane." -ForegroundColor Green
-    Write-Host "    Skrypt: $ScriptPath" -ForegroundColor DarkGray
-    Write-Host "    Interval: co 5 minut, konto: SYSTEM" -ForegroundColor DarkGray
+    Write-Host "OK: Task '$TaskName' registered." -ForegroundColor Green
+    Write-Host "    Script: $ScriptPath" -ForegroundColor DarkGray
+    Write-Host "    Interval: every 5 minutes, account: SYSTEM" -ForegroundColor DarkGray
     Write-Host ""
-    Write-Host "Aby odinstalowac:"  -ForegroundColor Yellow
+    Write-Host "To uninstall:"  -ForegroundColor Yellow
     Write-Host "  Unregister-ScheduledTask -TaskName '$TaskName' -Confirm:`$false" -ForegroundColor Yellow
 } else {
-    Write-Error "Blad rejestracji zadania."
+    Write-Error "Task registration failed."
 }
