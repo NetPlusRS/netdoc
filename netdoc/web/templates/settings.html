@@ -536,17 +536,23 @@
         </thead>
         <tbody>
           {% set _ds = [
-            ("api",      "netdoc-api",       "API (FastAPI :8000)"),
-            ("web",      "netdoc-web",       "Web UI (Flask :5000) — restart disconnects the page briefly"),
-            ("ping",     "netdoc-ping",      "Ping worker (:8001)"),
-            ("snmp",     "netdoc-snmp",      "SNMP worker (:8002)"),
-            ("cred",     "netdoc-cred",      "Cred worker (:8003)"),
-            ("vuln",     "netdoc-vuln",      "Vuln worker (:8004)"),
-            ("internet", "netdoc-internet",  "Internet worker"),
-            ("nginx",    "netdoc-nginx",     "Nginx reverse proxy (:80)"),
-            ("grafana",  "netdoc-grafana",   "Grafana — available via /grafana/"),
-            ("prometheus","netdoc-prometheus","Prometheus (:9090) — restart only"),
-            ("loki",     "netdoc-loki",      "Loki — restart only"),
+            ("api",        "netdoc-api",        "API (FastAPI :8000)"),
+            ("web",        "netdoc-web",        "Web UI (Flask — served via nginx :80) — restart disconnects briefly"),
+            ("ping",       "netdoc-ping",       "Ping worker (:8001)"),
+            ("snmp",       "netdoc-snmp",       "SNMP worker (:8002)"),
+            ("community",  "netdoc-community",  "Community worker (:8006) — SNMP community discovery"),
+            ("cred",       "netdoc-cred",       "Cred worker (:8003)"),
+            ("vuln",       "netdoc-vuln",       "Vuln worker (:8004)"),
+            ("internet",   "netdoc-internet",   "Internet worker"),
+            ("nginx",      "netdoc-nginx",      "Nginx reverse proxy (:80) — restart only"),
+            ("grafana",    "netdoc-grafana",    "Grafana — available via /grafana/"),
+            ("prometheus", "netdoc-prometheus", "Prometheus (:9090) — restart only"),
+            ("loki",       "netdoc-loki",       "Loki — restart only"),
+            ("promtail",   "netdoc-promtail",   "Promtail — log shipper to Loki — restart only"),
+            ("rsyslog",    "netdoc-rsyslog",    "rsyslog — syslog collector (UDP/TCP :514) — restart only"),
+            ("vector",     "netdoc-vector",     "Vector — log pipeline rsyslog → ClickHouse — restart only"),
+            ("clickhouse", "netdoc-clickhouse", "ClickHouse — syslog storage — restart only"),
+            ("postgres",   "netdoc-postgres",   "PostgreSQL (:15432) — restart only"),
           ] %}
           {% for key, cname, label in _ds %}
           <tr>
