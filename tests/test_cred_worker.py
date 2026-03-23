@@ -1138,6 +1138,95 @@ def test_web_basic_ok_returns_false_when_ok_keyword_in_no_auth_page():
     assert result is False, "logout w no-auth page → nie swiadczy o zalogowaniu, musi byc False"
 
 
+def test_web_form_ok_returns_false_when_no_auth_baseline_unavailable():
+    """BUG-CRED-FP-01: _web_form_ok musi zwrocic False gdy _get_no_auth() zawiedzie (zwroci '').
+    Bez baseline porownawczego 'logout' w HTML strony logowania jest unreliable.
+    Przyklad: kamera 192.168.5.171 (H264DVR) — strona logowania zawiera 'logout' w JS ZAWSZE,
+    _get_no_auth timeout → no_auth_text='' → stary kod zwracal True (false positive)."""
+    # DVR login page zawiera "logout" w JS — identyczne bez wzgledu na credentials
+    dvr_login_page = (
+        '<html><body>'
+        '<script>function logout(){window.location="/login"}</script>'
+        '<div id="login"><input type="password" id="loginPsw"/></div>'
+        '</body></html>'
+    )
+    mock_get_fail = MagicMock()
+    mock_get_fail.status_code = 0
+    mock_get_fail.text = ""   # _get_no_auth failure — timeout/network error
+
+    mock_post = MagicMock()
+    mock_post.status_code = 200
+    mock_post.text = dvr_login_page   # contains "logout", no bad keywords
+
+    with patch("run_cred_worker.httpx") as mock_httpx:
+        mock_httpx.get.return_value = mock_get_fail
+        mock_httpx.post.return_value = mock_post
+        result = w._web_form_ok("http://192.0.2.171/", "admin", "admin123")
+
+    assert result is False, (
+        "BUG-CRED-FP-01: _web_form_ok must return False when no-auth baseline "
+        "is unavailable — cannot distinguish login from public page without comparison"
+    )
+
+
+def test_web_basic_ok_returns_false_when_no_auth_baseline_unavailable():
+    """BUG-CRED-FP-01: _web_basic_ok musi zwrocic False (bez session cookie) gdy baseline niedostepny.
+    Stary kod: 3 sprawdzenia chronione przez 'if no_auth_text' — wszystkie pomijane gdy text=''.
+    Wynik: 'logout' w HTML wystarczal do zwrocenia True — false positive."""
+    dvr_login_page = (
+        '<html><body>'
+        '<div id="logoutmenu" style="display:none">Logout</div>'
+        '<div id="login"><form><input type="password"/></form></div>'
+        '</body></html>'
+    )
+    mock_get_fail = MagicMock()
+    mock_get_fail.status_code = 0
+    mock_get_fail.text = ""   # _get_no_auth failure
+
+    mock_get_auth = MagicMock()
+    mock_get_auth.status_code = 200
+    mock_get_auth.text = dvr_login_page
+    mock_get_auth.headers = {"set-cookie": ""}   # no session cookie
+
+    def _side_effect(url, **kwargs):
+        return mock_get_auth if kwargs.get("auth") else mock_get_fail
+
+    with patch("run_cred_worker.httpx") as mock_httpx:
+        mock_httpx.get.side_effect = _side_effect
+        result = w._web_basic_ok("http://192.0.2.171/", "admin", "admin123")
+
+    assert result is False, (
+        "BUG-CRED-FP-01: _web_basic_ok must return False when no-auth baseline "
+        "unavailable and no session cookie — keyword alone is not reliable"
+    )
+
+
+def test_web_basic_ok_returns_true_with_session_cookie_even_without_baseline():
+    """BUG-CRED-FP-01 — session cookie jest silnym signalem: nawet bez baseline powinno zwrocic True.
+    Set-Cookie z 'session'/'token' prawie zawsze oznacza prawdziwe logowanie."""
+    login_success = '<html><body>Welcome to the system dashboard</body></html>'
+
+    mock_get_fail = MagicMock()
+    mock_get_fail.status_code = 0
+    mock_get_fail.text = ""   # no baseline
+
+    mock_get_auth = MagicMock()
+    mock_get_auth.status_code = 200
+    mock_get_auth.text = login_success
+    mock_get_auth.headers = {"set-cookie": "sessionid=abc123; Path=/"}   # session cookie!
+
+    def _side_effect(url, **kwargs):
+        return mock_get_auth if kwargs.get("auth") else mock_get_fail
+
+    with patch("run_cred_worker.httpx") as mock_httpx:
+        mock_httpx.get.side_effect = _side_effect
+        result = w._web_basic_ok("http://10.0.0.1/", "admin", "password")
+
+    assert result is True, (
+        "Session cookie is strong signal — should return True even without no-auth baseline"
+    )
+
+
 def test_web_form_ok_returns_false_when_bad_keywords_in_response():
     """_web_form_ok zwraca False gdy body zawiera 'login failed'."""
     login_page = "<html>Login failed. Invalid credentials.</html>"

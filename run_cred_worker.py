@@ -822,23 +822,28 @@ def _web_basic_ok(url: str, u: str, p: str) -> bool:
         if not session_cookie and not has_ok_keyword:
             return False
 
-        # Sprawdz ze odpowiedz z credentials jest INNA niz bez credentials
-        # (zapobiega false positive gdy urzadzenie zawsze zwraca 200)
+        # Compare with no-auth baseline — prevents false positives when device always returns 200
         no_auth_status, no_auth_text = _get_no_auth(url)
+
+        # BUG-CRED-FP-01: if baseline fetch failed (network error / timeout), keyword alone
+        # is unreliable — a login page with "logout" in its JS will always match.
+        # Require session cookie as mandatory confirmation when no baseline is available.
+        if not no_auth_text:
+            return bool(session_cookie)
+
         if no_auth_status == r.status_code and no_auth_text == t:
-            return False   # identyczna odpowiedz → brak prawdziwej autoryzacji
+            return False   # identical response → no real authorization
 
-        # Dodatkowe sprawdzenie: odpowiedz musi byc wyraznie rozna (min. 5% roznica dlugosci)
-        if no_auth_text and len(t) > 0:
-            ratio = abs(len(t) - len(no_auth_text)) / max(len(t), len(no_auth_text))
-            if ratio < 0.05 and not session_cookie:
-                return False  # tresci prawie identyczne i brak cookie sesji → false positive
+        # Response must differ by at least 5% (without session cookie)
+        ratio = abs(len(t) - len(no_auth_text)) / max(len(t), len(no_auth_text))
+        if ratio < 0.05 and not session_cookie:
+            return False  # nearly identical content without cookie → false positive
 
-        # Jesli OK-keyword jest tez w no-auth page — samo slowo nie wystarczy (wymaga cookie sesji)
-        # Przyklad: strony logowania z id="logoutmenu" w HTML zawsze maja "logout" w tresci
+        # If OK-keyword also present in no-auth page → keyword alone is not proof of login
+        # Example: login pages with id="logoutmenu" always contain "logout" in their HTML
         if has_ok_keyword and not session_cookie:
             if any(w in no_auth_text for w in ok):
-                return False  # keyword obecny takze bez auth → nie swiadczy o zalogowaniu
+                return False  # keyword in unauthenticated page → not indicative of login
 
         return True
     except Exception:
@@ -866,16 +871,16 @@ def _web_form_ok(url: str, u: str, p: str) -> bool:
                     ok_  = ("logout", "dashboard", "welcome", "hostname")
                     bad_ = ("login failed", "invalid", "incorrect")
                     if any(w in t for w in ok_) and not any(w in t for w in bad_):
-                        # Sprawdz ze odpowiedz z credentials jest INNA niz bez credentials
-                        # (zapobiega false positive gdy SPA zawiera "logout" w JS na stronie logowania)
-                        if no_auth_text and t == no_auth_text:
-                            continue  # identyczna odpowiedz → brak prawdziwej autoryzacji
-                        ratio = (abs(len(t) - len(no_auth_text)) / max(len(t), len(no_auth_text), 1)
-                                 if no_auth_text else 1.0)
+                        # BUG-CRED-FP-01: if baseline fetch failed, we cannot compare —
+                        # a page with "logout" in JS always matches without a baseline.
+                        # Also skip if response is identical to no-auth baseline.
+                        if not no_auth_text or t == no_auth_text:
+                            continue  # no baseline or identical response → not confirmed
+                        ratio = abs(len(t) - len(no_auth_text)) / max(len(t), len(no_auth_text), 1)
                         if ratio < 0.05:
-                            continue  # tresci prawie identyczne → false positive
-                        # Jesli OK-keyword jest tez w no-auth page — nie swiadczy o zalogowaniu
-                        if no_auth_text and any(w in no_auth_text for w in ok_):
+                            continue  # nearly identical content → false positive
+                        # If OK-keyword also present in no-auth page → not proof of login
+                        if any(w in no_auth_text for w in ok_):
                             continue
                         return True
                 elif r.status_code in (302, 301):
