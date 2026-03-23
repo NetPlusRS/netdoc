@@ -274,13 +274,13 @@ def test_credentials_tab_filter(client_data):
     assert "data-filter" in html
 
 def test_credentials_page_has_per_device_scan_panel_in_template():
-    """Template credentials.html musi zawierac kod panelu rotacji per urzadzenie."""
+    """Template credentials.html musi zawierac kod panelu postępu skanowania per urzadzenie."""
     import pathlib
     tmpl = pathlib.Path("netdoc/web/templates/credentials.html").read_text(encoding="utf-8")
-    assert "rotation" in tmpl.lower() and "cred_scan_devices" in tmpl, \
-        "Brak panelu rotacji haseł per urzadzenie w credentials.html"
-    assert "Last scan" in tmpl, "Brak kolumny 'Last scan' w panelu rotacji"
-    assert "ssh_tried" in tmpl or "ssh_total" in tmpl, "Brak danych SSH w panelu rotacji"
+    assert "cred_scan_devices" in tmpl, \
+        "Brak panelu credential scan per urzadzenie w credentials.html"
+    assert "Last scan" in tmpl, "Brak kolumny 'Last scan' w panelu"
+    assert "ssh_tried" in tmpl or "ssh_total" in tmpl, "Brak danych SSH w panelu"
 
 def test_api_status(client):
     r = client.get("/api/status")
