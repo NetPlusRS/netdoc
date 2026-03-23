@@ -189,25 +189,104 @@
 
     {# ── Broadcast/Multicast Discovery ── #}
     <div id="tab-broadcast" style="display:none">
-      {# Statystyki ostatniego cyklu #}
-      <div class="d-flex align-items-center gap-3 p-2 border-bottom flex-wrap" style="background:var(--bg3)">
-        <select class="form-select form-select-sm" style="width:120px" id="broadcastTail">
-          <option value="100">100 lines</option>
-          <option value="200" selected>200 lines</option>
-          <option value="500">500 lines</option>
-        </select>
-        <div id="broadcastStats" class="d-flex gap-2 flex-wrap align-items-center">
-          <span class="badge bg-secondary" id="bs-last">last run: —</span>
-          <span class="badge bg-primary"   title="Ubiquiti UniFi UDP 10001">UniFi: <span id="bs-unifi">—</span></span>
-          <span class="badge bg-warning text-dark" title="MikroTik MNDP UDP 5678">MNDP: <span id="bs-mndp">—</span></span>
-          <span class="badge bg-info text-dark"    title="mDNS multicast 224.0.0.251:5353">mDNS: <span id="bs-mdns">—</span></span>
-          <span class="badge bg-success"  title="SSDP/UPnP multicast 239.255.255.255:1900">SSDP: <span id="bs-ssdp">—</span></span>
-          <span class="badge bg-secondary" title="Total discovered / saved to DB">Total: <span id="bs-total">—</span> / saved: <span id="bs-saved">—</span></span>
+
+      {# Toolbar: stats badges + search + tail #}
+      <div class="d-flex align-items-center gap-2 p-2 border-bottom flex-wrap" style="background:var(--bg3)">
+        <span class="badge bg-secondary" id="bs-last" title="Last worker cycle">—</span>
+        <span class="badge bg-primary"   title="Ubiquiti UniFi (UDP 10001)">UniFi <span id="bs-unifi">—</span></span>
+        <span class="badge bg-warning text-dark" title="MikroTik MNDP (UDP 5678)">MNDP <span id="bs-mndp">—</span></span>
+        <span class="badge bg-info text-dark"    title="mDNS multicast 224.0.0.251:5353">mDNS <span id="bs-mdns">—</span></span>
+        <span class="badge bg-success"  title="SSDP/UPnP 239.255.255.255:1900">SSDP <span id="bs-ssdp">—</span></span>
+        <span class="badge bg-secondary" title="Total discovered / saved">Saved: <span id="bs-saved">—</span>/<span id="bs-total">—</span></span>
+        <div class="ms-auto d-flex gap-2 align-items-center">
+          <input type="search" id="broadcastSearch" class="form-control form-control-sm"
+                 placeholder="Search log…" style="width:200px">
+          <span id="broadcastSearchCount" class="text-muted small"></span>
+          <select class="form-select form-select-sm" style="width:110px" id="broadcastTail">
+            <option value="100">100 lines</option>
+            <option value="200" selected>200 lines</option>
+            <option value="500">500 lines</option>
+            <option value="1000">1000 lines</option>
+          </select>
+          <button id="btnRawToggle" class="btn btn-sm btn-outline-warning"
+                  title="Show/hide raw packet hex dump console">
+            <i class="bi bi-terminal me-1"></i>RAW
+          </button>
         </div>
-        <span class="text-muted small ms-auto">File: <code>logs/broadcast.log</code></span>
       </div>
+
+      {# Top Spammers — broadcast packet counters per device #}
+      <div style="max-height:22vh;overflow-y:auto;border-bottom:1px solid var(--border)">
+        <table class="table table-sm table-hover mb-0 font-monospace small" id="spammersTable">
+          <thead style="position:sticky;top:0;z-index:1;background:var(--bg2)">
+            <tr>
+              <th style="width:130px">IP</th>
+              <th style="width:80px" class="text-end">Packets</th>
+              <th style="width:80px" class="text-end">Bytes</th>
+              <th style="width:80px">Top proto</th>
+              <th>Protocols</th>
+              <th style="width:100px" class="text-muted small" id="spammersUptime"></th>
+            </tr>
+          </thead>
+          <tbody id="spammersTableBody">
+            <tr><td colspan="6" class="text-muted text-center py-1">Waiting for stats…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      {# Parsed discovery table — recent devices heard on the wire #}
+      <div style="max-height:22vh;overflow-y:auto;border-bottom:1px solid var(--border)">
+        <table class="table table-sm table-hover mb-0 font-monospace small" id="broadcastTable">
+          <thead style="position:sticky;top:0;z-index:1;background:var(--bg2)">
+            <tr>
+              <th style="width:155px">Time</th>
+              <th style="width:75px">Protocol</th>
+              <th style="width:130px">IP</th>
+              <th>Hostname</th>
+              <th>Vendor</th>
+              <th>Model / Info</th>
+            </tr>
+          </thead>
+          <tbody id="broadcastTableBody">
+            <tr><td colspan="6" class="text-muted text-center py-2">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      {# Raw log #}
       <pre id="broadcastOutput" class="mb-0 p-3 font-monospace small"
-           style="background:#0d1117;color:#c9d1d9;max-height:72vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all">Loading...</pre>
+           style="background:#0d1117;color:#c9d1d9;height:calc(72vh - 30vh - 6rem);overflow-y:auto;white-space:pre-wrap;word-break:break-all">Loading...</pre>
+
+      {# RAW packet console — hidden until toggled #}
+      <div id="rawConsolePanel" style="display:none;position:fixed;bottom:0;left:0;right:0;
+           height:40vh;z-index:1050;background:#0d1117;border-top:2px solid #388bfd;
+           display:none;flex-direction:column">
+        <div class="d-flex align-items-center px-3 py-1 gap-2"
+             style="background:#161b22;border-bottom:1px solid #30363d;flex-shrink:0">
+          <i class="bi bi-broadcast text-warning"></i>
+          <span class="text-warning fw-bold small">RAW PACKET STREAM</span>
+          <span id="rawProtoStats" class="text-muted small ms-2"></span>
+          <div class="ms-auto d-flex gap-2">
+            <button type="button" id="btnRawPause" class="btn btn-xs btn-outline-secondary btn-sm py-0 px-2"
+                    title="Pause / resume">
+              <i class="bi bi-pause-fill"></i>
+            </button>
+            <button type="button" id="btnRawClear" class="btn btn-xs btn-outline-secondary btn-sm py-0 px-2"
+                    title="Clear console">
+              <i class="bi bi-trash"></i>
+            </button>
+            <button type="button" id="btnRawClose" class="btn btn-xs btn-outline-danger btn-sm py-0 px-2"
+                    title="Close console and disable raw logging">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </div>
+        </div>
+        <pre id="rawConsoleOutput"
+             style="flex:1;overflow-y:auto;margin:0;padding:12px;
+                    font-family:'Cascadia Code','Consolas',monospace;font-size:11px;
+                    color:#c9d1d9;white-space:pre;word-break:normal;background:#0d1117">
+<span style="color:#8b949e">Waiting for packets… (RAW logging is being enabled)</span></pre>
+      </div>
     </div>
 
     {# ── AI Zapytania ── #}
@@ -289,7 +368,7 @@ document.querySelectorAll("#logTabs .nav-link").forEach(btn => {
     document.querySelectorAll("#logTabs .nav-link").forEach(b => b.classList.remove("active"));
     this.classList.add("active");
     activeTab = this.dataset.tab;
-    ["events","scanner","watchdog","workers","cred","ai"].forEach(t => {
+    ["events","scanner","watchdog","workers","cred","broadcast","ai"].forEach(t => {
       document.getElementById("tab-" + t).style.display = (t === activeTab ? "" : "none");
     });
     refreshActive();
@@ -515,27 +594,293 @@ document.querySelectorAll("#aiDetailTabs .nav-link").forEach(btn => {
   });
 });
 
+// ── Broadcast tab ──────────────────────────────────────────────────────────
+let broadcastRawText = "";
+
+// Protocol badge colors (Bootstrap bg class)
+const PROTO_COLOR = {
+  UNIFI: "bg-primary",
+  MNDP:  "bg-warning text-dark",
+  MDNS:  "bg-info text-dark",
+  SSDP:  "bg-success",
+  CDP:   "bg-danger",
+  EDP:   "bg-secondary",
+  LLDP:  "bg-secondary",
+};
+
+function colorizeBroadcastLog(text) {
+  return text.split("\n").map(line => {
+    const safe = escH(line);
+    if (/\[ERROR\]|ERROR:/.test(line))   return '<span style="color:#ff7b72">' + safe + '</span>';
+    if (/\[WARNING\]|\[WARN\]/.test(line)) return '<span style="color:#e3b341">' + safe + '</span>';
+    if (/\bUNIFI\b/.test(line))  return '<span style="color:#79c0ff">' + safe + '</span>';
+    if (/\bMNDP\b/.test(line))   return '<span style="color:#e3b341">' + safe + '</span>';
+    if (/\bMDNS\b/.test(line))   return '<span style="color:#56d364">' + safe + '</span>';
+    if (/\bSSDP\b/.test(line))   return '<span style="color:#3fb950">' + safe + '</span>';
+    if (/\bCDP\b/.test(line))    return '<span style="color:#ff7b72">' + safe + '</span>';
+    if (/\bLLDP\b|\bEDP\b/.test(line)) return '<span style="color:#d2a8ff">' + safe + '</span>';
+    if (/\[INFO\]/.test(line))   return '<span style="color:#c9d1d9">' + safe + '</span>';
+    return '<span style="color:#8b949e">' + safe + '</span>';
+  }).join("\n");
+}
+
+// Parse log lines like:
+// 2026-03-23 19:08:12,898 [INFO] broadcast: UNIFI   192.168.5.1   hostname=UDMPRO   vendor=Ubiquiti   model=UDMPRO
+function parseBroadcastLines(text) {
+  const re = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})[,\d]*\s+\[INFO\]\s+broadcast:\s+(UNIFI|MNDP|MDNS|SSDP|CDP|LLDP|EDP)\s+(\S+)\s+hostname=(\S+)\s+vendor=(\S+)\s+model=(.+)$/;
+  const rows = [];
+  for (const line of text.split("\n")) {
+    const m = line.match(re);
+    if (!m) continue;
+    rows.push({ time: m[1], proto: m[2], ip: m[3], hostname: m[4], vendor: m[5], model: m[6].trim() });
+  }
+  return rows.reverse(); // newest first
+}
+
+function applyBroadcastSearch(rawText) {
+  const q   = (document.getElementById("broadcastSearch").value || "").trim().toLowerCase();
+  const pre = document.getElementById("broadcastOutput");
+  const countEl = document.getElementById("broadcastSearchCount");
+  if (!q) {
+    pre.innerHTML = colorizeBroadcastLog(rawText);
+    countEl.textContent = "";
+  } else {
+    const lines = rawText.split("\n").filter(l => l.toLowerCase().includes(q));
+    countEl.textContent = lines.length + " lines";
+    pre.innerHTML = colorizeBroadcastLog(lines.join("\n") || "(no matches for: " + escH(q) + ")");
+  }
+  pre.scrollTop = pre.scrollHeight;
+}
+
+function renderBroadcastTable(rows) {
+  const tbody = document.getElementById("broadcastTableBody");
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-muted text-center py-2">No discovery events in log yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.slice(0, 200).map(r => {
+    const cls = PROTO_COLOR[r.proto] || "bg-secondary";
+    const host = r.hostname === "-" ? '<span class="text-muted">—</span>' : escH(r.hostname);
+    const vendor = r.vendor === "-" ? '<span class="text-muted">—</span>' : escH(r.vendor);
+    const model  = r.model  === "-" ? '<span class="text-muted">—</span>' : escH(r.model);
+    return '<tr>' +
+      '<td class="text-muted">' + escH(r.time) + '</td>' +
+      '<td><span class="badge ' + cls + '">' + escH(r.proto) + '</span></td>' +
+      '<td class="font-monospace">' + escH(r.ip) + '</td>' +
+      '<td>' + host + '</td>' +
+      '<td class="text-muted">' + vendor + '</td>' +
+      '<td class="text-muted">' + model + '</td>' +
+      '</tr>';
+  }).join("");
+}
+
 function fetchBroadcast() {
   const tail = document.getElementById("broadcastTail").value;
-  const pre  = document.getElementById("broadcastOutput");
   fetch("/api/logs/broadcast?tail=" + tail)
     .then(r => r.text())
-    .then(t => { pre.innerHTML = colorizeLog(t); pre.scrollTop = pre.scrollHeight; setStatus("ok"); })
+    .then(t => {
+      broadcastRawText = t;
+      applyBroadcastSearch(t);
+      renderBroadcastTable(parseBroadcastLines(t));
+      setStatus("ok");
+    })
     .catch(() => setStatus("err"));
-  // Statystyki ostatniego cyklu
+
   fetch("/api/broadcast/stats")
     .then(r => r.json())
     .then(s => {
-      document.getElementById("bs-last").textContent   = "last run: " + (s.broadcast_last_at   || "—");
-      document.getElementById("bs-unifi").textContent  = s.broadcast_unifi  ?? "—";
-      document.getElementById("bs-mndp").textContent   = s.broadcast_mndp   ?? "—";
-      document.getElementById("bs-mdns").textContent   = s.broadcast_mdns   ?? "—";
-      document.getElementById("bs-ssdp").textContent   = s.broadcast_ssdp   ?? "—";
-      document.getElementById("bs-total").textContent  = s.broadcast_last_discovered ?? "—";
-      document.getElementById("bs-saved").textContent  = s.broadcast_last_saved      ?? "—";
+      document.getElementById("bs-last").textContent  = s.broadcast_last_at ? s.broadcast_last_at.slice(11,16) + " last" : "no data";
+      document.getElementById("bs-unifi").textContent = s.broadcast_unifi  ?? "0";
+      document.getElementById("bs-mndp").textContent  = s.broadcast_mndp   ?? "0";
+      document.getElementById("bs-mdns").textContent  = s.broadcast_mdns   ?? "0";
+      document.getElementById("bs-ssdp").textContent  = s.broadcast_ssdp   ?? "0";
+      document.getElementById("bs-total").textContent = s.broadcast_last_discovered ?? "0";
+      document.getElementById("bs-saved").textContent = s.broadcast_last_saved      ?? "0";
     })
     .catch(() => {});
 }
+
+// ── RAW console ────────────────────────────────────────────────────────────
+let rawPollInterval = null;
+let rawOffset       = 0;
+let rawPaused       = false;
+let rawEnabled      = false;
+const RAW_PROTO_RE  = /^\d{2}:\d{2}:\d{2}\.\d{3} \[(\w+)\s*\]/;
+const RAW_COLORS    = {UNIFI:"#79c0ff",MNDP:"#e3b341",MDNS:"#56d364",
+                       SSDP:"#3fb950",CDP:"#ff7b72",LLDP:"#d2a8ff",EDP:"#d2a8ff"};
+
+function colorizeRawLine(line) {
+  const m = line.match(RAW_PROTO_RE);
+  const color = m ? (RAW_COLORS[m[1]] || "#c9d1d9") : null;
+  const safe  = escH(line);
+  if (!color)          return '<span style="color:#484f58">' + safe + '</span>';
+  if (m[0] === line.trim().slice(0, m[0].length))
+    return '<span style="color:' + color + ';font-weight:bold">' + safe + '</span>';
+  return '<span style="color:#8b949e">' + safe + '</span>';
+}
+
+function rawConsolePoll() {
+  if (rawPaused) return;
+  fetch("/api/broadcast/raw?offset=" + rawOffset)
+    .then(r => r.json())
+    .then(d => {
+      if (!d.content) return;
+      rawOffset = d.offset;
+      const out  = document.getElementById("rawConsoleOutput");
+      const atBottom = out.scrollTop + out.clientHeight >= out.scrollHeight - 40;
+      // Colorize and append
+      const html = d.content.split("\n").map(colorizeRawLine).join("\n");
+      out.innerHTML += html;
+      // Limit DOM size — keep last 3000 lines
+      const lines = out.innerHTML.split("\n");
+      if (lines.length > 3000) out.innerHTML = lines.slice(-3000).join("\n");
+      if (atBottom) out.scrollTop = out.scrollHeight;
+      // Count packets by protocol in current view
+      const counts = {};
+      (out.textContent || "").split("\n").forEach(l => {
+        const pm = l.match(RAW_PROTO_RE);
+        if (pm) counts[pm[1]] = (counts[pm[1]] || 0) + 1;
+      });
+      document.getElementById("rawProtoStats").textContent =
+        Object.entries(counts).map(([k,v]) => k + ":" + v).join("  ");
+    })
+    .catch(() => {});
+}
+
+function openRawConsole() {
+  fetch("/api/broadcast/raw/toggle", {method:"POST"})
+    .then(r => r.json())
+    .then(d => {
+      rawEnabled = d.enabled;
+      if (!rawEnabled) { closeRawConsole(); return; }
+      rawOffset = 0;
+      rawPaused = false;
+      document.getElementById("rawConsoleOutput").textContent =
+        "Waiting for packets… (RAW logging enabled — first packets in ~10s)\n";
+      const panel = document.getElementById("rawConsolePanel");
+      panel.style.display = "flex";
+      document.getElementById("btnRawToggle").classList.add("active","btn-warning");
+      document.getElementById("btnRawToggle").classList.remove("btn-outline-warning");
+      if (rawPollInterval) clearInterval(rawPollInterval);
+      rawPollInterval = setInterval(rawConsolePoll, 800);
+    });
+}
+
+function closeRawConsole() {
+  if (rawPollInterval) { clearInterval(rawPollInterval); rawPollInterval = null; }
+  // Disable raw logging on server if still enabled
+  fetch("/api/broadcast/raw/status").then(r => r.json()).then(s => {
+    if (s.enabled) fetch("/api/broadcast/raw/toggle", {method:"POST"});
+  });
+  rawEnabled = false;
+  document.getElementById("rawConsolePanel").style.display = "none";
+  document.getElementById("btnRawToggle").classList.remove("active","btn-warning");
+  document.getElementById("btnRawToggle").classList.add("btn-outline-warning");
+}
+
+document.getElementById("btnRawToggle").addEventListener("click", function() {
+  if (rawEnabled) closeRawConsole(); else openRawConsole();
+});
+
+document.getElementById("btnRawPause").addEventListener("click", function() {
+  rawPaused = !rawPaused;
+  this.innerHTML = rawPaused
+    ? '<i class="bi bi-play-fill"></i>'
+    : '<i class="bi bi-pause-fill"></i>';
+  this.title = rawPaused ? "Resume" : "Pause";
+});
+
+document.getElementById("btnRawClear").addEventListener("click", function() {
+  document.getElementById("rawConsoleOutput").innerHTML =
+    '<span style="color:#8b949e">— cleared —</span>\n';
+});
+
+document.getElementById("btnRawClose").addEventListener("click", closeRawConsole);
+
+// Check initial raw status on page load
+fetch("/api/broadcast/raw/status").then(r => r.json()).then(s => {
+  if (s.enabled) {
+    rawEnabled = true;
+    document.getElementById("rawConsolePanel").style.display = "flex";
+    document.getElementById("btnRawToggle").classList.add("active","btn-warning");
+    document.getElementById("btnRawToggle").classList.remove("btn-outline-warning");
+    rawPollInterval = setInterval(rawConsolePoll, 800);
+  }
+}).catch(() => {});
+
+// ── Broadcast Stats (Top Spammers) ──────────────────────────────────────────
+const PROTO_COLORS = {UNIFI:"#58a6ff",MNDP:"#f0883e",MDNS:"#56d364",SSDP:"#bc8cff"};
+
+function fmtBytes(n) {
+  if (n < 1024) return n + " B";
+  if (n < 1048576) return (n/1024).toFixed(1) + " KB";
+  return (n/1048576).toFixed(2) + " MB";
+}
+
+function fmtUptime(s) {
+  if (!s) return "";
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60);
+  return "uptime " + (h ? h+"h " : "") + m + "m";
+}
+
+function renderSpammers(data) {
+  const tbody = document.getElementById("spammersTableBody");
+  const upEl  = document.getElementById("spammersUptime");
+  if (!data || !data.rows || data.rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-muted text-center py-1">No broadcast packets yet…</td></tr>';
+    return;
+  }
+  if (upEl) upEl.textContent = fmtUptime(data.uptime_s);
+  const top = data.rows.slice(0, 20);
+  const maxPkts = top[0].total_pkts || 1;
+  tbody.innerHTML = top.map((r, idx) => {
+    const pct   = Math.round(r.total_pkts / maxPkts * 100);
+    const bar   = `<div style="height:3px;background:#388bfd;width:${pct}%;margin-top:2px;border-radius:2px"></div>`;
+    const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : "";
+    const protos = Object.entries(r.protocols)
+      .sort((a,b) => b[1].pkts - a[1].pkts)
+      .map(([p, v]) => {
+        const c = PROTO_COLORS[p] || "#aaa";
+        return `<span style="color:${c}">${p}</span><span class="text-muted">:${v.pkts}</span>`;
+      }).join(" ");
+    const topC = PROTO_COLORS[r.top_proto] || "#aaa";
+    return `<tr>
+      <td class="text-nowrap">${medal} <a href="/devices?search=${r.ip}" class="text-info text-decoration-none">${r.ip}</a></td>
+      <td class="text-end fw-bold">${r.total_pkts.toLocaleString()}${bar}</td>
+      <td class="text-end text-muted">${fmtBytes(r.total_bytes)}</td>
+      <td style="color:${topC}">${r.top_proto}</td>
+      <td class="small">${protos}</td>
+      <td></td>
+    </tr>`;
+  }).join("");
+}
+
+let spammersInterval = null;
+
+function fetchSpammers() {
+  fetch("/api/broadcast/packet-stats")
+    .then(r => r.json())
+    .then(renderSpammers)
+    .catch(() => {});
+}
+
+// Start/stop spammers polling with broadcast tab
+const _origFetchBroadcast = typeof fetchBroadcast === "function" ? fetchBroadcast : null;
+
+// Hook into tab switching — start stats polling when on broadcast tab
+document.querySelectorAll("[data-tab]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const t = btn.dataset.tab;
+    if (t === "broadcast") {
+      if (!spammersInterval) {
+        fetchSpammers();
+        spammersInterval = setInterval(fetchSpammers, 15000);
+      }
+    } else {
+      if (spammersInterval) { clearInterval(spammersInterval); spammersInterval = null; }
+    }
+  });
+});
 
 function refreshActive() {
   if      (activeTab === "events")    fetchEvents();
@@ -543,7 +888,7 @@ function refreshActive() {
   else if (activeTab === "watchdog")  fetchWatchdog();
   else if (activeTab === "workers")   fetchWorkers();
   else if (activeTab === "cred")      fetchCred();
-  else if (activeTab === "broadcast") fetchBroadcast();
+  else if (activeTab === "broadcast") { fetchBroadcast(); fetchSpammers(); }
   else if (activeTab === "ai")        fetchAiLogs();
 }
 
@@ -594,8 +939,13 @@ document.querySelectorAll("#credFilter button").forEach(btn => {
 document.getElementById("workersFilter").addEventListener("input", applyWorkersFilter);
 
 // Zmiana liczby linii / zdarzen
-["scannerTail","watchdogTail","workersTail","credTail","eventsLimit"].forEach(id => {
+["scannerTail","watchdogTail","workersTail","credTail","eventsLimit","broadcastTail"].forEach(id => {
   document.getElementById(id).addEventListener("change", refreshActive);
+});
+
+// Broadcast search filter
+document.getElementById("broadcastSearch").addEventListener("input", function() {
+  if (broadcastRawText) applyBroadcastSearch(broadcastRawText);
 });
 
 // Auto-refresh

@@ -3081,6 +3081,61 @@ def create_app():
         except Exception as exc:
             return f"Error connecting to API: {exc}", 500, {"Content-Type": "text/plain; charset=utf-8"}
 
+    @app.route("/api/broadcast/packet-stats")
+    def broadcast_packet_stats():
+        """Zwraca statystyki pakietow per urzadzenie (top spammers)."""
+        stats_file = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "logs", "broadcast_stats.json")
+        )
+        if not os.path.exists(stats_file):
+            return jsonify({"generated_at": None, "uptime_s": 0, "rows": []})
+        try:
+            import json as _json
+            with open(stats_file, encoding="utf-8") as f:
+                return jsonify(_json.load(f))
+        except Exception as exc:
+            return jsonify({"error": str(exc), "rows": []}), 500
+
+    @app.route("/api/broadcast/raw/toggle", methods=["POST"])
+    def broadcast_raw_toggle():
+        """Wlacza/wylacza surowe logowanie pakietow przez broadcast worker."""
+        flag = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "logs", "broadcast_raw_enabled")
+        )
+        if os.path.exists(flag):
+            os.remove(flag)
+            enabled = False
+        else:
+            open(flag, "w").close()
+            enabled = True
+        return jsonify({"enabled": enabled})
+
+    @app.route("/api/broadcast/raw/status")
+    def broadcast_raw_status():
+        flag = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "logs", "broadcast_raw_enabled")
+        )
+        return jsonify({"enabled": os.path.exists(flag)})
+
+    @app.route("/api/broadcast/raw")
+    def broadcast_raw_content():
+        """Zwraca nowa zawartosc broadcast_raw.log od podanego offsetu bajtowego."""
+        offset = request.args.get("offset", 0, type=int)
+        raw_log = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "logs", "broadcast_raw.log")
+        )
+        if not os.path.exists(raw_log):
+            return jsonify({"content": "", "offset": 0, "size": 0})
+        size = os.path.getsize(raw_log)
+        # File was trimmed — reset offset
+        if offset > size:
+            offset = max(0, size - 65536)
+        with open(raw_log, encoding="utf-8", errors="replace") as f:
+            f.seek(offset)
+            content = f.read(65536)   # max 64 KB per request
+            new_offset = f.tell()
+        return jsonify({"content": content, "offset": new_offset, "size": size})
+
     @app.route("/api/broadcast/stats")
     def broadcast_stats():
         """Zwraca statystyki ostatniego cyklu broadcast discovery z SystemStatus."""
