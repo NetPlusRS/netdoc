@@ -49,6 +49,11 @@ _ip_ban_until: dict[str, float] = {}
 _BAN_COOLDOWN_S = int(os.getenv("CRED_BAN_COOLDOWN_S", "300"))  # 5 minut domyślnie
 
 
+def _is_banned(ip: str) -> bool:
+    """Zwraca True jesli IP ma aktywny cooldown (ban po wykryciu ochrony)."""
+    return _ip_ban_until.get(ip, 0.0) > time.monotonic()
+
+
 def _record_protection(ip: str, service: str, port: int, reason: str) -> None:
     """Rejestruje wykrycie ochrony aktywnej na porcie serwisu (thread-safe).
     Ustawia in-memory cooldown — IP jest pomijane przez BAN_COOLDOWN_S sekund.
@@ -1150,6 +1155,8 @@ def discover_web(ip: str, pairs: list,
 
 # FTP -------------------------------------------------------------------------
 def discover_ftp(ip: str, pairs: list) -> Optional[tuple]:
+    if _is_banned(ip):
+        return None
     try:
         with socket.create_connection((ip, 21), timeout=2):
             pass
@@ -1273,6 +1280,8 @@ def discover_vnc(ip: str, pairs: list, ports: tuple = _VNC_PORTS) -> Optional[tu
     VNC nie uzywa nazwy uzytkownika — pairs zawieraja ("", haslo).
     Najpierw sprawdza brak hasla (None auth), potem probuje po kolei.
     """
+    if _is_banned(ip):
+        return None
     # Znajdz otwarty port VNC
     open_port = None
     for port in ports:
@@ -1317,6 +1326,8 @@ def discover_rtsp(ip: str, pairs: list) -> Optional[tuple]:
 
     Standardowe porty: 554 (domyslny), 8554, 10554, 5554.
     """
+    if _is_banned(ip):
+        return None
     import base64
 
     open_port = None
@@ -1391,6 +1402,8 @@ def discover_telnet(ip: str, pairs: list) -> Optional[tuple]:
     Strategia: wyslij username + password i sprawdz czy baner powitalny
     wskazuje na sukces (prompt '$', '#', '>', brak 'Login incorrect' itp.).
     """
+    if _is_banned(ip):
+        return None
     open_port = None
     for port in _TELNET_PORTS:
         try:
@@ -1465,6 +1478,8 @@ def discover_telnet(ip: str, pairs: list) -> Optional[tuple]:
 # RDP (via SMB port 445 - same Windows credentials) ---------------------------
 def discover_rdp(ip: str, pairs: list) -> Optional[tuple]:
     """Sprawdza Windows credentials przez SMB (port 445). Zwraca (user, pass) lub None."""
+    if _is_banned(ip):
+        return None
     try:
         with socket.create_connection((ip, 445), timeout=2):
             pass
@@ -1713,6 +1728,8 @@ def _try_mssql(ip: str, port: int, username: str, password: str) -> bool:
 
 def discover_mssql(ip: str, pairs: list, port: int = 1433) -> Optional[tuple]:
     """Zwraca (user, pass) pierwszego dzialajacego MSSQL lub None."""
+    if _is_banned(ip):
+        return None
     if not _tcp_open(ip, port, timeout=2.0):
         return None
     for u, p in pairs:
@@ -1749,6 +1766,8 @@ def _try_mysql(ip: str, port: int, username: str, password: str) -> bool:
 
 def discover_mysql(ip: str, pairs: list, port: int = 3306) -> Optional[tuple]:
     """Zwraca (user, pass) pierwszego dzialajacego MySQL lub None."""
+    if _is_banned(ip):
+        return None
     if not _tcp_open(ip, port, timeout=2.0):
         return None
     for u, p in pairs:
@@ -1785,6 +1804,8 @@ def _try_postgres(ip: str, port: int, username: str, password: str) -> bool:
 
 def discover_postgres(ip: str, pairs: list, port: int = 5432) -> Optional[tuple]:
     """Zwraca (user, pass) pierwszego dzialajacego PostgreSQL lub None."""
+    if _is_banned(ip):
+        return None
     if not _tcp_open(ip, port, timeout=2.0):
         return None
     for u, p in pairs:
@@ -1934,6 +1955,12 @@ def _process_device(device_id: int, ip: str,
     # PERF-09: jedna sesja przez całe _process_device zamiast 5-8 osobnych SessionLocal()
     db = SessionLocal()
     try:
+        # Skip device entirely if banned from previous cycle (BUG-L4)
+        if _is_banned(ip):
+            remaining = _ip_ban_until[ip] - time.monotonic()
+            logger.info("SKIP %-18s ban aktywny z poprzedniego cyklu (jeszcze %.0fs)", ip, remaining)
+            return res
+
         # Re-weryfikuj istniejace credentials (wykrywa false positive i zmiany hasel)
         _reverify_existing_creds(db, device_id, ip)
 

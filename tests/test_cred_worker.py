@@ -32,6 +32,14 @@ sys.modules.setdefault("pymysql.err", pymysql_stub.err)
 import run_cred_worker as w
 
 
+@pytest.fixture(autouse=True)
+def _clear_ban_state():
+    """Czyści _ip_ban_until przed każdym testem — stan modułowy nie może wyciekać między testami."""
+    w._ip_ban_until.clear()
+    yield
+    w._ip_ban_until.clear()
+
+
 # ─── _tcp_open ────────────────────────────────────────────────────────────────
 
 def test_tcp_open_returns_true_on_success():
