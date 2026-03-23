@@ -117,13 +117,29 @@ def _tcp_banner(ip: str, port: int, timeout: float = _TCP_TIMEOUT):
         return None
 
 def check_telnet(ip: str):
+    """Weryfikuje Telnet przez sprawdzenie banneru lub bajtów IAC.
+
+    Wymaga niepustego banneru lub bajtów negocjacji IAC (0xff).
+    Port 23 otwarty ale milczący nie jest flagowany — zbyt wiele FP
+    na urządzeniach OT/ICS które nie używają Telnetu na tym porcie.
+    """
     banner = _tcp_banner(ip, 23)
     if banner is None:
         return None
+    # Sprawdź też surowe bajty — IAC (0xff) jako pierwszy bajt wskazuje Telnet
+    try:
+        with socket.create_connection((ip, 23), timeout=_TCP_TIMEOUT) as s:
+            s.settimeout(_TCP_TIMEOUT)
+            raw = s.recv(4)
+    except OSError:
+        raw = b""
+    has_iac = raw and raw[0] == 0xFF
+    if not banner and not has_iac:
+        return None  # port otwarty ale nie odpowiada jako Telnet
     return {
         "vuln_type": VulnType.open_telnet, "severity": VulnSeverity.high,
         "title": "Telnet otwarty (port 23) - plaintext management",
-        "port": 23, "evidence": banner[:200] if banner else "port otwarty",
+        "port": 23, "evidence": banner[:200] if banner else "IAC negotiation bytes detected",
     }
 
 
@@ -240,8 +256,14 @@ def check_http_management(ip: str, device_type):
             r = httpx.get(f"http://{ip}:{port}/", timeout=_HTTP_TIMEOUT,
                           follow_redirects=False, verify=False)
             loc = r.headers.get("location", "")
-            if r.status_code in (301, 302) and "https://" in loc:
-                continue
+            if r.status_code in (301, 302):
+                # Absolutny redirect na HTTPS — jawne wymuszenie HTTPS
+                if "https://" in loc:
+                    continue
+                # Względny redirect (np. Location: /) — sprawdź czy port 443 jest otwarty
+                # Jeśli tak, urządzenie prawdopodobnie wymaga HTTPS (messy redirect setup)
+                if not loc.startswith("http") and _tcp_open(ip, 443, timeout=1):
+                    continue
             if r.status_code < 400:
                 return {
                     "vuln_type": VulnType.http_management, "severity": VulnSeverity.medium,
@@ -267,8 +289,13 @@ def check_ssl(ip: str) -> list:
             with socket.create_connection((ip, port), timeout=3) as sock:
                 with ctx_verify.wrap_socket(sock, server_hostname=ip):
                     pass
-        except ssl.SSLCertVerificationError:
-            self_signed = True
+        except ssl.SSLCertVerificationError as e:
+            err = str(e).lower()
+            # Hostname mismatch = valid CA cert, tylko inny CN/SAN — nie jest self-signed
+            if "hostname" in err or "host name" in err or "doesn't match" in err:
+                pass
+            else:
+                self_signed = True
         except Exception:
             pass
         if self_signed:
@@ -297,24 +324,55 @@ def check_ssl(ip: str) -> list:
 
 
 def check_ipmi(ip: str):
-    if not _tcp_open(ip, 623, timeout=2):
+    """Weryfikuje IPMI przez UDP probe RMCP ASF Ping (port 623/UDP).
+
+    IPMI używa UDP 623, nie TCP. Wysyłamy RMCP Presence Ping i sprawdzamy
+    czy odpowiada RMCP Presence Pong (ASF IANA 0x000011be, msg type 0x40).
+    """
+    # RMCP ASF Presence Ping: version=6, reserved=0, seq=0xff, class=6(ASF),
+    # IANA=0x000011be, msg_type=0x80 (Ping), tag=0, reserved=0, data_len=0
+    _RMCP_PING = b"\x06\x00\xff\x06\x00\x00\x11\xbe\x80\x00\x00\x00"
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.settimeout(2)
+            s.sendto(_RMCP_PING, (ip, 623))
+            data, _ = s.recvfrom(256)
+    except OSError:
+        return None
+    # Pong: bajt 8 = 0x40 (ASF Presence Pong)
+    if len(data) < 9 or data[8] != 0x40:
         return None
     return {
         "vuln_type": VulnType.ipmi_exposed, "severity": VulnSeverity.high,
-        "title": "IPMI/BMC dostepny (port 623) - zdalny dostep do firmware",
-        "port": 623, "evidence": "port 623 TCP otwarty",
+        "title": "IPMI/BMC dostepny (port 623/UDP) - zdalny dostep do firmware",
+        "port": 623, "evidence": f"RMCP ASF Pong: {data[:12].hex()}",
     }
 
 
 
 
 def check_rdp_exposed(ip: str):
-    if not _tcp_open(ip, 3389, timeout=2):
+    """Weryfikuje RDP przez TPKT/X.224 handshake — nie flaguje gdy port 3389 używany przez inny serwis."""
+    # TPKT + COTP Connection Request + RDP Negotiation Request
+    _RDP_CR = (
+        b"\x03\x00\x00\x13"           # TPKT v3, length=19
+        b"\x0e\xe0\x00\x00\x00\x00\x00"  # COTP CR (0xe0), dst=0, src=0, class=0
+        b"\x01\x00\x08\x00\x00\x00\x00\x00"  # RDP NegReq type=1
+    )
+    try:
+        with socket.create_connection((ip, 3389), timeout=3) as s:
+            s.settimeout(3)
+            s.sendall(_RDP_CR)
+            resp = s.recv(19)
+    except OSError:
+        return None
+    # Odpowiedź musi być TPKT (bajt 0 = 0x03) i COTP Connection Confirm (bajt 5 = 0xd0)
+    if not resp or resp[0] != 0x03 or len(resp) < 6 or resp[5] != 0xd0:
         return None
     return {
         "vuln_type": VulnType.rdp_exposed, "severity": VulnSeverity.high,
         "title": "RDP dostepny (port 3389) - zdalny pulpit bez VPN",
-        "port": 3389, "evidence": "port 3389 TCP otwarty",
+        "port": 3389, "evidence": f"TPKT/X.224 handshake OK (COTP CC: {resp[:8].hex()})",
     }
 
 
@@ -819,9 +877,19 @@ def check_rtsp_weak(ip: str):
     return None
 
 
-def check_firewall(ip: str):
-    """Wykrywa hosty bez firewalla - nadmierna liczba dostepnych portow sieciowych."""
-    # Porty typowo filtrowane przez firewall na stacjach/serwerach
+def check_firewall(ip: str, device_type=None):
+    """Wykrywa hosty bez firewalla - nadmierna liczba dostepnych portow sieciowych.
+
+    Progi dopasowane do typu urządzenia:
+    - serwer/DC: wyższy próg (12/22) — wiele portów to norma
+    - pozostałe: próg 10/22
+    Serwery i DC pomijane od strony 'zbyt wiele portów = brak firewalla',
+    bo zarządzane serwery mogą legalnie eksponować 10+ portów.
+    """
+    # Serwery i DC legalnie wystawiają wiele portów — ten check daje masowe FP
+    if device_type in (DeviceType.server, DeviceType.domain_controller):
+        return None
+
     PROBE_PORTS = [
         21,    # FTP
         23,    # Telnet
@@ -847,7 +915,8 @@ def check_firewall(ip: str):
         27017, # MongoDB
     ]
     open_ports = [p for p in PROBE_PORTS if _tcp_open(ip, p, timeout=0.8)]
-    if len(open_ports) >= 7:
+    threshold = 10  # 45% z 22 portów
+    if len(open_ports) >= threshold:
         return {
             "vuln_type": VulnType.firewall_disabled, "severity": VulnSeverity.high,
             "title": f"Brak/slaby firewall - {len(open_ports)} portow dostepnych sieciowo",
@@ -1088,7 +1157,7 @@ def check_mjpeg_noauth(ip: str) -> Optional[dict]:
                     headers={"User-Agent": "Mozilla/5.0"},
                 )
                 ct = r.headers.get("content-type", "").lower()
-                if r.status_code == 200 and ("multipart" in ct or "mjpeg" in ct or "octet-stream" in ct):
+                if r.status_code == 200 and ("multipart" in ct or "mjpeg" in ct):
                     return {
                         "vuln_type": VulnType.mjpeg_noauth, "severity": VulnSeverity.high,
                         "title": f"Strumień MJPEG bez logowania (port {port})",
@@ -1105,22 +1174,31 @@ def check_mjpeg_noauth(ip: str) -> Optional[dict]:
 
 
 def check_rtmp_noauth(ip: str) -> Optional[dict]:
-    """Sprawdza czy port RTMP (1935) jest otwarty i akceptuje połączenia.
+    """Sprawdza czy port RTMP (1935) odpowiada na handshake C0+C1.
 
-    RTMP (Real-Time Messaging Protocol) służy do streamingu wideo/audio.
-    Otwarty serwer RTMP bez autoryzacji może ujawniać prywatne transmisje
-    (monitoring, konferencje, nagrania) lub umożliwiać nieautoryzowane streamowanie.
+    RTMP serwer nie wysyła nic jako pierwszy — czeka na C0+C1 od klienta.
+    Wysyłamy C0 (wersja RTMP = 0x03) i czekamy na S0+S1+S2 (1537 bajtów).
+    Samo otwarte połączenie bez odpowiedzi na C0 jest pomijane (FP).
     """
     if not _tcp_open(ip, 1935):
         return None
-    banner = _tcp_banner(ip, 1935, timeout=2.0)
-    if banner is None:
-        return None  # port zamknięty lub odmowa
+    try:
+        with socket.create_connection((ip, 1935), timeout=3) as s:
+            s.settimeout(3)
+            # C0: wersja RTMP (1 bajt) + C1: 1536 bajtów (timestamp + zeros)
+            c1 = b"\x00" * 4 + b"\x00" * 4 + b"\x00" * 1528
+            s.sendall(b"\x03" + c1)  # C0 + C1
+            resp = s.recv(4)          # S0 (1 bajt) + początek S1
+    except OSError:
+        return None
+    # S0 musi być 0x03 (RTMP version 3)
+    if not resp or resp[0] != 0x03:
+        return None
     return {
         "vuln_type": VulnType.rtmp_exposed, "severity": VulnSeverity.medium,
         "title": "RTMP streaming serwer dostępny (port 1935)",
         "port": 1935,
-        "evidence": f"TCP 1935 akceptuje połączenia, banner: {banner[:60]!r}",
+        "evidence": f"RTMP handshake OK (S0=0x{resp[0]:02x})",
         "description": (
             "Serwer RTMP dostępny w sieci. Może ujawniać prywatne transmisje wideo "
             "(kamery, monitoring, konferencje). Zweryfikuj czy wymaga uwierzytelnienia."
@@ -1138,8 +1216,9 @@ def check_dahua_dvr_exposed(ip: str) -> Optional[dict]:
     if not _tcp_open(ip, 37777):
         return None
     banner = _tcp_banner(ip, 37777, timeout=2.0)
-    # Dahua odpowiada binarnie — nawet pusta odpowiedź = Dahua nasłuchuje
-    if banner is None:
+    # Dahua odpowiada binarnie natychmiast po połączeniu
+    # Pusta odpowiedź (banner="") = serwis milczy = nie jest Dahua
+    if not banner:
         return None
     return {
         "vuln_type": VulnType.dahua_dvr_exposed, "severity": VulnSeverity.high,
@@ -1195,7 +1274,9 @@ def check_xmeye_dvr_exposed(ip: str) -> Optional[dict]:
     if not _tcp_open(ip, 34567):
         return None
     banner = _tcp_banner(ip, 34567, timeout=2.0)
-    if banner is None:
+    # XMEye/Sofia odpowiada binarnie natychmiast po połączeniu
+    # Pusta odpowiedź (banner="") = serwis milczy = nie jest XMEye DVR
+    if not banner:
         return None
 
     # DISABLED: user enumeration + brute-force dezaktywowane (2026-03-11)
@@ -1407,10 +1488,13 @@ def check_tftp(ip: str) -> Optional[dict]:
 
 def _upsert_vuln(db, device_id: int, v: dict) -> tuple:
     now = datetime.utcnow()
+    port_val = v.get("port")
+    port_filter = (Vulnerability.port.is_(None) if port_val is None
+                   else Vulnerability.port == port_val)
     ex = (db.query(Vulnerability)
         .filter(Vulnerability.device_id == device_id,
                 Vulnerability.vuln_type == v["vuln_type"],
-                Vulnerability.port == v.get("port")).first())
+                port_filter).first())
     if ex:
         ex.last_seen = now
         if not getattr(ex, 'suppressed', False):  # nie wznawiaj zaakceptowanych
@@ -1472,7 +1556,7 @@ def _scan_device(device_id: int, ip: str, device_type, close_after: int = 3,
         lambda: check_vnc(ip),
         lambda: check_rtsp(ip, device_type),
         lambda: check_modbus(ip),
-        lambda: check_firewall(ip),
+        lambda: check_firewall(ip, device_type),
         lambda: check_default_credentials(ip, device_id),
         lambda: check_snmp_public(device_id, ip),
         lambda: check_onvif_noauth(ip),
