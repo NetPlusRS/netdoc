@@ -1300,7 +1300,7 @@ def check_unauth_reboot(ip: str) -> Optional[dict]:
     SPA (np. Ubiquiti UniFi OS) zwraca HTTP 200 + text/html dla kazdej nieznanej
     sciezki — ta heurystyka eliminuje ten typ false positive.
     """
-    # Slowa kluczowe w body JSON/text wskazujace na brak dostepu (nie podatnosc)
+    # Keywords in body indicating access denied / method not supported (not a vulnerability)
     _DENY_BODY = (
         b"unauthorized", b"Unauthorized", b"UNAUTHORIZED",
         b"forbidden", b"Forbidden", b"FORBIDDEN",
@@ -1308,6 +1308,11 @@ def check_unauth_reboot(ip: str) -> Optional[dict]:
         b"access denied", b"Access denied", b"ACCESS DENIED",
         b"not authenticated", b"Not authenticated",
         b"\"error\"", b"'error'",
+        # Chinese DVR (Dahua/H264DVR/Sofia) return Ret:136 "Not support GET method"
+        # with HTTP 200 text/plain — not a real reboot endpoint, just ignoring the method
+        b"Not support", b"not support",
+        b"param format error", b"Param format error",
+        b"method not allowed", b"Method Not Allowed",
     )
 
     for port in (80, 8080, 8443, 443):

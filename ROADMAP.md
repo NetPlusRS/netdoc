@@ -1,81 +1,81 @@
 # NetDoc — Roadmap
 
-> Publiczna mapa rozwoju projektu. Szczegółowy backlog dostępny dla kontrybutorów po kontakcie.
+> Public development roadmap. Detailed backlog available for contributors on request.
 
-## Zrealizowane (v0.2.x)
+## Completed (v0.2.x)
 
-- Syslog pipeline — rsyslog → Vector → ClickHouse (archiwizacja logów sieciowych)
-- Dashboard Grafana Syslog (severity, top urządzenia, top programy, tabela logów)
-- Filtrowanie logów po severity, urządzeniu, programie, czasie i treści
+- Syslog pipeline — rsyslog → Vector → ClickHouse (network log archiving)
+- Grafana Syslog dashboard (severity, top devices, top programs, log table)
+- Log filtering by severity, device, program, time range and content
 
-## Aktualnie w trakcie (v0.2.x)
+## In progress (v0.2.x)
 
-- SNMP Walk — pobieranie tablic ARP, routing, LLDP z routerów i switchy
-- Mapa topologii sieci (graf połączeń L2/L3)
-- WMI/WinRM enrichment dla urządzeń Windows
+- SNMP Walk — fetching ARP tables, routing, LLDP from routers and switches
+- Network topology map (L2/L3 connection graph)
+- WMI/WinRM enrichment for Windows devices
 - ipCidrRouteTable support (Cisco IOS 12.x+)
 
-## Planowane (v0.3.x)
+## Planned (v0.3.x)
 
-- Alerty email (SMTP) + webhook forwarding
-- Eksport raportów PDF
-- **NetFlow / sFlow** — analiza ruchu sieciowego, wykrywanie anomalii (eksfiltracja, lateral movement)
-- **NIS2 / DORA Compliance Pack** — retencja logów 12 mies., raporty compliance, export dla audytorów
-- **Threat Intelligence** — sprawdzanie IP i domen z blacklistami (AbuseIPDB, Spamhaus DROP/EDROP, URLhaus, abuse.ch); alert gdy urządzenie nawiąże połączenie z infrastrukturą malware/ransomware/C2
-- Integracja z Zabbix — auto-provisioning wykrytych urządzeń
-- Mapa topologii w UI
+- Email alerts (SMTP) + webhook forwarding
+- PDF report export
+- **NetFlow / sFlow** — network traffic analysis, anomaly detection (exfiltration, lateral movement)
+- **NIS2 / DORA Compliance Pack** — 12-month log retention, compliance reports, auditor export
+- **Threat Intelligence** — checking IPs and domains against blocklists (AbuseIPDB, Spamhaus DROP/EDROP, URLhaus, abuse.ch); alert when a device connects to malware/ransomware/C2 infrastructure
+- Zabbix integration — auto-provisioning of discovered devices
+- Topology map in UI
 
-## Planowane (v0.4.x)
+## Planned (v0.4.x)
 
-- Autentykacja multi-user (OAuth2 / SSO)
-- EoL/EoS daty per model urządzenia (End-of-Life badge)
+- Multi-user authentication (OAuth2 / SSO)
+- EoL/EoS dates per device model (End-of-Life badge)
 - CVE per model (NVD feed)
-- Wykrywanie serwisów infrastruktury (DHCP, DNS, AD, NTP)
-- **DNS Monitoring** — integracja z Pi-hole / Unbound; zbieranie logów DNS zapytań z sieci, wykrywanie zapytań do złośliwych domen, historia połączeń per urządzenie (wymagane NIS2 Art. 21)
-- **Integracje z systemami bezpieczeństwa (Pro)** — korelacja "który asset jest atakowany" → pełen kontekst dla NIS2 Art. 21(2)(b):
-  Wazuh (SIEM alerts → asset), Suricata/Zeek (IDS/IPS + logi połączeń per host), CrowdSec (threat intel), Elastic/Splunk (SIEM forward)
+- Infrastructure service detection (DHCP, DNS, AD, NTP)
+- **DNS Monitoring** — Pi-hole / Unbound integration; collecting DNS query logs from the network, detecting queries to malicious domains, per-device connection history (required by NIS2 Art. 21)
+- **Security system integrations (Pro)** — correlating "which asset is under attack" → full context for NIS2 Art. 21(2)(b):
+  Wazuh (SIEM alerts → asset), Suricata/Zeek (IDS/IPS + per-host connection logs), CrowdSec (threat intel), Elastic/Splunk (SIEM forward)
 
-## Długoterminowe
+## Long-term
 
-- Automatyczne raporty cykliczne (PDF/email co tydzień/miesiąc)
-- Notatki per urządzenie
-- Architektura SaaS / multi-tenant
-- Integracja z Suricatą (IP reputation snapshot)
-- Historia połączeń sieciowych per urządzenie — "kto z kim gadał" (NetFlow + DNS + Threat Intel)
-- **AI Anomaly Detection (offline)** — lokalny model AI (Ollama/Isolation Forest) analizujący logi syslog bez wysyłania danych na zewnątrz; wykrywanie anomalii: nagły wzrost liczby błędów, nowe nieznane urządzenia w logach, sekwencje zdarzeń typowe dla ataku (failed login → scan → success); działa bez dodatkowych kosztów API
-- **Integracja z GNS3** — skanowanie wirtualnych topologii sieci zbudowanych z prawdziwych obrazów Cisco IOS, Juniper i MikroTik; testowanie NetDoc przed wdrożeniem w sieci produkcyjnej, weryfikacja wykrywalności podatności i mapowania topologii L2/L3 w kontrolowanym środowisku
+- Automated recurring reports (PDF/email weekly/monthly)
+- Per-device notes
+- SaaS / multi-tenant architecture
+- Suricata integration (IP reputation snapshot)
+- Per-device network connection history — "who talked to whom" (NetFlow + DNS + Threat Intel)
+- **AI Anomaly Detection (offline)** — local AI model (Ollama/Isolation Forest) analyzing syslog without sending data externally; anomaly detection: sudden spike in error count, new unknown devices in logs, event sequences typical of an attack (failed login → scan → success); runs without additional API costs
+- **GNS3 integration** — scanning virtual network topologies built with real Cisco IOS, Juniper and MikroTik images; testing NetDoc before production deployment, verifying vulnerability detectability and L2/L3 topology mapping in a controlled environment
 
 ## Demo Lab
 
-Repozytorium zawiera środowisko testowe (`docker-compose.lab.yml`) z symulowanymi urządzeniami — 16 hostów pokrywających typową sieć przemysłową i biurową:
+The repository includes a test environment (`docker-compose.lab.yml`) with simulated devices — 16 hosts covering a typical industrial and office network:
 
-**OT / Przemysłowe:**
+**OT / Industrial:**
 
 - Siemens S7-1200 PLC (Modbus/502, SNMP)
-- Schneider Modicon M340 — licznik energii (Modbus/502, SNMP)
-- ABB AC500 — kontroler zbiornika (Modbus/502, SNMP)
-- Fronius Symo 15.0 — inwerter fotowoltaiczny (Modbus/502, HTTP, SNMP)
-- MOXA NPort W2150A — konwerter RS-232/Ethernet (Telnet/23, HTTP, SNMP)
+- Schneider Modicon M340 — energy meter (Modbus/502, SNMP)
+- ABB AC500 — tank controller (Modbus/502, SNMP)
+- Fronius Symo 15.0 — photovoltaic inverter (Modbus/502, HTTP, SNMP)
+- MOXA NPort W2150A — RS-232/Ethernet converter (Telnet/23, HTTP, SNMP)
 
-**Sieć / Infrastruktura:**
+**Network / Infrastructure:**
 
 - MikroTik RB750 router (SNMP, Telnet/23)
 - Cisco-like switch (SSH)
-- Panel HMI WebServer (HTTP)
+- HMI WebServer panel (HTTP)
 - Ubiquiti UniFi AP AC Pro (HTTP, SNMP)
 
-**Kamery IP / Rejestratory:**
+**IP Cameras / Recorders:**
 
-- Dahua IPC-HDW2831T — kamera IP (ONVIF/80, RTSP/554, port Dahua/37777, SNMP)
-- Hikvision DS-2CD2143G2 — kamera IP (RTSP/554, port XMEye/34567, HTTP, SNMP)
+- Dahua IPC-HDW2831T — IP camera (ONVIF/80, RTSP/554, Dahua port/37777, SNMP)
+- Hikvision DS-2CD2143G2 — IP camera (RTSP/554, XMEye port/34567, HTTP, SNMP)
 
-**Urządzenia biurowe / serwerowe:**
+**Office / Server devices:**
 
-- HP LaserJet M404n — drukarka sieciowa (HTTP, JetDirect/9100, SNMP)
+- HP LaserJet M404n — network printer (HTTP, JetDirect/9100, SNMP)
 - Synology DS920+ NAS (HTTP, FTP anonymous/21, SNMP)
 - APC Smart-UPS 1500 (HTTP, Telnet/23, SNMP)
 - Ubuntu Server 22.04 (Redis/6379, MQTT/1883, Docker API/2375, HTTP, SNMP)
-- Windows Server 2019 (RDP/3389, VNC bez hasła/5900, HTTP, SNMP)
+- Windows Server 2019 (RDP/3389, VNC no password/5900, HTTP, SNMP)
 
 ```bash
 docker compose -f docker-compose.lab.yml up -d
@@ -83,4 +83,4 @@ docker compose -f docker-compose.lab.yml up -d
 
 ---
 
-*Masz pomysł na funkcję? Otwórz Issue na GitHub.*
+*Have a feature idea? Open an Issue on GitHub.*
