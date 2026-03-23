@@ -9,6 +9,14 @@ $TaskName   = "NetDocScanner"
 $ScriptPath = "$PSScriptRoot\run_scanner.py"
 $WorkingDir = $PSScriptRoot
 
+# ── Single-instance lock — prevent parallel installs ──────────────────────────
+$_instMutex = [System.Threading.Mutex]::new($false, "Global\NetDocInstallAutostart")
+if (-not $_instMutex.WaitOne(0)) {
+    Write-Host "[ERROR] install_autostart.ps1 is already running in another window." -ForegroundColor Red
+    $_instMutex.Dispose()
+    exit 1
+}
+
 # Resolve Python — prefer .venv inside project, fall back to first python in PATH
 $_venvPython = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
 if (Test-Path $_venvPython) {
@@ -90,3 +98,6 @@ if ($Task) {
 } else {
     Write-Host "ERROR - failed to register task." -ForegroundColor Red
 }
+
+try { $_instMutex.ReleaseMutex() } catch {}
+$_instMutex.Dispose()

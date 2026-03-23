@@ -800,6 +800,50 @@ def _send_ssdp_query(bind_ip: str) -> None:
 # Entry point
 # ===========================================================================
 
+def _acquire_broadcast_lock() -> bool:
+    """Zapewnia ze tylko jedna instancja broadcast worker dziala na hoscie (PID lock).
+
+    Wzorzec identyczny jak _acquire_scanner_lock() w run_scanner.py — PID file
+    + weryfikacja procesu przez psutil. Zwraca False jesli inna instancja dziala.
+    """
+    pid_path = os.path.join(os.path.dirname(__file__), "broadcast.pid")
+    my_pid = os.getpid()
+
+    if os.path.exists(pid_path):
+        try:
+            with open(pid_path) as _f:
+                old_pid = int(_f.read().strip())
+            if old_pid != my_pid:
+                try:
+                    import psutil
+                    proc = psutil.Process(old_pid)
+                    if proc.is_running():
+                        cmdline = " ".join(proc.cmdline()).lower()
+                        if "python" in proc.name().lower() and "broadcast_worker" in cmdline:
+                            logger.error(
+                                "Another broadcast worker instance is already running (PID=%d). Exiting.",
+                                old_pid,
+                            )
+                            return False
+                except (ImportError, Exception):
+                    pass
+                logger.warning("Stale broadcast.pid (PID=%d) — overwriting.", old_pid)
+        except (ValueError, OSError):
+            pass
+
+    try:
+        try:
+            os.remove(pid_path)
+        except OSError:
+            pass
+        with open(pid_path, "x") as _f:
+            _f.write(str(my_pid))
+    except FileExistsError:
+        logger.error("Race condition: another broadcast worker grabbed the lock. Exiting.")
+        return False
+    return True
+
+
 def _wait_for_postgres(retry_interval: int = 30) -> None:
     """Czeka az PostgreSQL bedzie dostepny, po czym wywoluje init_db().
 
@@ -844,6 +888,10 @@ def main() -> None:
                         help=f"Interwal aktywnych zapytan w sekundach (domyslnie {QUERY_INTERVAL})")
     args = parser.parse_args()
 
+    if not args.once:
+        if not _acquire_broadcast_lock():
+            sys.exit(0)
+
     _wait_for_postgres()
 
     if args.once:
@@ -851,13 +899,7 @@ def main() -> None:
         logger.info("Done: %s", stats)
         return
 
-    # Write PID file so watchdog can monitor us
     _pid_path = os.path.join(os.path.dirname(__file__), "broadcast.pid")
-    try:
-        with open(_pid_path, "w") as _pf:
-            _pf.write(str(os.getpid()))
-    except Exception as _e:
-        logger.warning("Cannot write broadcast.pid: %s", _e)
 
     bind_ip = _get_local_ip()
     logger.info("NetDoc Broadcast Worker start — continuous listener, bind=%s PID=%d",

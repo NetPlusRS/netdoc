@@ -11,6 +11,15 @@ $ComposeFile = Join-Path $ProjectDir "docker-compose.yml"
 $LogFile     = Join-Path $ProjectDir "logs\watchdog.log"
 $MaxLogLines = 1000
 
+# ── Single-instance lock — Named Mutex (released automatically when process exits) ──
+$_mutex = [System.Threading.Mutex]::new($false, "Global\NetDocWatchdog")
+if (-not $_mutex.WaitOne(0)) {
+    # Another instance is running — silent exit (Task Scheduler fires every 5 min,
+    # previous run may still be in progress on a slow machine)
+    $_mutex.Dispose()
+    exit 0
+}
+
 # Resolve Python — prefer .venv inside project, fall back to first python in PATH
 $_venvPython = Join-Path $ProjectDir ".venv\Scripts\python.exe"
 if (Test-Path $_venvPython) {
@@ -419,3 +428,7 @@ if ($labMonitoringEnabled) {
         Write-Log "Lab monitoring disabled (lab_monitoring_enabled=0) — skipping lab containers."
     }
 }
+
+# Release single-instance mutex
+try { $_mutex.ReleaseMutex() } catch {}
+$_mutex.Dispose()
