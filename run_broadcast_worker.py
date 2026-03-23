@@ -558,20 +558,29 @@ def _save_results(db, all_results: list[dict]) -> int:
         )
 
         # Dodatkowe dane bez dedykowanego pola → asset_notes (tymczasowo)
+        # Uzywamy tagged section [broadcast ...] — regex-replace jak cred worker
+        # z [SVC-PROTECTED] — nie nadpisujemy recznie wpisanych notatek ani innych tagow
         extra_parts = []
         services = r.get("services", [])
         if services:
-            extra_parts.append("mDNS services: " + ", ".join(sorted(services)))
+            extra_parts.append("svc=" + ",".join(sorted(services)))
         if r.get("serial_number"):
-            extra_parts.append("Serial: " + r["serial_number"])
+            extra_parts.append("serial=" + r["serial_number"])
         if r.get("server_header") and not vendor:
-            extra_parts.append("UPnP server: " + r["server_header"])
+            extra_parts.append("upnp=" + r["server_header"][:40])
 
         try:
             dev = upsert_device(db, data)
-            # Zapisz extra dane do asset_notes jesli pole puste
-            if extra_parts and dev and not dev.asset_notes:
-                dev.asset_notes = "[broadcast] " + " | ".join(extra_parts)
+            if extra_parts and dev:
+                import re as _re
+                note_tag = "[broadcast " + " ".join(extra_parts) + "]"
+                current  = dev.asset_notes or ""
+                if _re.search(r"\[broadcast [^\]]*\]", current):
+                    # Aktualizuj istniejacy tag broadcast
+                    dev.asset_notes = _re.sub(r"\[broadcast [^\]]*\]", note_tag, current)
+                else:
+                    # Dopisz na koncu — nie blokujemy widocznosci cred tagow z poczatku
+                    dev.asset_notes = (current.strip() + "\n" + note_tag).strip()
             db.commit()
             saved += 1
             logger.info(
