@@ -146,10 +146,10 @@ def _save_found_community(device_id: int, community: str, snmp_timeout: int) -> 
             ))
 
         db.commit()
-        logger.info("Znaleziono community '%s' dla %s", community, ip)
+        logger.info("Found community '%s' for %s", community, ip)
 
     except Exception as exc:
-        logger.debug("Blad zapisu community dla device_id=%s: %s", device_id, exc)
+        logger.debug("Error saving community for device_id=%s: %s", device_id, exc)
         db.rollback()
     finally:
         db.close()
@@ -163,7 +163,7 @@ def scan_once() -> None:
     try:
         communities = _get_db_communities(db)
         if not communities:
-            logger.warning("Brak community w bazie — pomijam cykl")
+            logger.warning("No communities in database — skipping cycle")
             return
 
         stale_threshold = datetime.utcnow() - timedelta(days=recheck_days)
@@ -216,7 +216,7 @@ def scan_once() -> None:
         db.close()
 
     if not device_map:
-        logger.info("Brak urzadzen do sprawdzenia (wszystkie maja aktualna community)")
+        logger.info("No devices to check (all have up-to-date community)")
         g_scanned.set(0); g_found.set(0); g_stale.set(stale_count)
         return
 
@@ -234,7 +234,7 @@ def scan_once() -> None:
     with ThreadPoolExecutor(max_workers=min(workers, len(remaining))) as pool:
         for round_idx, community in enumerate(communities):
             if not remaining:
-                logger.info("Wszystkie urzadzenia znalezione po %d community", round_idx)
+                logger.info("All devices found after %d communities", round_idx)
                 break
 
             # Rownolegle odpytaj wszystkie pozostale urzadzenia ta sama community
@@ -247,7 +247,7 @@ def scan_once() -> None:
                 try:
                     res = fut.result()
                 except Exception as exc:
-                    logger.error("Blad watku probe: %s", exc)
+                    logger.error("Probe thread error: %s", exc)
                     continue
                 if res["found"]:
                     found_this_round.append((res["device_id"], res["community"]))
@@ -284,9 +284,9 @@ def _wait_for_schema(max_retries: int = 12, wait_s: int = 10) -> None:
                 conn.execute(text("SELECT 1 FROM devices LIMIT 1"))
             return
         except Exception:
-            logger.warning("Schema nie gotowa (proba %d/%d) — czekam %ds...", attempt, max_retries, wait_s)
+            logger.warning("Schema not ready (attempt %d/%d) — waiting %ds...", attempt, max_retries, wait_s)
             time.sleep(wait_s)
-    logger.warning("Schema nadal niedostepna po %ds — kontynuuje mimo to", max_retries * wait_s)
+    logger.warning("Schema still unavailable after %ds — continuing anyway", max_retries * wait_s)
 
 
 def main() -> None:
@@ -297,7 +297,7 @@ def main() -> None:
     _wait_for_schema()
     init_db()
     start_http_server(METRICS_PORT)
-    logger.info("Metryki: http://0.0.0.0:%d/metrics", METRICS_PORT)
+    logger.info("Metrics: http://0.0.0.0:%d/metrics", METRICS_PORT)
     # PERF-02: sleep-until-next-run zamiast sleep-after-work
     interval = _DEFAULT_INTERVAL
     while True:
@@ -305,10 +305,10 @@ def main() -> None:
         try:
             scan_once()
         except Exception as exc:
-            logger.exception("Nieobsluzony wyjatek w scan_once (community): %s", exc)
+            logger.exception("Unhandled exception in scan_once (community): %s", exc)
         interval, *_ = _get_settings()
         sleep_time = max(0.0, next_run - time.monotonic())
-        logger.info("Nastepny cykl za %.0fs", sleep_time)
+        logger.info("Next cycle in %.0fs", sleep_time)
         time.sleep(sleep_time)
 
 

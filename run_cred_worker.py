@@ -1628,7 +1628,7 @@ def _reverify_existing_creds(db, device_id: int, ip: str) -> None:
 
         if not valid:
             logger.warning(
-                "REVERIFY FAIL %-18s method=%-6s user=%-12s → usuwam (false positive lub zmiana hasla)",
+                "REVERIFY FAIL %-18s method=%-6s user=%-12s → removing (false positive or password change)",
                 ip, cred.method.value, u,
             )
             db.delete(cred)
@@ -1641,7 +1641,7 @@ def _reverify_existing_creds(db, device_id: int, ip: str) -> None:
         dev = db.query(Device).filter(Device.id == device_id).first()
         if dev and dev.last_credential_ok_at:
             logger.warning(
-                "REVERIFY %-18s wszystkie credentials nieaktualne → reset last_credential_ok_at",
+                "REVERIFY %-18s all credentials stale → resetting last_credential_ok_at",
                 ip,
             )
             dev.last_credential_ok_at = None
@@ -1898,7 +1898,7 @@ def _process_device(device_id: int, ip: str,
             _save_tried(device_id, tried)
 
     except Exception as exc:
-        logger.warning("Blad device_id=%s ip=%s: %s", device_id, ip, exc)
+        logger.warning("Error device_id=%s ip=%s: %s", device_id, ip, exc)
         db.rollback()
     finally:
         # Zawsze drenuj zdarzenia ochrony — nawet gdy wystąpił wyjątek wcześniej.
@@ -1951,7 +1951,7 @@ def _process_device_with_timeout(timeout_s: int, device_id: int, ip: str,
     t.start()
     t.join(timeout=timeout_s)
     if t.is_alive():
-        logger.warning("TIMEOUT   %-18s przekroczono %ds — pomijam urzadzenie", ip, timeout_s)
+        logger.warning("TIMEOUT   %-18s exceeded %ds — skipping device", ip, timeout_s)
         _dangling_threads.append(t)  # śledź wątek — może nadal trzymać socket SSH
         return {"ssh": False, "telnet": False, "web": False, "ftp": False, "rdp": False,
                 "mssql": False, "mysql": False, "postgres": False, "new": 0, "timeout": True}
@@ -2084,7 +2084,7 @@ def scan_once() -> None:
     finally:
         db.close()
     if not candidates:
-        logger.info("Brak kandydatow do sprawdzenia credentiali")
+        logger.info("No candidates for credential check")
         return
     logger.info(
         "Cred scan: %d urzadzen SSH=%d Web=%d FTP=%d RDP=%d VNC=%d MSSQL=%d MySQL=%d PG=%d par"
@@ -2126,7 +2126,7 @@ def scan_once() -> None:
             try:
                 r = fut.result()
             except Exception as exc:
-                logger.warning("Blad watku cred dla %s: %s", futures[fut], exc)
+                logger.warning("Cred thread error for %s: %s", futures[fut], exc)
                 continue
             if r["ssh"]:           ssh_ok      += 1
             if r.get("telnet"):    telnet_ok   += 1
@@ -2201,7 +2201,7 @@ def main() -> None:
         try:
             scan_once()
         except Exception as exc:
-            logger.exception("Nieobsluzony wyjatek w scan_once (cred): %s", exc)
+            logger.exception("Unhandled exception in scan_once (cred): %s", exc)
         interval, *_ = _read_settings()
         time.sleep(max(0.0, next_run - time.monotonic()))
 

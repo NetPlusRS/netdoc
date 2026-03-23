@@ -1453,7 +1453,7 @@ def _scan_device(device_id: int, ip: str, device_type, close_after: int = 3,
     # Drukarki — pomijamy calkowicie gdy opcja wlaczona. TCP connect do portow
     # 9100/515/631 moze spowodowac wydrukowanie losowych znakow.
     if skip_printers and device_type in _SKIP_VULN_DEVICE_TYPES:
-        logger.debug("Pomijam vuln scan dla %s (typ: %s)", ip, device_type)
+        logger.debug("Skipping vuln scan for %s (type: %s)", ip, device_type)
         return {"found": 0, "new": 0, "closed": 0}
 
     _limited = limit_ap_iot and (device_type in _LIMITED_VULN_DEVICE_TYPES)
@@ -1581,7 +1581,7 @@ def scan_once() -> None:
     finally:
         db.close()
     if not dev_list:
-        logger.info("Brak aktywnych urzadzen"); return
+        logger.info("No active devices"); return
     logger.info("Vuln scan: %d urzadzen, workers=%d close_after=%d skip_printers=%s limit_ap_iot=%s",
                 len(dev_list), workers, close_after, skip_printers, limit_ap_iot)
     total_found = new_t = closed_t = 0
@@ -1614,7 +1614,7 @@ def main() -> None:
                 METRICS_PORT, _DEFAULT_INTERVAL)
     init_db()
     start_http_server(METRICS_PORT)
-    logger.info("Metryki: http://0.0.0.0:%d/metrics", METRICS_PORT)
+    logger.info("Metrics: http://0.0.0.0:%d/metrics", METRICS_PORT)
     # PERF-02: sleep-until-next-run instead of sleep-after-work.
     # _MIN_PAUSE_S guarantees a short break even when a scan overshoots the
     # configured interval (prevents back-to-back scans with sleep(0)).

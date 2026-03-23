@@ -66,7 +66,7 @@ def _poll_device(device_id: int, ip: str, community: str,
 
         if not sysname:
             # Community przestalo dzialac — wyczysc, community-worker znajdzie nowe
-            logger.info("Community '%s' nie odpowiada dla %s — resetowanie", community, ip)
+            logger.info("Community '%s' no longer responds for %s — clearing", community, ip)
             device.snmp_community = None
             device.snmp_ok_at     = None
             db.commit()
@@ -153,11 +153,11 @@ def scan_once() -> None:
         db.close()
 
     if not devices:
-        logger.info("Brak urzadzen ze znana community — nic do pollu")
+        logger.info("No devices with known community — nothing to poll")
         g_polled.set(0); g_success.set(0); g_failed.set(0)
         return
 
-    logger.info("SNMP poll: %d urzadzen ze znana community | workers=%d", len(devices), workers)
+    logger.info("SNMP poll: %d devices with known community | workers=%d", len(devices), workers)
 
     polled = success = failed = 0
     with ThreadPoolExecutor(max_workers=min(workers, len(devices))) as pool:
@@ -173,7 +173,7 @@ def scan_once() -> None:
             try:
                 res = fut.result()
             except Exception as exc:
-                logger.error("Blad watku snmp poll: %s", exc)
+                logger.error("SNMP poll thread error: %s", exc)
                 polled += 1
                 failed += 1
                 continue
@@ -199,9 +199,9 @@ def _wait_for_schema(max_retries: int = 12, wait_s: int = 10) -> None:
                 conn.execute(text("SELECT 1 FROM devices LIMIT 1"))
             return
         except Exception:
-            logger.warning("Schema nie gotowa (proba %d/%d) — czekam %ds...", attempt, max_retries, wait_s)
+            logger.warning("Schema not ready (attempt %d/%d) — waiting %ds...", attempt, max_retries, wait_s)
             time.sleep(wait_s)
-    logger.warning("Schema nadal niedostepna po %ds — kontynuuje mimo to", max_retries * wait_s)
+    logger.warning("Schema still unavailable after %ds — continuing anyway", max_retries * wait_s)
 
 
 def main() -> None:
@@ -210,7 +210,7 @@ def main() -> None:
     _wait_for_schema()
     init_db()
     start_http_server(METRICS_PORT)
-    logger.info("Metryki: http://0.0.0.0:%d/metrics", METRICS_PORT)
+    logger.info("Metrics: http://0.0.0.0:%d/metrics", METRICS_PORT)
     # PERF-02: sleep-until-next-run zamiast sleep-after-work
     interval = _DEFAULT_SNMP_INTERVAL
     while True:
@@ -218,7 +218,7 @@ def main() -> None:
         try:
             scan_once()
         except Exception as exc:
-            logger.exception("Nieobsluzony wyjatek w scan_once: %s", exc)
+            logger.exception("Unhandled exception in scan_once: %s", exc)
         interval, *_ = _read_snmp_settings()
         time.sleep(max(0.0, next_run - time.monotonic()))
 

@@ -82,7 +82,7 @@ def check_wan_ip(timeout: float = 10.0) -> dict:
             "updated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"),
         }
     except Exception as e:
-        logger.warning("WAN IP lookup blad: %s", e)
+        logger.warning("WAN IP lookup error: %s", e)
         return {"ok": False, "err": str(e)[:80]}
 
 
@@ -165,7 +165,7 @@ def speed_download(url: str = _SPEED_DL_URL, timeout: float = SPEED_TIMEOUT) -> 
         return {"ok": True, "download_mbps": mbps,
                 "received_bytes": received, "elapsed_s": round(elapsed, 2)}
     except Exception as e:
-        logger.warning("Download speed test blad: %s", e)
+        logger.warning("Download speed test error: %s", e)
         return {"ok": False, "download_mbps": None, "err": str(e)[:80]}
 
 
@@ -186,7 +186,7 @@ def speed_upload(url: str = _SPEED_UL_URL, bytes_count: int = UPLOAD_BYTES,
         return {"ok": r.status_code < 500, "upload_mbps": mbps,
                 "sent_bytes": bytes_count, "elapsed_s": round(elapsed, 2)}
     except Exception as e:
-        logger.warning("Upload speed test blad: %s", e)
+        logger.warning("Upload speed test error: %s", e)
         return {"ok": False, "upload_mbps": None, "err": str(e)[:80]}
 
 
@@ -205,7 +205,7 @@ def _save(key: str, category: str, value: dict) -> None:
             db.add(SystemStatus(key=key, category=category, value=serialized))
         db.commit()
     except Exception as exc:
-        logger.error("DB save blad (%s): %s", key, exc)
+        logger.error("DB save error (%s): %s", key, exc)
         db.rollback()
     finally:
         db.close()
@@ -240,12 +240,12 @@ def run_checks() -> None:
     if dns_google["ok"]: parts.append(f"DNS-G {dns_google['ms']}ms")
     if dns_cf["ok"]:     parts.append(f"DNS-CF {dns_cf['ms']}ms")
     if latency["ok"]:    parts.append(f"HTTP avg={latency['avg_ms']}ms jitter={latency['jitter_ms']}ms")
-    logger.info("Checks: %s", " | ".join(parts) if parts else "WSZYSTKIE FAIL")
+    logger.info("Checks: %s", " | ".join(parts) if parts else "ALL FAILED")
 
 
 def run_speed_test() -> None:
     """Test predkosci: download + upload, zapisuje wyniki do internet_speed."""
-    logger.info("Test predkosci: download ~%dMB + upload ~%dMB...",
+    logger.info("Speed test: download ~%dMB + upload ~%dMB...",
                 SPEED_BYTES // 1_000_000, UPLOAD_BYTES // 1_000_000)
     dl = speed_download()
     ul = speed_upload()
@@ -277,11 +277,11 @@ def run_wan_check() -> None:
         logger.info("WAN: ip=%s kraj=%s miasto=%s isp=%s",
                     wan.get("ip"), wan.get("country"), wan.get("city"), wan.get("org"))
     else:
-        logger.warning("WAN lookup blad: %s", wan.get("err"))
+        logger.warning("WAN lookup error: %s", wan.get("err"))
 
 
 def main() -> None:
-    logger.info("Netdoc Internet Worker start — checks co %ds, speed co %ds, wan co %ds, metrics :%d",
+    logger.info("Netdoc Internet Worker start — checks every %ds, speed every %ds, wan every %ds, metrics :%d",
                 CHECK_INTERVAL_S, SPEED_INTERVAL_S, WAN_INTERVAL_S, METRICS_PORT)
     init_db()
     start_http_server(METRICS_PORT)
@@ -304,7 +304,7 @@ def main() -> None:
                 run_wan_check()
                 last_wan = now_mono
         except Exception as exc:
-            logger.exception("Nieobsluzony wyjatek w glownej petli internet: %s", exc)
+            logger.exception("Unhandled exception in main internet loop: %s", exc)
 
         time.sleep(max(0.0, next_run - time.monotonic()))
 

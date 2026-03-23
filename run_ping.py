@@ -228,7 +228,7 @@ def poll_once() -> int:
                     except (ValueError, TypeError):
                         pass
         except Exception as _exc:
-            logger.warning("Blad pobierania znanych portow: %s — uzywam tylko PROBE_PORTS", _exc)
+            logger.warning("Error fetching known ports: %s — using only PROBE_PORTS", _exc)
 
         results: dict = {}  # device_id -> RTT ms (float) lub None
         with ThreadPoolExecutor(max_workers=min(workers, len(devices))) as pool:
@@ -240,8 +240,8 @@ def poll_once() -> int:
                 try:
                     results[futures[fut]] = fut.result()
                 except Exception as exc:
-                    logger.debug("Blad watku ping device_id=%s: %s", futures[fut], exc)
-                    results[futures[fut]] = None  # traktuj jak timeout, nie DOWN (chroni _FAIL_THRESHOLD)
+                    logger.debug("Ping thread error device_id=%s: %s", futures[fut], exc)
+                    results[futures[fut]] = None  # treat as timeout, not DOWN (protects _FAIL_THRESHOLD)
 
         up = down = 0
         up_lines = []   # "IP(RTT ms)"
@@ -282,7 +282,7 @@ def poll_once() -> int:
                     if device.is_monitored:
                         monitored_alerts.append((device, "offline"))
                 elif was_active and fails > 0:
-                    logger.debug("UNCERTAIN: %s fail#%d/%d (czekam na %d kolejnych niepowodzen)",
+                    logger.debug("UNCERTAIN: %s fail#%d/%d (waiting for %d more failures)",
                                  device.ip, fails, _FAIL_THRESHOLD, _FAIL_THRESHOLD)
 
         db.commit()
@@ -297,9 +297,9 @@ def poll_once() -> int:
                     if dev_live:
                         send_monitoring_alert(db, dev_live, alert_type)
                     else:
-                        logger.warning("Alert pominieto — device %d usuniety po commit", dev.id)
+                        logger.warning("Alert skipped — device %d removed after commit", dev.id)
             except Exception as exc:
-                logger.warning("Blad wysylania alertow monitorowania: %s", exc)
+                logger.warning("Error sending monitoring alerts: %s", exc)
 
         elapsed = time.monotonic() - t0
         g_up.set(up)
@@ -317,7 +317,7 @@ def poll_once() -> int:
         )
 
     except Exception as exc:
-        logger.exception("Blad pollingu: %s", exc)
+        logger.exception("Poll error: %s", exc)
         db.rollback()
     finally:
         db.close()
@@ -330,7 +330,7 @@ def main() -> None:
     _wait_for_schema()
     init_db()
     start_http_server(METRICS_PORT)
-    logger.info("Metryki: http://0.0.0.0:%d/metrics", METRICS_PORT)
+    logger.info("Metrics: http://0.0.0.0:%d/metrics", METRICS_PORT)
 
     # PERF-02: sleep-until-next-run zamiast sleep-after-work
     # PERF-01: poll_once() zwraca interval — eliminuje drugie _read_settings()
@@ -340,7 +340,7 @@ def main() -> None:
         try:
             interval = poll_once() or interval
         except Exception as exc:
-            logger.exception("Nieobsluzony wyjatek w poll_once: %s", exc)
+            logger.exception("Unhandled exception in poll_once: %s", exc)
         time.sleep(max(0.0, next_run - time.monotonic()))
 
 
