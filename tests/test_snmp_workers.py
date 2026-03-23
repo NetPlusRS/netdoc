@@ -682,3 +682,291 @@ def test_snmp_main_has_try_except_in_loop():
     assert "try:" in source, "WRK-01: main() musi miec try/except wokol scan_once()"
     assert "except Exception" in source, \
         "WRK-01: main() musi lapac Exception w petli while True"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# sysUpTime helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestTimeticks:
+    def test_days_hours_minutes(self):
+        from run_snmp_worker import _timeticks_to_str
+        assert _timeticks_to_str(8640000) == "1d 0h 0m"   # 86400s = 1d
+        assert _timeticks_to_str(9576000) == "1d 2h 36m"
+
+    def test_hours_only(self):
+        from run_snmp_worker import _timeticks_to_str
+        assert _timeticks_to_str(360000) == "1h 0m"
+
+    def test_minutes_only(self):
+        from run_snmp_worker import _timeticks_to_str
+        assert _timeticks_to_str(12000) == "2m"
+
+    def test_zero(self):
+        from run_snmp_worker import _timeticks_to_str
+        assert _timeticks_to_str(0) == "0m"
+
+    def test_invalid(self):
+        from run_snmp_worker import _timeticks_to_str
+        result = _timeticks_to_str("bad")
+        assert isinstance(result, str)
+
+
+class TestUpdateAssetNotesTag:
+    def test_creates_tag_when_notes_empty(self):
+        from run_snmp_worker import _update_asset_notes_tag
+        result = _update_asset_notes_tag(None, "uptime", "3d 2h 5m")
+        assert "[uptime 3d 2h 5m]" in result
+
+    def test_replaces_existing_tag(self):
+        from run_snmp_worker import _update_asset_notes_tag
+        notes = "some notes\n[uptime 1d 0h 0m]"
+        result = _update_asset_notes_tag(notes, "uptime", "2d 0h 0m")
+        assert "[uptime 2d 0h 0m]" in result
+        assert "[uptime 1d 0h 0m]" not in result
+
+    def test_does_not_affect_other_tags(self):
+        from run_snmp_worker import _update_asset_notes_tag
+        notes = "[broadcast svc=rtsp]\n[uptime 1h 0m]"
+        result = _update_asset_notes_tag(notes, "uptime", "2h 0m")
+        assert "[broadcast svc=rtsp]" in result
+        assert "[uptime 2h 0m]" in result
+
+    def test_appends_when_other_content_present(self):
+        from run_snmp_worker import _update_asset_notes_tag
+        notes = "existing notes"
+        result = _update_asset_notes_tag(notes, "uptime", "5m")
+        assert "existing notes" in result
+        assert "[uptime 5m]" in result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# _poll_device: uptime + serial enrichment
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestPollDeviceUptimeSerial:
+
+    def _pd(self, dev, db):
+        from run_snmp_worker import _poll_device
+        return _poll_device(dev.id, dev.ip, dev.snmp_community,
+                            dev.hostname, dev.os_version, dev.location)
+
+    def test_uptime_saved_to_asset_notes(self, db):
+        """Poll zapisuje sysUpTime jako [uptime ...] tag w asset_notes."""
+        dev = _dev(db, "10.9.0.1", community="public")
+
+        def fake_get(ip, community, oid, timeout=2):
+            from run_snmp_worker import OID_SYSUPTIME
+            from netdoc.collector.drivers.snmp import OID_SYSNAME
+            if oid == OID_SYSNAME:   return "router-x"
+            if oid == OID_SYSUPTIME: return 360000  # 1h
+            return None
+
+        with _patch_session(db)[0]:
+            with patch("netdoc.collector.drivers.snmp._snmp_get", side_effect=fake_get):
+                self._pd(dev, db)
+
+        db.refresh(dev)
+        assert dev.asset_notes is not None
+        assert "[uptime" in dev.asset_notes
+        assert "1h" in dev.asset_notes
+
+    def test_serial_saved_when_empty(self, db):
+        """Poll zapisuje serial number z Entity MIB jesli pole puste."""
+        dev = _dev(db, "10.9.0.2", community="public")
+        assert dev.serial_number is None
+
+        def fake_get(ip, community, oid, timeout=2):
+            from run_snmp_worker import OID_ENT_SERIAL
+            from netdoc.collector.drivers.snmp import OID_SYSNAME
+            if oid == OID_SYSNAME:  return "switch-y"
+            if oid == OID_ENT_SERIAL: return "FCW2134X0AB"
+            return None
+
+        with _patch_session(db)[0]:
+            with patch("netdoc.collector.drivers.snmp._snmp_get", side_effect=fake_get):
+                self._pd(dev, db)
+
+        db.refresh(dev)
+        assert dev.serial_number == "FCW2134X0AB"
+
+    def test_serial_not_overwritten(self, db):
+        """Poll NIE nadpisuje serial_number jesli juz ustawiony."""
+        dev = _dev(db, "10.9.0.3", community="public")
+        dev.serial_number = "EXISTING-SERIAL"
+        db.commit()
+
+        def fake_get(ip, community, oid, timeout=2):
+            from run_snmp_worker import OID_ENT_SERIAL
+            from netdoc.collector.drivers.snmp import OID_SYSNAME
+            if oid == OID_SYSNAME:    return "switch-z"
+            if oid == OID_ENT_SERIAL: return "NEW-SERIAL"
+            return None
+
+        with _patch_session(db)[0]:
+            with patch("netdoc.collector.drivers.snmp._snmp_get", side_effect=fake_get):
+                self._pd(dev, db)
+
+        db.refresh(dev)
+        assert dev.serial_number == "EXISTING-SERIAL"
+
+    def test_empty_serial_not_saved(self, db):
+        """Poll ignoruje pusty/zerowy serial z Entity MIB."""
+        dev = _dev(db, "10.9.0.4", community="public")
+
+        def fake_get(ip, community, oid, timeout=2):
+            from run_snmp_worker import OID_ENT_SERIAL
+            from netdoc.collector.drivers.snmp import OID_SYSNAME
+            if oid == OID_SYSNAME:    return "ap-1"
+            if oid == OID_ENT_SERIAL: return "0"  # pusty/invalid
+            return None
+
+        with _patch_session(db)[0]:
+            with patch("netdoc.collector.drivers.snmp._snmp_get", side_effect=fake_get):
+                self._pd(dev, db)
+
+        db.refresh(dev)
+        assert dev.serial_number is None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CDP enrichment
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestEnrichCdp:
+
+    def _walk_fixture(self, entries: list[tuple]) -> list[tuple]:
+        """entries: list of (oid_suffix, raw_val) → pełny OID z prefixem CDP."""
+        from run_snmp_worker import _CDP_CACHE_TABLE
+        return [(f"{_CDP_CACHE_TABLE}.{sfx}", val, None) for sfx, val in entries]
+
+    def test_parses_cisco_neighbor_with_ip(self):
+        from run_snmp_worker import _enrich_cdp
+        # field.ifIndex.devIndex:  6=DeviceId, 4=Address, 8=Platform, 5=Version
+        walk_data = self._walk_fixture([
+            ("6.1.1", b"switch-core"),   # hostname
+            ("4.1.1", bytes([10, 0, 1, 2])),  # IP 10.0.1.2
+            ("8.1.1", b"Cisco WS-C3750X"),    # platform
+            ("5.1.1", b"15.0(2)SE5"),         # software version
+        ])
+        with patch("netdoc.collector.snmp_walk.snmp_walk", return_value=iter(walk_data)):
+            result = _enrich_cdp("10.0.0.1", "public")
+
+        assert len(result) == 1
+        r = result[0]
+        assert r["hostname"] == "switch-core"
+        assert r["ip"] == "10.0.1.2"
+        assert r["platform"] == "Cisco WS-C3750X"
+        assert r["software"] == "15.0(2)SE5"
+
+    def test_strips_domain_from_hostname(self):
+        from run_snmp_worker import _enrich_cdp
+        walk_data = self._walk_fixture([
+            ("6.1.1", b"router01.corp.local"),
+            ("4.1.1", bytes([192, 168, 1, 1])),
+        ])
+        with patch("netdoc.collector.snmp_walk.snmp_walk", return_value=iter(walk_data)):
+            result = _enrich_cdp("10.0.0.1", "public")
+
+        assert result[0]["hostname"] == "router01"
+
+    def test_multiple_neighbors(self):
+        from run_snmp_worker import _enrich_cdp
+        walk_data = self._walk_fixture([
+            ("6.1.1", b"sw-access-1"),
+            ("4.1.1", bytes([10, 1, 0, 1])),
+            ("6.2.1", b"sw-access-2"),
+            ("4.2.1", bytes([10, 1, 0, 2])),
+        ])
+        with patch("netdoc.collector.snmp_walk.snmp_walk", return_value=iter(walk_data)):
+            result = _enrich_cdp("10.0.0.1", "public")
+
+        assert len(result) == 2
+
+    def test_returns_empty_on_walk_exception(self):
+        from run_snmp_worker import _enrich_cdp
+        with patch("netdoc.collector.snmp_walk.snmp_walk", side_effect=Exception("timeout")):
+            result = _enrich_cdp("10.0.0.1", "public")
+        assert result == []
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ARP table enrichment
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestEnrichArp:
+
+    def _walk_fixture(self, entries):
+        from run_snmp_worker import _ARP_TABLE_OID
+        return [(f"{_ARP_TABLE_OID}.{sfx}", val, None) for sfx, val in entries]
+
+    def test_parses_dynamic_arp_entry(self):
+        from run_snmp_worker import _enrich_arp
+        # field.ifIndex.a.b.c.d → MAC from field 2, type from field 4
+        walk_data = self._walk_fixture([
+            ("2.1.192.168.1.10", bytes([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF])),  # MAC
+            ("4.1.192.168.1.10", 3),   # type=3 dynamic
+        ])
+        with patch("netdoc.collector.snmp_walk.snmp_walk", return_value=iter(walk_data)):
+            result = _enrich_arp("192.168.1.1", "public")
+
+        assert len(result) == 1
+        assert result[0]["ip"] == "192.168.1.10"
+        assert result[0]["mac"].upper() == "AA:BB:CC:DD:EE:FF"
+
+    def test_skips_invalid_arp_entries(self):
+        from run_snmp_worker import _enrich_arp
+        walk_data = self._walk_fixture([
+            ("2.1.192.168.1.20", bytes([0x11, 0x22, 0x33, 0x44, 0x55, 0x66])),
+            ("4.1.192.168.1.20", 2),  # type=2 invalid — should be skipped
+        ])
+        with patch("netdoc.collector.snmp_walk.snmp_walk", return_value=iter(walk_data)):
+            result = _enrich_arp("192.168.1.1", "public")
+
+        assert result == []
+
+    def test_skips_broadcast_mac(self):
+        from run_snmp_worker import _enrich_arp
+        walk_data = self._walk_fixture([
+            ("2.1.192.168.1.255", bytes([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF])),
+            ("4.1.192.168.1.255", 3),
+        ])
+        with patch("netdoc.collector.snmp_walk.snmp_walk", return_value=iter(walk_data)):
+            result = _enrich_arp("192.168.1.1", "public")
+
+        assert result == []
+
+    def test_returns_empty_on_exception(self):
+        from run_snmp_worker import _enrich_arp
+        with patch("netdoc.collector.snmp_walk.snmp_walk", side_effect=Exception("no route")):
+            result = _enrich_arp("10.0.0.1", "public")
+        assert result == []
+
+    def test_save_arp_devices_upserts_new(self, db):
+        """_save_arp_devices tworzy nowe urzadzenia z ARP entries."""
+        from run_snmp_worker import _save_arp_devices
+        from netdoc.storage.models import Device
+
+        entries = [{"ip": "10.20.0.5", "mac": "aa:bb:cc:11:22:33"}]
+
+        with _patch_session(db)[0]:
+            n = _save_arp_devices(db, "10.20.0.1", entries)
+
+        assert n >= 1
+        dev = db.query(Device).filter(Device.ip == "10.20.0.5").first()
+        assert dev is not None
+        assert dev.mac.upper() == "AA:BB:CC:11:22:33"
+
+    def test_save_arp_devices_skips_src_ip(self, db):
+        """_save_arp_devices nie zapisuje wpisu IP samego urzadzenia-zrodla."""
+        from run_snmp_worker import _save_arp_devices
+        from netdoc.storage.models import Device
+
+        src = "10.20.0.1"
+        entries = [{"ip": src, "mac": "00:11:22:33:44:55"}]
+
+        with _patch_session(db)[0]:
+            n = _save_arp_devices(db, src, entries)
+
+        assert n == 0
+        assert db.query(Device).filter(Device.ip == src).first() is None

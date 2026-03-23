@@ -112,7 +112,7 @@ def _enrich_lldp(ip: str, community: str, timeout: int = 2) -> list[dict]:
     return [v for v in rows.values() if v.get("hostname") or v.get("mac")]
 
 
-def _save_lldp_neighbors(db, src_device_id: int, src_ip: str, neighbors: list[dict]) -> int:
+def _save_lldp_neighbors(db, src_device_id: int, src_ip: str, neighbors: list[dict], proto: str = "LLDP") -> int:
     """Upsertuje sasiadow LLDP jako Device w bazie. Zwraca liczbe zapisanych."""
     from netdoc.collector.discovery import upsert_device
     from netdoc.collector.normalizer import DeviceData, normalize_mac
@@ -142,18 +142,22 @@ def _save_lldp_neighbors(db, src_device_id: int, src_ip: str, neighbors: list[di
                         saved += 1
             continue  # nie mamy IP → nie mozemy zrobic upsert
 
+        # CDP uses "software"+"platform", LLDP uses "sys_desc", EDP uses "software"
+        os_ver = (n.get("sys_desc") or n.get("software") or "")[:120] or None
+        vendor_hint = n.get("platform") or None  # CDP platform e.g. "cisco WS-C3750X-48P"
         data = DeviceData(
             ip         = ip,
             mac        = normalize_mac(n.get("mac")),
             hostname   = hostname or None,
-            os_version = n.get("sys_desc", "")[:120] or None,
+            os_version = os_ver,
+            vendor     = vendor_hint,
         )
         try:
             upsert_device(db, data)
             db.commit()
             saved += 1
-            logger.info("LLDP neighbor: %-18s hostname=%-28s via %s port=%s",
-                        ip, hostname or "-", src_ip, n.get("local_port", "?"))
+            logger.info("%s neighbor: %-18s hostname=%-28s via %s port=%s",
+                        proto, ip, hostname or "-", src_ip, n.get("local_port", "?"))
         except Exception as exc:
             logger.debug("LLDP save error %s: %s", ip, exc)
             db.rollback()
@@ -170,6 +174,167 @@ def _is_ip(s: str) -> bool:
         return all(0 <= int(p) <= 255 for p in parts)
     except ValueError:
         return False
+
+
+# ---------------------------------------------------------------------------
+# CDP enrichment — Cisco Discovery Protocol via SNMP (ciscocdpMIB)
+# ---------------------------------------------------------------------------
+# OID prefix: 1.3.6.1.4.1.9.9.23.1.2.1.1 (cdpCacheEntry)
+# Index: .<field>.<ifIndex>.<devIndex>
+#  .3  cdpCacheAddressType  (1=IPv4)
+#  .4  cdpCacheAddress      (4 bytes IPv4)
+#  .5  cdpCacheVersion      (software version string)
+#  .6  cdpCacheDeviceId     (hostname)
+#  .7  cdpCacheDevicePort   (remote port)
+#  .8  cdpCachePlatform     (model/platform)
+_CDP_CACHE_TABLE = "1.3.6.1.4.1.9.9.23.1.2.1.1"
+
+
+def _enrich_cdp(ip: str, community: str, timeout: int = 2) -> list[dict]:
+    """Odpytuje urzadzenie Cisco o tablice sasiadow CDP (cdpCacheTable).
+
+    Zwraca liste slownikow z polami ip/hostname/platform/software/local_port/remote_port.
+    Urzadzenia bez CDP lub nie-Cisco zwracaja pusta liste.
+    """
+    from netdoc.collector.snmp_walk import snmp_walk
+
+    rows: dict[tuple, dict] = {}  # klucz: (ifIndex, devIndex)
+
+    try:
+        for oid_str, raw_val, _tag in snmp_walk(
+            ip, _CDP_CACHE_TABLE, community=community, timeout=timeout, max_iter=500
+        ):
+            suffix = oid_str[len(_CDP_CACHE_TABLE):].lstrip(".")
+            parts = suffix.split(".")
+            if len(parts) < 3:
+                continue
+            field_id  = int(parts[0])
+            if_idx    = parts[1]
+            dev_idx   = parts[2]
+            key = (if_idx, dev_idx)
+
+            if isinstance(raw_val, (bytes, bytearray)):
+                val_str = raw_val.decode("utf-8", errors="replace").strip()
+            else:
+                val_str = str(raw_val).strip() if raw_val is not None else ""
+
+            entry = rows.setdefault(key, {"local_port_idx": if_idx})
+
+            if field_id == 3:   # cdpCacheAddressType
+                entry["addr_type"] = int(raw_val) if isinstance(raw_val, int) else (
+                    int.from_bytes(raw_val, "big") if isinstance(raw_val, (bytes, bytearray)) else 1
+                )
+            elif field_id == 4:  # cdpCacheAddress
+                if isinstance(raw_val, (bytes, bytearray)) and len(raw_val) == 4:
+                    entry["ip"] = ".".join(str(b) for b in raw_val)
+                elif _is_ip(val_str):
+                    entry["ip"] = val_str
+            elif field_id == 5:  # cdpCacheVersion
+                entry["software"] = val_str[:120]
+            elif field_id == 6:  # cdpCacheDeviceId
+                # Cisco często dodaje domenę do hostname: "switch01.domain.com"
+                entry["hostname"] = val_str.split(".")[0] if "." in val_str else val_str
+            elif field_id == 7:  # cdpCacheDevicePort
+                entry["remote_port"] = val_str
+            elif field_id == 8:  # cdpCachePlatform
+                entry["platform"] = val_str
+
+    except Exception as exc:
+        logger.debug("CDP walk %s: %s", ip, exc)
+        return []
+
+    return [v for v in rows.values() if v.get("hostname") or v.get("ip")]
+
+
+# ---------------------------------------------------------------------------
+# EDP enrichment — Extreme Discovery Protocol via SNMP (extremeware-mib)
+# ---------------------------------------------------------------------------
+# OID prefix: 1.3.6.1.4.1.1991.1.14.7.1.1 (extremeEdpNeighborEntry)
+#  .2  extremeEdpNeighborIpAddress
+#  .3  extremeEdpNeighborSysName
+#  .4  extremeEdpNeighborSoftwareVersion
+#  .5  extremeEdpNeighborPortIfIndex
+_EDP_NEIGHBOR_TABLE = "1.3.6.1.4.1.1991.1.14.7.1.1"
+
+
+def _enrich_edp(ip: str, community: str, timeout: int = 2) -> list[dict]:
+    """Odpytuje urzadzenie Extreme Networks o tablice sasiadow EDP.
+
+    Zwraca liste slownikow z polami ip/hostname/software/local_port.
+    Nie-Extreme urzadzenia zwracaja pusta liste.
+    """
+    from netdoc.collector.snmp_walk import snmp_walk
+
+    rows: dict[str, dict] = {}
+
+    try:
+        for oid_str, raw_val, _tag in snmp_walk(
+            ip, _EDP_NEIGHBOR_TABLE, community=community, timeout=timeout, max_iter=200
+        ):
+            suffix = oid_str[len(_EDP_NEIGHBOR_TABLE):].lstrip(".")
+            parts = suffix.split(".")
+            if len(parts) < 2:
+                continue
+            field_id = int(parts[0])
+            idx      = parts[1]
+
+            if isinstance(raw_val, (bytes, bytearray)):
+                val_str = raw_val.decode("utf-8", errors="replace").strip()
+            else:
+                val_str = str(raw_val).strip() if raw_val is not None else ""
+
+            entry = rows.setdefault(idx, {})
+
+            if field_id == 2:  # extremeEdpNeighborIpAddress
+                if isinstance(raw_val, (bytes, bytearray)) and len(raw_val) == 4:
+                    entry["ip"] = ".".join(str(b) for b in raw_val)
+                elif _is_ip(val_str):
+                    entry["ip"] = val_str
+            elif field_id == 3:  # extremeEdpNeighborSysName
+                entry["hostname"] = val_str
+            elif field_id == 4:  # extremeEdpNeighborSoftwareVersion
+                entry["software"] = val_str[:120]
+            elif field_id == 5:  # extremeEdpNeighborPortIfIndex
+                entry["local_port"] = val_str
+
+    except Exception as exc:
+        logger.debug("EDP walk %s: %s", ip, exc)
+        return []
+
+    return [v for v in rows.values() if v.get("hostname") or v.get("ip")]
+
+
+# ---------------------------------------------------------------------------
+# sysUpTime + Entity MIB serial enrichment — dodawane w trakcie normalnego pollu
+# ---------------------------------------------------------------------------
+OID_SYSUPTIME   = "1.3.6.1.2.1.1.3.0"
+OID_ENT_SERIAL  = "1.3.6.1.2.1.47.1.1.1.1.11.1"  # entPhysicalSerialNum chassis
+
+
+def _timeticks_to_str(ticks) -> str:
+    """Zamienia TimeTicks (setne sekundy) na czytelny string, np. '3d 14h 22m'."""
+    try:
+        total_s = int(ticks) // 100
+    except (TypeError, ValueError):
+        return str(ticks)
+    days, rem = divmod(total_s, 86400)
+    hours, rem = divmod(rem, 3600)
+    mins = rem // 60
+    if days:
+        return f"{days}d {hours}h {mins}m"
+    if hours:
+        return f"{hours}h {mins}m"
+    return f"{mins}m"
+
+
+def _update_asset_notes_tag(notes: str | None, tag: str, value: str) -> str:
+    """Zastepuje sekcje [tag ...] w asset_notes lub dodaje na koncu."""
+    import re
+    pattern = rf"\[{re.escape(tag)}[^\]]*\]"
+    new_tag = f"[{tag} {value}]"
+    if notes and re.search(pattern, notes):
+        return re.sub(pattern, new_tag, notes)
+    return (notes + "\n" + new_tag) if notes else new_tag
 
 
 def _poll_device(device_id: int, ip: str, community: str,
@@ -209,10 +374,27 @@ def _poll_device(device_id: int, ip: str, community: str,
 
         sysdescr = _snmp_get(ip, community, OID_SYSDESCR,   timeout=snmp_timeout)
         sysloc   = _snmp_get(ip, community, OID_SYSLOCATION, timeout=snmp_timeout)
+        uptime   = _snmp_get(ip, community, OID_SYSUPTIME,   timeout=snmp_timeout)
 
         if sysname  and not hostname:   device.hostname    = sysname
         if sysdescr and not os_version: device.os_version  = sysdescr[:120]
         if sysloc   and not location:   device.location    = sysloc
+
+        # sysUpTime — zawsze aktualizuj jako tag w asset_notes
+        if uptime is not None:
+            uptime_str = _timeticks_to_str(uptime)
+            device.asset_notes = _update_asset_notes_tag(device.asset_notes, "uptime", uptime_str)
+
+        # Serial number (Entity MIB) — uzupelnij raz jesli puste
+        if not device.serial_number:
+            try:
+                serial = _snmp_get(ip, community, OID_ENT_SERIAL, timeout=snmp_timeout)
+                if serial and str(serial).strip() not in ("", "0", ".."):
+                    device.serial_number = str(serial).strip()[:255]
+                    logger.info("Serial %-18s: %s", ip, device.serial_number)
+            except Exception:
+                pass  # brak Entity MIB — normalne dla prostych urzadzen
+
         device.snmp_ok_at = datetime.utcnow()
 
         # Zaktualizuj last_success_at na credentialu jesli istnieje
@@ -239,6 +421,96 @@ def _poll_device(device_id: int, ip: str, community: str,
         db.close()
     return result
 
+
+
+# ---------------------------------------------------------------------------
+# ARP table walk — odkrywa urzadzenia w innych VLAN-ach przez routery/L3 switche
+# ---------------------------------------------------------------------------
+# OID prefix: 1.3.6.1.2.1.3.1.1 (ipNetToMediaEntry, RFC 1213)
+# Index: .<field>.<ifIndex>.<a>.<b>.<c>.<d>  gdzie a.b.c.d = IP
+#  .2  ipNetToMediaPhysAddress  (MAC — 6 bytes)
+#  .3  ipNetToMediaNetAddress   (IP — w OID suffix)
+#  .4  ipNetToMediaType         (1=other, 2=invalid, 3=dynamic, 4=static)
+_ARP_TABLE_OID = "1.3.6.1.2.1.3.1.1"
+
+
+def _enrich_arp(ip: str, community: str, timeout: int = 2) -> list[dict]:
+    """Czyta ARP table urzadzenia L3 (router / L3 switch) przez SNMP walk.
+
+    Zwraca liste slownikow {ip, mac, arp_type} dla wpisow dynamic/static.
+    Urzadzenia bez routingu zwracaja pusta liste.
+    """
+    from netdoc.collector.snmp_walk import snmp_walk
+    from netdoc.collector.normalizer import normalize_mac
+
+    rows: dict[str, dict] = {}  # klucz: neighbor_ip
+
+    try:
+        for oid_str, raw_val, _tag in snmp_walk(
+            ip, _ARP_TABLE_OID, community=community, timeout=timeout, max_iter=2000
+        ):
+            suffix = oid_str[len(_ARP_TABLE_OID):].lstrip(".")
+            parts = suffix.split(".")
+            # .<field>.<ifIndex>.<a>.<b>.<c>.<d>
+            if len(parts) < 6:
+                continue
+            field_id = int(parts[0])
+            # IP pochodzi z ostatnich 4 oktetow OID (bez ifIndex)
+            neighbor_ip = ".".join(parts[-4:])
+            if not _is_ip(neighbor_ip):
+                continue
+
+            entry = rows.setdefault(neighbor_ip, {"ip": neighbor_ip})
+
+            if field_id == 2:  # ipNetToMediaPhysAddress
+                if isinstance(raw_val, (bytes, bytearray)) and len(raw_val) == 6:
+                    mac = normalize_mac("".join(f"{b:02x}" for b in raw_val))
+                    if mac:
+                        entry["mac"] = mac
+            elif field_id == 4:  # ipNetToMediaType: 2=invalid
+                try:
+                    arp_type = int(raw_val)
+                    entry["arp_type"] = arp_type
+                except (TypeError, ValueError):
+                    pass
+
+    except Exception as exc:
+        logger.debug("ARP walk %s: %s", ip, exc)
+        return []
+
+    # Odfiltruj wpisy invalid (type=2) i multicast/broadcast MAC
+    result = []
+    for v in rows.values():
+        if v.get("arp_type") == 2:
+            continue  # invalid entry
+        mac = v.get("mac", "").upper()
+        if mac and (mac.startswith("FF:FF") or mac.startswith("01:")):
+            continue  # broadcast/multicast
+        if v.get("mac"):  # potrzebujemy MAC żeby nie śmiecić w DB
+            result.append(v)
+    return result
+
+
+def _save_arp_devices(db, src_ip: str, entries: list[dict]) -> int:
+    """Upsertuje urzadzenia z ARP table do DB. Zwraca liczbe nowych/zaktualizowanych."""
+    from netdoc.collector.discovery import upsert_device
+    from netdoc.collector.normalizer import DeviceData
+
+    saved = 0
+    for e in entries:
+        neighbor_ip = e["ip"]
+        # Pomijamy IP samego urzadzenia ktore pytamy
+        if neighbor_ip == src_ip:
+            continue
+        data = DeviceData(ip=neighbor_ip, mac=e.get("mac"))
+        try:
+            upsert_device(db, data)
+            db.commit()
+            saved += 1
+        except Exception as exc:
+            logger.debug("ARP save error %s: %s", neighbor_ip, exc)
+            db.rollback()
+    return saved
 
 
 _DEFAULT_SNMP_TIMEOUT = int(os.getenv("SNMP_TIMEOUT_S", "2"))
@@ -320,26 +592,66 @@ def scan_once() -> None:
     g_failed.set(failed); g_new_cred.set(0); g_duration.set(round(elapsed, 1))
     logger.info("SNMP poll done: %d ok / %d failed  %.1fs", success, failed, elapsed)
 
-    # LLDP enrichment — dla urzadzen z dzialajacym SNMP pytamy o sasiadow
-    lldp_total = 0
-    lldp_devices = [d for d in devices if d.snmp_community]
-    if lldp_devices:
-        logger.info("LLDP enrichment: checking %d devices for neighbors", len(lldp_devices))
-        db_lldp = SessionLocal()
+    # Neighbor enrichment (LLDP / CDP / EDP) — dla urzadzen ze SNMP pytamy o sasiadow
+    neighbor_total = 0
+    neighbor_devices = [d for d in devices if d.snmp_community]
+    if neighbor_devices:
+        logger.info("Neighbor enrichment: checking %d devices (LLDP/CDP/EDP)", len(neighbor_devices))
+        db_neigh = SessionLocal()
         try:
-            for d in lldp_devices:
-                neighbors = _enrich_lldp(d.ip, d.snmp_community, timeout=snmp_timeout)
-                if neighbors:
-                    n_saved = _save_lldp_neighbors(db_lldp, d.id, d.ip, neighbors)
-                    if n_saved:
-                        lldp_total += n_saved
-                        logger.info("LLDP %-18s: %d neighbor(s) updated", d.ip, n_saved)
+            for d in neighbor_devices:
+                # LLDP — standard (HP, Juniper, Cisco, Extreme...)
+                lldp_nb = _enrich_lldp(d.ip, d.snmp_community, timeout=snmp_timeout)
+                if lldp_nb:
+                    n = _save_lldp_neighbors(db_neigh, d.id, d.ip, lldp_nb, "LLDP")
+                    neighbor_total += n
+                    if n:
+                        logger.info("LLDP %-18s: %d neighbor(s)", d.ip, n)
+
+                # CDP — Cisco proprietary
+                cdp_nb = _enrich_cdp(d.ip, d.snmp_community, timeout=snmp_timeout)
+                if cdp_nb:
+                    n = _save_lldp_neighbors(db_neigh, d.id, d.ip, cdp_nb, "CDP")
+                    neighbor_total += n
+                    if n:
+                        logger.info("CDP  %-18s: %d neighbor(s)", d.ip, n)
+
+                # EDP — Extreme Networks
+                edp_nb = _enrich_edp(d.ip, d.snmp_community, timeout=snmp_timeout)
+                if edp_nb:
+                    n = _save_lldp_neighbors(db_neigh, d.id, d.ip, edp_nb, "EDP")
+                    neighbor_total += n
+                    if n:
+                        logger.info("EDP  %-18s: %d neighbor(s)", d.ip, n)
+
         except Exception as exc:
-            logger.warning("LLDP enrichment error: %s", exc)
+            logger.warning("Neighbor enrichment error: %s", exc)
         finally:
-            db_lldp.close()
-        if lldp_total:
-            logger.info("LLDP total neighbors updated: %d", lldp_total)
+            db_neigh.close()
+        if neighbor_total:
+            logger.info("Neighbor total updated: %d", neighbor_total)
+
+    # ARP table walk — routery i L3 switche ujawniaja urzadzenia w innych VLAN-ach
+    # Uruchamiamy tylko dla urzadzen ktore wyglądają na routing (router/switch/firewall/unknown)
+    _L3_TYPES = {DeviceType.router, DeviceType.switch, DeviceType.firewall, DeviceType.unknown}
+    arp_candidates = [d for d in devices if d.snmp_community and d.device_type in _L3_TYPES]
+    if arp_candidates:
+        logger.info("ARP walk: checking %d L3 devices for ARP table", len(arp_candidates))
+        arp_total = 0
+        db_arp = SessionLocal()
+        try:
+            for d in arp_candidates:
+                arp_entries = _enrich_arp(d.ip, d.snmp_community, timeout=snmp_timeout)
+                if arp_entries:
+                    n = _save_arp_devices(db_arp, d.ip, arp_entries)
+                    arp_total += n
+                    logger.info("ARP  %-18s: %d entries, %d new/updated", d.ip, len(arp_entries), n)
+        except Exception as exc:
+            logger.warning("ARP walk error: %s", exc)
+        finally:
+            db_arp.close()
+        if arp_total:
+            logger.info("ARP total new/updated devices: %d", arp_total)
 
 
 def _wait_for_schema(max_retries: int = 12, wait_s: int = 10) -> None:
