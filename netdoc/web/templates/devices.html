@@ -101,27 +101,30 @@
   var btn = document.getElementById('summaryToggleBtn');
   var lbl = document.getElementById('summaryToggleLabel');
   var KEY = 'netdoc_summary_visible';
+  var _visible = false;
   function setVisible(v) {
+    _visible = v;
     if (v) {
       bar.style.removeProperty('display');
       btn.classList.replace('btn-outline-secondary','btn-secondary');
       lbl.textContent = 'Summary ▲';
       localStorage.setItem(KEY, '1');
     } else {
-      bar.style.display = 'none';
+      // Bootstrap d-flex uses display:flex!important — must override with !important
+      bar.style.setProperty('display', 'none', 'important');
       btn.classList.replace('btn-secondary','btn-outline-secondary');
       lbl.textContent = 'Summary';
       localStorage.setItem(KEY, '0');
     }
   }
-  // Przywróć stan z localStorage (domyślnie ukryty)
+  // Restore state from localStorage (hidden by default)
   setVisible(localStorage.getItem(KEY) === '1');
-  btn.addEventListener('click', function(){ setVisible(bar.style.display === 'none'); });
-  // Skrót klawiszowy S (gdy focus nie jest w input/textarea)
+  btn.addEventListener('click', function(){ setVisible(!_visible); });
+  // Keyboard shortcut S (when focus is not in input/textarea)
   document.addEventListener('keydown', function(e){
     if (e.key === 's' && !e.ctrlKey && !e.metaKey &&
         !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) {
-      setVisible(bar.style.display === 'none');
+      setVisible(!_visible);
     }
   });
 })();

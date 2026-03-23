@@ -2764,6 +2764,46 @@ def test_summary_strip_shows_total_count(client):
     assert "summaryBar" in html
 
 
+def test_summary_bar_hidden_by_default_via_important():
+    """BUG-SUMBAR-01: summaryBar musi miec display:none!important zeby nadpisac Bootstrap d-flex!important.
+    Zwykle display:none bez !important przegrywa z .d-flex { display:flex!important } z Bootstrap 5."""
+    import re
+    with open("netdoc/web/templates/devices.html", encoding="utf-8") as f:
+        html = f.read()
+    # summaryBar musi miec style z display:none i id=summaryBar
+    m = re.search(r'id="summaryBar"[^>]*style="([^"]*)"', html)
+    assert m, "summaryBar element not found"
+    assert "none" in m.group(1), "summaryBar must have display:none in initial style"
+    assert "important" in m.group(1), (
+        "BUG-SUMBAR-01: summaryBar initial style must use !important to override Bootstrap d-flex"
+    )
+
+
+def test_summary_bar_toggle_uses_setproperty_important():
+    """BUG-SUMBAR-02: JS musi uzywac setProperty('display','none','important') a nie style.display='none'.
+    Bootstrap d-flex dodaje display:flex!important — bez !important w JS bar pozostaje widoczny."""
+    with open("netdoc/web/templates/devices.html", encoding="utf-8") as f:
+        html = f.read()
+    assert "setProperty('display', 'none', 'important')" in html, (
+        "BUG-SUMBAR-02: summary bar JS must use setProperty with 'important' priority "
+        "to override Bootstrap d-flex !important"
+    )
+
+
+def test_summary_bar_toggle_tracks_state_variable():
+    """BUG-SUMBAR-03: JS musi sledzic stan przez zmienna (_visible) a nie przez bar.style.display.
+    Po removeProperty() bar.style.display zwraca '' (nie 'none') — toggle by style check zawsze failuje."""
+    with open("netdoc/web/templates/devices.html", encoding="utf-8") as f:
+        html = f.read()
+    assert "_visible" in html, (
+        "BUG-SUMBAR-03: summary bar JS must track visibility state via variable, "
+        "not bar.style.display check"
+    )
+    assert "setVisible(!_visible)" in html, (
+        "BUG-SUMBAR-03: toggle must use !_visible, not bar.style.display === 'none'"
+    )
+
+
 def test_summary_strip_no_full_scan_badge_present(db_engine):
     """Pasek pokazuje liczbę urządzeń bez pełnego skanu."""
     from sqlalchemy.orm import sessionmaker
