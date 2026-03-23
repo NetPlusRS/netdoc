@@ -2045,6 +2045,8 @@ def upsert_device(db, device_data):
                     device_by_mac.hostname = device_data.hostname
                 if device_data.vendor and not device_by_mac.vendor:
                     device_by_mac.vendor = device_data.vendor
+                if device_data.model and not device_by_mac.model:
+                    device_by_mac.model = device_data.model
                 if device_data.os_version and not device_by_mac.os_version:
                     device_by_mac.os_version = device_data.os_version
                 if device_data.site_id and not device_by_mac.site_id:
@@ -2080,7 +2082,7 @@ def upsert_device(db, device_data):
                          details={"ip": device_data.ip, "reason": "powrot po nieobecnosci"}))
         device.last_seen = now
         device.is_active = True
-        if device_data.hostname:
+        if device_data.hostname and not device.hostname:
             conflict = _hostname_conflict(db, device_data.hostname, device_data.ip)
             if conflict:
                 logger.warning(

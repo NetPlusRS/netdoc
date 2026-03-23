@@ -2407,6 +2407,135 @@ def create_app():
             "ports": {"80/tcp": ("0.0.0.0", 15040)},
             "environment": {},
         },
+        {
+            "name": "netdoc-lab-cam-dahua", "label": "Dahua IP Camera", "ip": "172.28.0.50",
+            "image_candidates": ["netdoc-lab-device"],
+            "ports": {},
+            "environment": {
+                "DEV_NAME": "Dahua-IPC-HDW2831T",
+                "DEV_SNMP_DESCR": "Dahua IPC-HDW2831T-AS 8MP WizSense IR Fixed-focal Dome Camera",
+                "DEV_SNMP_NAME": "Dahua-IPC-HDW2831T",
+                "DEV_SNMP_LOC": "Parking zewnetrzny / Wejscie A",
+                "DEV_HTTP_TITLE": "Dahua IP Camera",
+                "DEV_ENABLE_RTSP": "1", "DEV_ENABLE_ONVIF": "1", "DEV_ENABLE_DAHUA": "1",
+            },
+        },
+        {
+            "name": "netdoc-lab-cam-hik", "label": "Hikvision DVR", "ip": "172.28.0.51",
+            "image_candidates": ["netdoc-lab-device"],
+            "ports": {},
+            "environment": {
+                "DEV_NAME": "Hikvision-DS-2CD2143G2",
+                "DEV_SNMP_DESCR": "Hikvision DS-2CD2143G2-I 4MP AcuSense Fixed Dome Network Camera",
+                "DEV_SNMP_NAME": "Hikvision-DS-2CD2143G2",
+                "DEV_SNMP_LOC": "Hala produkcyjna / Kamera 3",
+                "DEV_HTTP_TITLE": "Hikvision IP Camera",
+                "DEV_ENABLE_RTSP": "1", "DEV_ENABLE_XMEYE": "1",
+            },
+        },
+        {
+            "name": "netdoc-lab-printer", "label": "HP LaserJet M404n", "ip": "172.28.0.52",
+            "image_candidates": ["netdoc-lab-device"],
+            "ports": {},
+            "environment": {
+                "DEV_NAME": "HP-LaserJet-M404n",
+                "DEV_SNMP_DESCR": "HP LaserJet Pro M404n, ROM dsj1FN1.2135140, Model Number: W1A52A",
+                "DEV_SNMP_NAME": "HP-LaserJet-M404n",
+                "DEV_SNMP_LOC": "Biuro / Drukarka sieciowa",
+                "DEV_HTTP_TITLE": "HP LaserJet M404n",
+                "DEV_ENABLE_JETDIRECT": "1",
+            },
+        },
+        {
+            "name": "netdoc-lab-nas", "label": "Synology NAS DS920+", "ip": "172.28.0.53",
+            "image_candidates": ["netdoc-lab-device"],
+            "ports": {},
+            "environment": {
+                "DEV_NAME": "Synology-DS920plus",
+                "DEV_SNMP_DESCR": "Synology DiskStation DS920+ (DSM 7.2-64561 Update 1)",
+                "DEV_SNMP_NAME": "Synology-DS920plus",
+                "DEV_SNMP_LOC": "Serwerownia / Rack 2 / NAS backup",
+                "DEV_HTTP_TITLE": "Synology DiskStation DS920+",
+                "DEV_ENABLE_FTP": "1",
+            },
+        },
+        {
+            "name": "netdoc-lab-moxa", "label": "MOXA NPort W2150A", "ip": "172.28.0.54",
+            "image_candidates": ["netdoc-lab-device"],
+            "ports": {},
+            "environment": {
+                "DEV_NAME": "MOXA-NPort-W2150A",
+                "DEV_SNMP_DESCR": "MOXA NPort W2150A Wireless Device Server (802.11 a/b/g/n) FW 2.3",
+                "DEV_SNMP_NAME": "MOXA-NPort-W2150A",
+                "DEV_SNMP_LOC": "Hala produkcyjna / Maszyna CNC-7",
+                "DEV_HTTP_TITLE": "MOXA NPort W2150A Device Server",
+                "DEV_ENABLE_TELNET": "1",
+            },
+        },
+        {
+            "name": "netdoc-lab-ups", "label": "APC Smart-UPS 1500", "ip": "172.28.0.55",
+            "image_candidates": ["netdoc-lab-device"],
+            "ports": {},
+            "environment": {
+                "DEV_NAME": "APC-SmartUPS-1500",
+                "DEV_SNMP_DESCR": "APC Smart-UPS 1500VA LCD RM 2U 120V (SMT1500RM2UC) FW: UPS 09.8",
+                "DEV_SNMP_NAME": "APC-SmartUPS-1500",
+                "DEV_SNMP_LOC": "Serwerownia / Rack 1 / UPS",
+                "DEV_HTTP_TITLE": "APC Smart-UPS 1500 Network Management",
+                "DEV_ENABLE_TELNET": "1",
+            },
+        },
+        {
+            "name": "netdoc-lab-solar", "label": "Fronius Symo 15.0 (inwerter)", "ip": "172.28.0.56",
+            "image_candidates": ["netdoc-lab-device"],
+            "ports": {},
+            "environment": {
+                "DEV_NAME": "Fronius-Symo-15",
+                "DEV_SNMP_DESCR": "Fronius Symo 15.0-3-M Solar Inverter — Datamanager 2.0 v3.21.7-1",
+                "DEV_SNMP_NAME": "Fronius-Symo-15",
+                "DEV_SNMP_LOC": "Dach / Instalacja PV 60kWp",
+                "DEV_HTTP_TITLE": "Fronius Solar.web — Datamanager",
+                "DEV_ENABLE_MODBUS": "1",
+            },
+        },
+        {
+            "name": "netdoc-lab-server", "label": "Ubuntu Server 22.04", "ip": "172.28.0.57",
+            "image_candidates": ["netdoc-lab-device"],
+            "ports": {},
+            "environment": {
+                "DEV_NAME": "ubuntu-srv-01",
+                "DEV_SNMP_DESCR": "Linux ubuntu-srv-01 5.15.0-88-generic Ubuntu 22.04.3 LTS x86_64",
+                "DEV_SNMP_NAME": "ubuntu-srv-01",
+                "DEV_SNMP_LOC": "Serwerownia / Rack 3 / VMware ESXi",
+                "DEV_HTTP_TITLE": "Ubuntu Server — Application Dashboard",
+                "DEV_ENABLE_REDIS": "1", "DEV_ENABLE_MQTT": "1", "DEV_ENABLE_DOCKER_API": "1",
+            },
+        },
+        {
+            "name": "netdoc-lab-ap", "label": "Ubiquiti UniFi AP AC Pro", "ip": "172.28.0.58",
+            "image_candidates": ["netdoc-lab-device"],
+            "ports": {},
+            "environment": {
+                "DEV_NAME": "UniFi-AP-AC-Pro",
+                "DEV_SNMP_DESCR": "Ubiquiti Networks UAP-AC-PRO UniFi AP-AC-Pro, Version 6.5.55.14522",
+                "DEV_SNMP_NAME": "UniFi-AP-AC-Pro",
+                "DEV_SNMP_LOC": "Biuro / Sufitowy AP — sala konferencyjna",
+                "DEV_HTTP_TITLE": "UniFi Access Point",
+            },
+        },
+        {
+            "name": "netdoc-lab-winserver", "label": "Windows Server 2019", "ip": "172.28.0.59",
+            "image_candidates": ["netdoc-lab-device"],
+            "ports": {},
+            "environment": {
+                "DEV_NAME": "WINSERVER-2019",
+                "DEV_SNMP_DESCR": "Windows Server 2019 Standard, Build 17763, Intel Xeon E5-2690",
+                "DEV_SNMP_NAME": "WINSERVER-2019",
+                "DEV_SNMP_LOC": "Serwerownia / Rack 2 / Domain Controller",
+                "DEV_HTTP_TITLE": "Windows Server 2019 — IIS 10.0",
+                "DEV_ENABLE_RDP": "1", "DEV_ENABLE_VNC_NOAUTH": "1",
+            },
+        },
     ]
 
     def _docker_client():
@@ -2515,23 +2644,40 @@ def create_app():
             "netdoc-lab-plc-fuel":  ("config/lab/plc",    "netdoc-lab-plc-fuel"),
             "netdoc-lab-router":    ("config/lab/router",  "netdoc-lab-router"),
             "netdoc-lab-ssh":       ("config/lab/ssh",     "netdoc-lab-ssh"),
+            # All generic device containers share one image
+            "netdoc-lab-cam-dahua": ("config/lab/device",  "netdoc-lab-device"),
+            "netdoc-lab-cam-hik":   ("config/lab/device",  "netdoc-lab-device"),
+            "netdoc-lab-printer":   ("config/lab/device",  "netdoc-lab-device"),
+            "netdoc-lab-nas":       ("config/lab/device",  "netdoc-lab-device"),
+            "netdoc-lab-moxa":      ("config/lab/device",  "netdoc-lab-device"),
+            "netdoc-lab-ups":       ("config/lab/device",  "netdoc-lab-device"),
+            "netdoc-lab-solar":     ("config/lab/device",  "netdoc-lab-device"),
+            "netdoc-lab-server":    ("config/lab/device",  "netdoc-lab-device"),
+            "netdoc-lab-ap":        ("config/lab/device",  "netdoc-lab-device"),
+            "netdoc-lab-winserver": ("config/lab/device",  "netdoc-lab-device"),
         }
 
         def _auto_build_and_start(docker_client, missing_names):
             """Buduje brakujace obrazy przez Docker SDK i uruchamia kontenery."""
             import pathlib as _plb
             built, failed = [], []
+            # Build each unique image only once (multiple containers may share netdoc-lab-device)
+            built_tags: set = set()
             for name in missing_names:
                 ctx = _LAB_BUILD_CONTEXTS.get(name)
                 if not ctx:
                     continue
                 rel_path, tag = ctx
+                if tag in built_tags:
+                    built.append(name)  # image already built — count container as done
+                    continue
                 build_path = str(_plb.Path(_PROJECT_DIR) / rel_path)
                 if not _plb.Path(build_path).exists():
                     failed.append(f"{name}: brak katalogu {build_path} — czy config/ jest zamontowany w kontenerze?")
                     continue
                 try:
                     docker_client.images.build(path=build_path, tag=tag, rm=True)
+                    built_tags.add(tag)
                     built.append(name)
                 except Exception as e:
                     failed.append(f"{name}: {str(e)[:100]}")

@@ -376,9 +376,9 @@ def _poll_device(device_id: int, ip: str, community: str,
         sysloc   = _snmp_get(ip, community, OID_SYSLOCATION, timeout=snmp_timeout)
         uptime   = _snmp_get(ip, community, OID_SYSUPTIME,   timeout=snmp_timeout)
 
-        if sysname  and not hostname:   device.hostname    = sysname
-        if sysdescr and not os_version: device.os_version  = sysdescr[:120]
-        if sysloc   and not location:   device.location    = sysloc
+        if sysname  and not device.hostname:   device.hostname   = sysname
+        if sysdescr and not device.os_version: device.os_version = sysdescr[:120]
+        if sysloc   and not device.location:   device.location   = sysloc
 
         # sysUpTime — zawsze aktualizuj jako tag w asset_notes
         if uptime is not None:

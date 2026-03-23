@@ -291,7 +291,10 @@ def _parse_mdns_response(data: bytes, src_ip: str) -> Optional[dict]:
                     if not ip4.startswith("169.254"): src_ip = ip4
         except Exception: break
     if not services and not hostnames: return None
-    hostname = min(hostnames, key=len) if hostnames else None
+    _MDNS_NOISE = {"ssh", "http", "https", "smb", "ftp", "rdp", "telnet",
+                   "tcp", "udp", "sip", "afpovertcp", "rfb", "vnc", "sftp"}
+    meaningful = [h for h in hostnames if h.lower() not in _MDNS_NOISE and not h.startswith("_")]
+    hostname = max(meaningful, key=len) if meaningful else (max(hostnames, key=len) if hostnames else None)
     return {"ip": src_ip, "protocol": "mdns", "hostname": hostname, "services": list(set(services))}
 
 

@@ -685,6 +685,9 @@ def _mark_pairs_tried(tried: dict, method_key: str, pairs: list) -> None:
 
 # SSH -------------------------------------------------------------------------
 def _try_ssh(ip: str, port: int, username: str, password: str) -> bool:
+    # Re-check ban here — a concurrent thread may have set it after the caller's check
+    if _ip_ban_until.get(ip, 0.0) > time.monotonic():
+        return False
     if _VERBOSE:
         logger.info("SSH proba %-18s port=%-5d u=%-15s p=%s", ip, port, username, password or "(puste)")
     try:
