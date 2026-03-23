@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Raport AI — ocena urządzeń sieciowych</title>
+  <title>AI Report — network device assessment</title>
   <style>
     :root { --risk-critical: #dc3545; --risk-high: #e3b341; --risk-medium: #0dcaf0; --risk-low: #198754; --risk-ok: #198754; }
     * { box-sizing: border-box; }
@@ -53,10 +53,10 @@
   </style>
 </head>
 <body>
-<button class="print-btn" onclick="window.print()">&#128438; Drukuj / PDF</button>
+<button class="print-btn" onclick="window.print()">&#128438; Print / PDF</button>
 
-<h1>&#129302; Raport AI — ocena urządzeń sieciowych</h1>
-<div class="meta">Wygenerowano: {{ generated_at }} &nbsp;|&nbsp; Urządzeń z oceną AI: {{ entries|length }}</div>
+<h1>&#129302; AI Report — network device assessment</h1>
+<div class="meta">Generated: {{ generated_at }} &nbsp;|&nbsp; Devices with AI assessment: {{ entries|length }}</div>
 
 {% if entries %}
 {# Pasek podsumowania #}
@@ -70,11 +70,11 @@
   {% else %}{% set ns.safe = ns.safe + 1 %}{% endif %}
 {% endfor %}
 <div class="summary-bar">
-  {% if ns.obsolete > 0 %}<span class="summary-pill pill-danger">&#9888; {{ ns.obsolete }} do wymiany</span>{% endif %}
-  {% if ns.critical > 0 %}<span class="summary-pill pill-danger">&#128683; {{ ns.critical }} krytyczne ryzyko</span>{% endif %}
-  {% if ns.high > 0 %}<span class="summary-pill pill-warning">&#9888; {{ ns.high }} wysokie ryzyko</span>{% endif %}
-  {% if ns.medium > 0 %}<span class="summary-pill pill-secondary">{{ ns.medium }} średnie ryzyko</span>{% endif %}
-  {% if ns.safe > 0 %}<span class="summary-pill pill-success">&#10003; {{ ns.safe }} bezpieczne</span>{% endif %}
+  {% if ns.obsolete > 0 %}<span class="summary-pill pill-danger">&#9888; {{ ns.obsolete }} to replace</span>{% endif %}
+  {% if ns.critical > 0 %}<span class="summary-pill pill-danger">&#128683; {{ ns.critical }} critical risk</span>{% endif %}
+  {% if ns.high > 0 %}<span class="summary-pill pill-warning">&#9888; {{ ns.high }} high risk</span>{% endif %}
+  {% if ns.medium > 0 %}<span class="summary-pill pill-secondary">{{ ns.medium }} medium risk</span>{% endif %}
+  {% if ns.safe > 0 %}<span class="summary-pill pill-success">&#10003; {{ ns.safe }} safe</span>{% endif %}
 </div>
 
 {% for e in entries %}
@@ -95,31 +95,31 @@
     <h2>{{ e.device_label }}{% if e.device_label != e.device_ip %} <span style="font-weight:normal;font-size:.85rem">({{ e.device_ip }})</span>{% endif %}</h2>
     <span style="font-size:.8rem;opacity:.8">{{ e.device_type }}</span>
     <span style="margin-left:auto;font-size:.75rem;opacity:.7">{{ e.get("assessed_at","") }}</span>
-    {% if is_obs %}<span class="badge badge-danger">&#9888; Do wymiany</span>
-    {% else %}<span class="badge badge-success">&#10003; Aktualny</span>{% endif %}
-    {% if risk == "critical" %}<span class="badge badge-danger">Ryzyko: KRYTYCZNE</span>
-    {% elif risk == "high" %}<span class="badge badge-warning">Ryzyko: WYSOKIE</span>
-    {% elif risk == "medium" %}<span class="badge badge-info">Ryzyko: ŚREDNIE</span>
-    {% elif risk in ("low","ok") %}<span class="badge badge-success">Ryzyko: NISKIE</span>
-    {% else %}<span class="badge badge-secondary">Ryzyko: ?</span>{% endif %}
+    {% if is_obs %}<span class="badge badge-danger">&#9888; To replace</span>
+    {% else %}<span class="badge badge-success">&#10003; Current</span>{% endif %}
+    {% if risk == "critical" %}<span class="badge badge-danger">Risk: CRITICAL</span>
+    {% elif risk == "high" %}<span class="badge badge-warning">Risk: HIGH</span>
+    {% elif risk == "medium" %}<span class="badge badge-info">Risk: MEDIUM</span>
+    {% elif risk in ("low","ok") %}<span class="badge badge-success">Risk: LOW</span>
+    {% else %}<span class="badge badge-secondary">Risk: ?</span>{% endif %}
   </div>
   <div class="device-body">
     {% if e.get("summary") %}
-    <div class="summary-text"><strong>Podsumowanie:</strong> {{ e.get("summary") }}</div>
+    <div class="summary-text"><strong>Summary:</strong> {{ e.get("summary") }}</div>
     {% endif %}
     {% if is_obs and e.get("reason") %}
     <div class="reason-text">{{ e.get("reason") }}</div>
     {% endif %}
 
     {% if sec.get("overall") %}
-    <div class="section-title">Ocena bezpiecze&#324;stwa</div>
+    <div class="section-title">Security assessment</div>
     <div style="color:#444;margin-bottom:.4rem">{{ sec.get("overall") }}</div>
     {% endif %}
 
     {% if findings %}
-    <div class="section-title">Znaleziska ({{ findings|length }})</div>
+    <div class="section-title">Findings ({{ findings|length }})</div>
     <table class="findings">
-      <thead><tr><th style="width:60px">Port</th><th style="width:80px">Usługa</th><th style="width:80px">Severity</th><th>Opis</th><th>Zalecenie</th></tr></thead>
+      <thead><tr><th style="width:60px">Port</th><th style="width:80px">Service</th><th style="width:80px">Severity</th><th>Description</th><th>Recommendation</th></tr></thead>
       <tbody>
       {% for f in findings %}
       <tr>
@@ -135,9 +135,9 @@
     {% endif %}
 
     {% if replacements %}
-    <div class="section-title">Proponowane zamienniki</div>
+    <div class="section-title">Suggested replacements</div>
     <table class="replacements">
-      <thead><tr><th style="width:70px">Tier</th><th style="width:200px">Model</th><th style="width:100px">Cena nowy</th><th style="width:100px">Cena używany</th><th>Uwagi</th></tr></thead>
+      <thead><tr><th style="width:70px">Tier</th><th style="width:200px">Model</th><th style="width:100px">Price (new)</th><th style="width:100px">Price (used)</th><th>Notes</th></tr></thead>
       <tbody>
       {% for r in replacements %}
       <tr>
@@ -157,7 +157,7 @@
 
 {% else %}
 <div class="no-assess">
-  <p>Brak ocen AI. Otwórz stronę urządzeń i użyj "Ocena AI" z menu akcji dla wybranych urządzeń.</p>
+  <p>No AI assessments found. Open the devices page and use "AI Assessment" from the action menu for selected devices.</p>
 </div>
 {% endif %}
 

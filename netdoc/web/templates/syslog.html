@@ -190,7 +190,7 @@ function applyTextFilter() {
   countEl.textContent = q ? `${rows.length} / ${allRows.length}` : "";
 
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">${q ? "Brak wyników dla: " + escHtml(q) : "Brak logów w wybranym zakresie."}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">${q ? "No results for: " + escHtml(q) : "No logs in the selected time range."}</td></tr>`;
     return;
   }
 

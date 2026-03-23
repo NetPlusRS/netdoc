@@ -34,8 +34,8 @@
 
 {% block content %}
 <div class="d-flex align-items-center mb-3 gap-3">
-  <h4 class="mb-0"><i class="bi bi-book-half me-2 text-primary"></i>Encyklopedia Zagrozen</h4>
-  <span class="text-muted small">Opis podatnosci wykrywanych przez NetDoc</span>
+  <h4 class="mb-0"><i class="bi bi-book-half me-2 text-primary"></i>Threat Encyclopedia</h4>
+  <span class="text-muted small">Vulnerabilities detected by NetDoc</span>
 </div>
 
 <!-- Filtr tekstowy + filtr sieci -->
@@ -47,19 +47,19 @@
       </span>
       <input id="searchInput" type="text" class="form-control form-control-sm"
              placeholder="Search threats... (name, description)" autocomplete="off">
-      <button id="searchClear" class="btn btn-outline-secondary btn-sm" type="button" style="display:none" title="Wyczysc">
+      <button id="searchClear" class="btn btn-outline-secondary btn-sm" type="button" style="display:none" title="Clear">
         <i class="bi bi-x"></i>
       </button>
     </div>
   </div>
   <div class="col-12 col-md-5">
     <select id="netFilter" class="form-select form-select-sm">
-      <option value="">— Wszystkie sieci (caly katalog) —</option>
+      <option value="">— All networks (full catalog) —</option>
       {% for net in networks %}
         {% set cnt = active_by_net.get(net.cidr, []) | length %}
         <option value="{{ net.cidr }}" data-active="{{ active_by_net.get(net.cidr, []) | join(',') }}">
           {{ net.cidr }}{% if net.name %} — {{ net.name }}{% endif %}
-          {% if cnt %} ({{ cnt }} aktywnych){% endif %}
+          {% if cnt %} ({{ cnt }} active){% endif %}
         </option>
       {% endfor %}
     </select>
@@ -71,28 +71,28 @@
 
 <!-- Filtry severity -->
 <div class="d-flex flex-wrap gap-2 mb-4">
-  <button class="btn btn-sm btn-outline-secondary filter-btn active" data-sev="all">Wszystkie ({{ catalog|length }})</button>
+  <button class="btn btn-sm btn-outline-secondary filter-btn active" data-sev="all">All ({{ catalog|length }})</button>
   {% set critical_cnt = catalog | selectattr("severity","eq","critical") | list | length %}
   {% set high_cnt    = catalog | selectattr("severity","eq","high")     | list | length %}
   {% set medium_cnt  = catalog | selectattr("severity","eq","medium")   | list | length %}
   {% set low_cnt     = catalog | selectattr("severity","eq","low")      | list | length %}
-  {% if critical_cnt %}<button class="btn btn-sm btn-outline-danger  filter-btn" data-sev="critical">KRYTYCZNA ({{ critical_cnt }})</button>{% endif %}
-  {% if high_cnt    %}<button class="btn btn-sm btn-outline-warning filter-btn" data-sev="high">WYSOKA ({{ high_cnt }})</button>{% endif %}
-  {% if medium_cnt  %}<button class="btn btn-sm btn-outline-secondary filter-btn" data-sev="medium">SREDNIA ({{ medium_cnt }})</button>{% endif %}
-  {% if low_cnt     %}<button class="btn btn-sm btn-outline-success  filter-btn" data-sev="low">NISKA ({{ low_cnt }})</button>{% endif %}
+  {% if critical_cnt %}<button class="btn btn-sm btn-outline-danger  filter-btn" data-sev="critical">CRITICAL ({{ critical_cnt }})</button>{% endif %}
+  {% if high_cnt    %}<button class="btn btn-sm btn-outline-warning filter-btn" data-sev="high">HIGH ({{ high_cnt }})</button>{% endif %}
+  {% if medium_cnt  %}<button class="btn btn-sm btn-outline-secondary filter-btn" data-sev="medium">MEDIUM ({{ medium_cnt }})</button>{% endif %}
+  {% if low_cnt     %}<button class="btn btn-sm btn-outline-success  filter-btn" data-sev="low">LOW ({{ low_cnt }})</button>{% endif %}
 </div>
 
 <div id="noResults" class="alert alert-secondary py-2">
-  <i class="bi bi-info-circle me-1"></i>Brak zagrozen spelniajacych kryteria filtrowania.
+  <i class="bi bi-info-circle me-1"></i>No threats match the selected filters.
 </div>
 
 <div id="threat-list" class="row g-3">
 {% for v in catalog %}
   {% set sev = v.severity %}
-  {% if sev == "critical" %}{% set cls = "danger"    %}{% set label = "KRYTYCZNA" %}
-  {% elif sev == "high"   %}{% set cls = "warning"   %}{% set label = "WYSOKA"    %}
-  {% elif sev == "medium" %}{% set cls = "secondary" %}{% set label = "SREDNIA"   %}
-  {% elif sev == "low"    %}{% set cls = "success"   %}{% set label = "NISKA"     %}
+  {% if sev == "critical" %}{% set cls = "danger"    %}{% set label = "CRITICAL" %}
+  {% elif sev == "high"   %}{% set cls = "warning"   %}{% set label = "HIGH"     %}
+  {% elif sev == "medium" %}{% set cls = "secondary" %}{% set label = "MEDIUM"   %}
+  {% elif sev == "low"    %}{% set cls = "success"   %}{% set label = "LOW"      %}
   {% else                 %}{% set cls = "info"      %}{% set label = "INFO"      %}
   {% endif %}
   <div class="col-12 threat-card-wrap"
@@ -103,8 +103,8 @@
       <div class="card-header d-flex align-items-center gap-2 py-2">
         <i class="bi {{ v.icon }} fs-5 text-{{ cls }}"></i>
         <span class="fw-semibold flex-grow-1">{{ v.title }}</span>
-        <span class="active-badge d-none" id="active-badge-{{ v.id }}" title="Wykryte na urzadzeniach w wybranej sieci">
-          <i class="bi bi-exclamation-circle me-1"></i>aktywne
+        <span class="active-badge d-none" id="active-badge-{{ v.id }}" title="Detected on devices in the selected network">
+          <i class="bi bi-exclamation-circle me-1"></i>active
         </span>
         <span class="badge sev-badge-{{ sev }} me-1">{{ label }}</span>
         <span class="cvss-pill cvss-{{ sev }}">CVSS {{ v.cvss }}</span>
@@ -123,19 +123,19 @@
         {% if devs %}
         <div class="mb-2">
           <div class="small fw-semibold text-info mb-1">
-            <i class="bi bi-hdd-network me-1"></i>Wykryto na {{ devs|length }} urządz.:
+            <i class="bi bi-hdd-network me-1"></i>Detected on {{ devs|length }} device(s):
           </div>
           <div class="d-flex flex-wrap gap-1">
             {% for dev in devs %}
               {% if dev.suppressed %}
                 <span class="badge bg-success font-monospace"
-                      title="Ryzyko zaakceptowane · {{ dev.ip }}{% if dev.evidence %} · {{ dev.evidence }}{% endif %}">
+                      title="Risk accepted · {{ dev.ip }}{% if dev.evidence %} · {{ dev.evidence }}{% endif %}">
                   <i class="bi bi-shield-check me-1"></i>{{ dev.hostname or dev.ip }}
                 </span>
               {% else %}
                 <a href="/devices#row-{{ dev.id }}" class="text-decoration-none">
                   <span class="badge {% if dev.is_active %}bg-danger{% else %}bg-secondary{% endif %} font-monospace"
-                        title="{% if dev.is_active %}Aktywne{% else %}Offline{% endif %} · {{ dev.ip }}{% if dev.evidence %} · {{ dev.evidence }}{% endif %}">
+                        title="{% if dev.is_active %}Active{% else %}Offline{% endif %} · {{ dev.ip }}{% if dev.evidence %} · {{ dev.evidence }}{% endif %}">
                     {{ dev.hostname or dev.ip }}
                   </span>
                 </a>
@@ -147,15 +147,15 @@
 
         <div class="collapse" id="detail-{{ v.id }}">
           <div class="mb-2">
-            <div class="small text-muted mb-1"><i class="bi bi-question-circle me-1"></i><strong>Dlaczego to jest niebezpieczne?</strong></div>
+            <div class="small text-muted mb-1"><i class="bi bi-question-circle me-1"></i><strong>Why is this dangerous?</strong></div>
             <div class="why-box">{{ v.why }}</div>
           </div>
           <div class="mb-2">
-            <div class="small text-muted mb-1"><i class="bi bi-exclamation-triangle me-1 text-danger"></i><strong>Skutki ataku</strong></div>
+            <div class="small text-muted mb-1"><i class="bi bi-exclamation-triangle me-1 text-danger"></i><strong>Attack impact</strong></div>
             <div class="impact-box">{{ v.impact }}</div>
           </div>
           <div class="mb-1">
-            <div class="small text-muted mb-1"><i class="bi bi-shield-check me-1 text-success"></i><strong>Jak naprawic?</strong></div>
+            <div class="small text-muted mb-1"><i class="bi bi-shield-check me-1 text-success"></i><strong>How to fix?</strong></div>
             <div class="fix-box">{{ v.fix }}</div>
           </div>
         </div>
@@ -167,11 +167,11 @@
 
 <div class="mt-4 text-muted small">
   <i class="bi bi-info-circle me-1"></i>
-  CVSS (Common Vulnerability Scoring System) to miedzynarodowa skala ryzyka od 0.0 do 10.0.
-  <span class="text-danger">9.0-10.0</span> = krytyczne,
-  <span class="text-warning">7.0-8.9</span> = wysokie,
-  <span class="text-secondary">4.0-6.9</span> = srednie,
-  <span class="text-success">0.1-3.9</span> = niskie.
+  CVSS (Common Vulnerability Scoring System) is the international risk scale from 0.0 to 10.0.
+  <span class="text-danger">9.0-10.0</span> = critical,
+  <span class="text-warning">7.0-8.9</span> = high,
+  <span class="text-secondary">4.0-6.9</span> = medium,
+  <span class="text-success">0.1-3.9</span> = low.
 </div>
 {% endblock %}
 

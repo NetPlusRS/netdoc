@@ -89,57 +89,57 @@
 {% if disabled %}
 <div class="card"><div class="card-body text-center py-5">
   <i class="bi bi-robot fs-1 d-block mb-3 text-muted"></i>
-  <h5>Agent AI jest wylaczony</h5>
-  <p class="text-muted">Ustaw <code>AGENT_ENABLED=1</code> i <code>ANTHROPIC_API_KEY=sk-ant-...</code> w pliku <code>.env</code>, nastepnie zrestartuj kontener <code>netdoc-web</code>.</p>
+  <h5>AI Agent is disabled</h5>
+  <p class="text-muted">Set <code>AGENT_ENABLED=1</code> and <code>ANTHROPIC_API_KEY=sk-ant-...</code> in your <code>.env</code> file, then restart the <code>netdoc-web</code> container.</p>
 </div></div>
 {% else %}
 <div class="card chat-wrap">
   <div class="chat-messages" id="chat-messages">
     <div class="msg msg-agent" id="welcome-msg">
       <strong>NetDoc AI</strong><br>
-      Czesc! Mam dostep do danych Twojej sieci w czasie rzeczywistym.
-      Moge analizowac urzadzenia, wykryte podatnosci, status polaczenia internetowego i wiele wiecej.
-      Zadaj mi pytanie po polsku.
+      Hello! I have real-time access to your network data.
+      I can analyze devices, detected vulnerabilities, internet connection status and much more.
+      Ask me anything about your network.
     </div>
     <div class="thinking" id="thinking">
-      <i class="bi bi-cpu me-1"></i> Analizuje dane...
+      <i class="bi bi-cpu me-1"></i> Analyzing data...
       <span class="dot-anim"><span></span><span></span><span></span></span>
     </div>
   </div>
   <div class="chat-input-wrap">
     <div class="quick-panel" id="quick-panel">
       <div class="quick-panel-header" onclick="toggleQuickPanel()">
-        <span class="quick-panel-title"><i class="bi bi-lightning-charge-fill text-warning"></i>Szybkie raporty</span>
+        <span class="quick-panel-title"><i class="bi bi-lightning-charge-fill text-warning"></i>Quick reports</span>
         <span class="quick-panel-toggle" id="quick-toggle">&#9658;</span>
       </div>
       <div class="quick-btns" id="quick-btns" style="display:none">
-        <span class="quick-btn">Kompleksowy raport bezpieczenstwa i zalecenia</span>
-        <span class="quick-btn">Pokaz wszystkie podatnosci krytyczne i wysokie</span>
-        <span class="quick-btn">Lista urzadzen DOWN — co jest niedostepne?</span>
-        <span class="quick-btn">Jakie hasla SSH/HTTP/RDP udalo sie wykryc?</span>
-        <span class="quick-btn">Status i wydajnosc polaczenia internetowego</span>
-        <span class="quick-btn">Lista urzadzen niezaufanych do weryfikacji</span>
-        <span class="quick-btn">Jakie urzadzenia maja otwarte niebezpieczne porty (Telnet, FTP)?</span>
+        <span class="quick-btn">Comprehensive security report and recommendations</span>
+        <span class="quick-btn">Show all critical and high vulnerabilities</span>
+        <span class="quick-btn">List of DOWN devices — what is unreachable?</span>
+        <span class="quick-btn">What SSH/HTTP/RDP passwords were found?</span>
+        <span class="quick-btn">Internet connection status and performance</span>
+        <span class="quick-btn">List of untrusted devices for review</span>
+        <span class="quick-btn">Which devices have dangerous open ports (Telnet, FTP)?</span>
       </div>
     </div>
     <div class="example-chips" id="example-chips">
-      <span class="example-chip">Ile mam urzadzen w sieci?</span>
-      <span class="example-chip">Jakie sa krytyczne podatnosci?</span>
-      <span class="example-chip">Jaki jest status internetu?</span>
-      <span class="example-chip">Pokaz urzadzenia DOWN</span>
-      <span class="example-chip">Jakie mam IP publiczne i ISP?</span>
-      <span class="example-chip">Analizuj bezpieczenstwo sieci</span>
+      <span class="example-chip">How many devices are on the network?</span>
+      <span class="example-chip">What are the critical vulnerabilities?</span>
+      <span class="example-chip">What is the internet status?</span>
+      <span class="example-chip">Show devices that are DOWN</span>
+      <span class="example-chip">What is my public IP and ISP?</span>
+      <span class="example-chip">Analyze network security</span>
     </div>
     <div id="suggest-chips-wrap"></div>
     <div class="d-flex gap-2">
       <textarea class="form-control" id="chat-input" rows="2"
-        placeholder="Napisz pytanie o swojej sieci... (Enter = wyslij, Shift+Enter = nowa linia)"></textarea>
+        placeholder="Ask a question about your network... (Enter = send, Shift+Enter = new line)"></textarea>
       <button class="btn btn-primary px-4" id="send-btn" onclick="sendMessage()">
         <i class="bi bi-send-fill"></i>
       </button>
     </div>
     <div class="mt-1 text-muted small">
-      <i class="bi bi-info-circle me-1"></i>Agent ma dostep do biezacych danych z bazy NetDoc.
+      <i class="bi bi-info-circle me-1"></i>Agent has access to real-time data from the NetDoc database.
     </div>
   </div>
 </div>
@@ -300,7 +300,7 @@ function setThinking(active) {
 }
 
 function newChat() {
-  if (messages.length > 0 && !confirm("Rozpoczac nowa rozmowe? Biezaca historia zostanie wyczyszczona.")) return;
+  if (messages.length > 0 && !confirm("Start a new conversation? The current history will be cleared.")) return;
   messages = [];
   sessionStorage.removeItem(STORAGE_KEY);
   sessionStorage.removeItem("netdoc_chat_sid");
@@ -327,11 +327,11 @@ async function sendMessage() {
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
-      addMsg("system", "Blad: " + (err.error || resp.status), false);
+      addMsg("system", "Error: " + (err.error || resp.status), false);
       return;
     }
     const data = await resp.json();
-    const reply = data.reply || data.error || "Blad odpowiedzi";
+    const reply = data.reply || data.error || "Response error";
     const toolDetails = data.tool_details || [];
     // Zapisz sugestie i detale narzedzi razem z wiadomoscia
     messages.push({"role": "assistant", "content": reply,
@@ -341,7 +341,7 @@ async function sendMessage() {
     showSuggestions(data.suggestions || []);
     saveToStorage();
   } catch(e) {
-    addMsg("system", "Blad komunikacji: " + e.message, false);
+    addMsg("system", "Communication error: " + e.message, false);
   } finally {
     setThinking(false);
   }
@@ -397,7 +397,7 @@ document.querySelectorAll(".quick-btn").forEach(function(btn) {
 
 // Eksport do PDF przez drukowanie
 function exportPdf() {
-  if (messages.length === 0) { alert("Brak wiadomosci do eksportu."); return; }
+  if (messages.length === 0) { alert("No messages to export."); return; }
   window.print();
 }
 </script>

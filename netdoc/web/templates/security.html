@@ -59,11 +59,11 @@
   <div class="col-12 col-lg-8">
     <div class="card mb-3">
       <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <span><i class="bi bi-bug me-2"></i>Otwarte podatnosci ({{ open_vulns|length }})</span>
+        <span><i class="bi bi-bug me-2"></i>Open vulnerabilities ({{ open_vulns|length }})</span>
         <div class="d-flex gap-2 align-items-center flex-wrap">
           <input type="text" id="ipSearch" class="form-control form-control-sm" placeholder="Search IP..." style="width:140px">
           <div class="d-flex gap-1 flex-wrap">
-            <button class="btn btn-outline-secondary btn-sm py-0 px-2 vuln-filter active" data-sev="all">Wszystkie</button>
+            <button class="btn btn-outline-secondary btn-sm py-0 px-2 vuln-filter active" data-sev="all">All</button>
             {% for key, cls, _, label in sev_map %}
             <button class="btn btn-outline-{{ cls }} btn-sm py-0 px-2 vuln-filter" data-sev="{{ key }}">{{ label }}</button>
             {% endfor %}
@@ -76,22 +76,22 @@
             <thead>
               <tr>
                 <th class="sortable" data-col="0" style="cursor:pointer;user-select:none">IP <i class="bi bi-arrow-down-up text-muted small"></i></th>
-                <th class="sortable" data-col="1" style="cursor:pointer;user-select:none">Typ urz. <i class="bi bi-arrow-down-up text-muted small"></i></th>
-                <th>Typ wlam.</th>
+                <th class="sortable" data-col="1" style="cursor:pointer;user-select:none">Dev. type <i class="bi bi-arrow-down-up text-muted small"></i></th>
+                <th>Vuln. type</th>
                 <th class="sortable" data-col="3" style="cursor:pointer;user-select:none">Severity <i class="bi bi-arrow-down-up text-muted small"></i></th>
-                <th>Opis</th>
+                <th>Description</th>
                 <th class="sortable" data-col="5" style="cursor:pointer;user-select:none">Port <i class="bi bi-arrow-down-up text-muted small"></i></th>
-                <th class="sortable" data-col="6" style="cursor:pointer;user-select:none">Wykryto <i class="bi bi-arrow-down-up text-muted small"></i></th>
+                <th class="sortable" data-col="6" style="cursor:pointer;user-select:none">Detected <i class="bi bi-arrow-down-up text-muted small"></i></th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {% for v in open_vulns %}
               {% set sev_cls = {"critical":"danger","high":"warning","medium":"info","low":"secondary"}.get(v.severity,"secondary") %}
-              <tr id="vuln-{{ v.id }}" data-sev="{{ v.severity }}"{% if not v.device_active %} class="opacity-50" title="Host nieaktywny (DOWN)"{% endif %}>
+              <tr id="vuln-{{ v.id }}" data-sev="{{ v.severity }}"{% if not v.device_active %} class="opacity-50" title="Host inactive (DOWN)"{% endif %}>
                 <td class="font-monospace small">
                   {{ v.device_ip }}
-                  {% if not v.device_active %}<span class="badge bg-secondary ms-1" title="Host nieaktywny">DOWN</span>{% endif %}
+                  {% if not v.device_active %}<span class="badge bg-secondary ms-1" title="Host inactive">DOWN</span>{% endif %}
                 </td>
                 <td class="small text-muted">{{ v.device_type or "?" }}</td>
                 <td class="small">{{ vuln_badge(v.vuln_type) }}</td>
@@ -103,21 +103,21 @@
                 </td>
                 <td>
                   <form method="post" action="/security/{{ v.id }}/close" class="d-inline"
-                        onsubmit="return confirm('Zamknac #{{ v.id }}?');">
-                    <button class="btn btn-outline-success btn-sm py-0" title="Naprawione">
+                        onsubmit="return confirm('Mark #{{ v.id }} as fixed?');">
+                    <button class="btn btn-outline-success btn-sm py-0" title="Mark as fixed">
                       <i class="bi bi-check-lg"></i>
                     </button>
                   </form>
                   <form method="post" action="/security/{{ v.id }}/suppress" class="d-inline"
-                        onsubmit="return confirm('Zaakceptowac ryzyko #{{ v.id }}? Skaner nie bedzie wznawiać tej podatnosci.');">
-                    <button class="btn btn-outline-warning btn-sm py-0" title="Akceptuj ryzyko">
+                        onsubmit="return confirm('Accept risk for #{{ v.id }}? The scanner will not re-open this vulnerability.');">
+                    <button class="btn btn-outline-warning btn-sm py-0" title="Accept risk">
                       <i class="bi bi-shield-check"></i>
                     </button>
                   </form>
                 </td>
               </tr>
               {% else %}
-              <tr><td colspan="8" class="text-center text-muted py-4">Brak otwartych podatnosci.</td></tr>
+              <tr><td colspan="8" class="text-center text-muted py-4">No open vulnerabilities.</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -129,13 +129,13 @@
     <div class="card">
       <div class="card-header">
         <a class="text-muted small text-decoration-none" data-bs-toggle="collapse" href="#closedVulns">
-          <i class="bi bi-chevron-down me-1"></i>Zamkniete / naprawione ({{ closed_vulns|length }})
+          <i class="bi bi-chevron-down me-1"></i>Closed / fixed ({{ closed_vulns|length }})
         </a>
       </div>
       <div class="collapse" id="closedVulns">
         <div class="table-responsive">
           <table class="table table-sm mb-0">
-            <thead><tr><th>IP</th><th>Typ</th><th>Severity</th><th>Opis</th><th>Port</th></tr></thead>
+            <thead><tr><th>IP</th><th>Type</th><th>Severity</th><th>Description</th><th>Port</th></tr></thead>
             <tbody>
               {% for v in closed_vulns %}
               {% set sev_cls = {"critical":"danger","high":"warning","medium":"info","low":"secondary"}.get(v.severity,"secondary") %}
@@ -158,12 +158,12 @@
     <div class="card border-secondary">
       <div class="card-header d-flex justify-content-between align-items-center">
         <a class="text-muted small text-decoration-none" data-bs-toggle="collapse" href="#suppressedVulns">
-          <i class="bi bi-chevron-down me-1"></i>Zaakceptowane ryzyko ({{ suppressed_vulns|length }})
+          <i class="bi bi-chevron-down me-1"></i>Accepted risk ({{ suppressed_vulns|length }})
         </a>
         <form method="post" action="/security/unsuppress-all"
-              onsubmit="return confirm('Cofnac akceptacje dla WSZYSTKICH wyciszonych podatnosci ({{ suppressed_vulns|length }})?');">
-          <button class="btn btn-outline-secondary btn-sm py-0" title="Cofnij akceptacje wszystkich">
-            <i class="bi bi-arrow-counterclockwise me-1"></i>Cofnij wszystkie
+              onsubmit="return confirm('Revoke acceptance for ALL suppressed vulnerabilities ({{ suppressed_vulns|length }})?');">
+          <button class="btn btn-outline-secondary btn-sm py-0" title="Revoke all acceptances">
+            <i class="bi bi-arrow-counterclockwise me-1"></i>Revoke all
           </button>
         </form>
       </div>
@@ -171,7 +171,7 @@
         <div class="table-responsive">
           <table class="table table-sm mb-0">
             <thead>
-              <tr><th>IP</th><th>Typ</th><th>Severity</th><th>Opis</th><th>Port</th><th></th></tr>
+              <tr><th>IP</th><th>Type</th><th>Severity</th><th>Description</th><th>Port</th><th></th></tr>
             </thead>
             <tbody>
               {% for v in suppressed_vulns %}
@@ -184,8 +184,8 @@
                 <td class="small">{{ v.port or "—" }}</td>
                 <td>
                   <form method="post" action="/security/{{ v.id }}/unsuppress" class="d-inline"
-                        onsubmit="return confirm('Cofnac akceptacje #{{ v.id }}?');">
-                    <button class="btn btn-outline-info btn-sm py-0" title="Cofnij akceptacje ryzyka">
+                        onsubmit="return confirm('Revoke risk acceptance for #{{ v.id }}?');">
+                    <button class="btn btn-outline-info btn-sm py-0" title="Revoke risk acceptance">
                       <i class="bi bi-arrow-counterclockwise"></i>
                     </button>
                   </form>
@@ -202,11 +202,11 @@
 
   <div class="col-12 col-lg-4">
     <div class="card mb-3">
-      <div class="card-header"><i class="bi bi-unlock-fill me-2 text-danger"></i>Zdobyte dostepy ({{ working_creds|length }})</div>
+      <div class="card-header"><i class="bi bi-unlock-fill me-2 text-danger"></i>Compromised access ({{ working_creds|length }})</div>
       <div class="card-body p-0">
         {% if working_creds %}
         <table class="table table-sm mb-0">
-          <thead><tr><th>IP</th><th>Typ</th><th>Proto</th><th>User</th><th>Kiedy</th></tr></thead>
+          <thead><tr><th>IP</th><th>Type</th><th>Proto</th><th>User</th><th>When</th></tr></thead>
           <tbody>
             {% for c in working_creds %}
             {% set meth_cls = {"ssh":"primary","api":"secondary","rdp":"danger","telnet":"warning","snmp":"info"}.get(c.method,"secondary") %}
@@ -223,16 +223,16 @@
           </tbody>
         </table>
         {% else %}
-        <div class="text-center text-muted py-4 small">Brak zdobytych dostepu.</div>
+        <div class="text-center text-muted py-4 small">No compromised credentials found.</div>
         {% endif %}
       </div>
     </div>
 
     <div class="card">
-      <div class="card-header"><i class="bi bi-bar-chart me-2"></i>Typy podatnosci</div>
+      <div class="card-header"><i class="bi bi-bar-chart me-2"></i>Vulnerability types</div>
       <div class="card-body p-2">
         <table class="table table-sm small mb-0">
-          <thead><tr><th>Typ</th><th class="text-end">Liczba</th></tr></thead>
+          <thead><tr><th>Type</th><th class="text-end">Count</th></tr></thead>
           <tbody>
             {% for vtype, cnt in vuln_type_counts %}
             <tr>

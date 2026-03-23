@@ -56,7 +56,7 @@
           <div class="display-6 text-danger"><i class="bi bi-x-circle-fill"></i></div>
           <div class="text-danger small mt-1">{{ dg.err or "FAIL" }}</div>
           {% endif %}
-        {% else %}<div class="text-muted">Brak danych</div>{% endif %}
+        {% else %}<div class="text-muted">No data</div>{% endif %}
       </div>
     </div>
   </div>
@@ -73,7 +73,7 @@
           <div class="display-6 text-danger"><i class="bi bi-x-circle-fill"></i></div>
           <div class="text-danger small mt-1">{{ dc.err or "FAIL" }}</div>
           {% endif %}
-        {% else %}<div class="text-muted">Brak danych</div>{% endif %}
+        {% else %}<div class="text-muted">No data</div>{% endif %}
       </div>
     </div>
   </div>
@@ -152,7 +152,7 @@
 {% if not status and not wan %}
 <div class="alert alert-info">
   <i class="bi bi-info-circle me-2"></i>
-  Internet worker zbiera dane co 2 minuty. Jesli to pierwsza wizyta — poczekaj chwile i odswiez.
+  Internet worker collects data every 2 minutes. If this is your first visit — wait a moment and refresh.
 </div>
 {% endif %}
 {% endblock %}

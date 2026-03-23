@@ -79,7 +79,7 @@
 
 {# ── Wyniki ──────────────────────────────────────────────────────────────────── #}
 {% if not entries %}
-  <div class="alert alert-secondary">Brak wyników dla podanych filtrów.</div>
+  <div class="alert alert-secondary">No results for the selected filters.</div>
 {% else %}
   <p class="text-muted small mb-3">
     Znaleziono: <strong id="kbFoundCount">{{ entries|length }}</strong> wpisów
@@ -159,7 +159,7 @@
                 {% if dev.accepted %}
                   {# Zaakceptowane ryzyko — badge z informacją #}
                   <span class="badge bg-success font-monospace"
-                        title="Ryzyko zaakceptowane{% if dev.accept_reason %}: {{ dev.accept_reason }}{% endif %} · skan: {{ dev.scan_type }} {{ dev.scan_date }}">
+                        title="Risk accepted{% if dev.accept_reason %}: {{ dev.accept_reason }}{% endif %} · scan: {{ dev.scan_type }} {{ dev.scan_date }}">
                     <i class="bi bi-shield-check me-1"></i>{{ dev.hostname or dev.ip }}
                   </span>
                   <form method="post" action="/kb/ports/revoke" style="display:inline">
@@ -167,20 +167,20 @@
                     <input type="hidden" name="port" value="{{ entry.port }}">
                     <button type="submit" class="btn btn-sm p-0 border-0 text-muted"
                             style="font-size:.7rem;line-height:1"
-                            title="Cofnij akceptację">✕</button>
+                            title="Revoke acceptance">✕</button>
                   </form>
                 {% else %}
                   {# Niezaakceptowane — pokaż urządzenie + przycisk akceptacji #}
                   <a href="/devices#row-{{ dev.id }}" class="text-decoration-none">
                     <span class="badge {% if dev.is_active %}bg-danger{% else %}bg-secondary{% endif %} font-monospace"
-                          title="{{ dev.hostname or dev.ip }} — skan: {{ dev.scan_type }} {{ dev.scan_date }}">
+                          title="{{ dev.hostname or dev.ip }} — scan: {{ dev.scan_type }} {{ dev.scan_date }}">
                       {{ dev.hostname or dev.ip }}
                     </span>
                   </a>
                   <button type="button"
                           class="btn btn-sm p-0 border-0 text-muted"
                           style="font-size:.7rem;line-height:1"
-                          title="Akceptuj ryzyko (port {{ entry.port }} na tym urządzeniu jest znany i zaakceptowany)"
+                          title="Accept risk (port {{ entry.port }} on this device is known and accepted)"
                           onclick="kbAccept({{ dev.id }}, {{ entry.port }}, '{{ dev.hostname or dev.ip }}')">
                     <i class="bi bi-shield-plus"></i>
                   </button>
@@ -191,7 +191,7 @@
           </div>
           {% else %}
           <div class="small text-muted mt-2">
-            <i class="bi bi-check-circle text-success me-1"></i>Nie wykryto w żadnym urządzeniu
+            <i class="bi bi-check-circle text-success me-1"></i>Not detected on any device
           </div>
           {% endif %}
         </div>
@@ -206,7 +206,7 @@
   <div class="modal-dialog modal-sm">
     <div class="modal-content">
       <div class="modal-header py-2">
-        <h6 class="modal-title"><i class="bi bi-shield-plus me-2"></i>Akceptuj ryzyko</h6>
+        <h6 class="modal-title"><i class="bi bi-shield-plus me-2"></i>Accept risk</h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <form method="post" action="/kb/ports/accept">
@@ -215,12 +215,12 @@
           <input type="hidden" name="port"      id="acceptPort">
           <p class="small text-muted mb-2" id="acceptDesc"></p>
           <input type="text" name="reason" class="form-control form-control-sm"
-                 placeholder="Powód akceptacji (opcjonalnie)…" maxlength="200">
+                 placeholder="Reason for acceptance (optional)…" maxlength="200">
         </div>
         <div class="modal-footer py-2">
           <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
           <button type="submit" class="btn btn-sm btn-success">
-            <i class="bi bi-shield-check me-1"></i>Akceptuję ryzyko
+            <i class="bi bi-shield-check me-1"></i>Accept risk
           </button>
         </div>
       </form>

@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Poradniki bezpieczeństwa — NetDoc{% endblock %}
+{% block title %}Security guides — NetDoc{% endblock %}
 
 {% block content %}
 <div class="d-flex align-items-center mb-3 gap-2 flex-wrap">
-  <h4 class="mb-0"><i class="bi bi-journal-richtext me-2 text-info"></i>Poradniki bezpieczeństwa</h4>
-  <span class="badge bg-secondary ms-1">{{ guides|length }} artykułów</span>
+  <h4 class="mb-0"><i class="bi bi-journal-richtext me-2 text-info"></i>Security guides</h4>
+  <span class="badge bg-secondary ms-1">{{ guides|length }} articles</span>
 </div>
 
 {% if not current %}
@@ -36,7 +36,7 @@
 {# ── Pojedynczy artykuł ────────────────────────────────────────────────────── #}
 <nav aria-label="breadcrumb" class="mb-3">
   <ol class="breadcrumb">
-    <li class="breadcrumb-item"><a href="/kb/guides">Poradniki</a></li>
+    <li class="breadcrumb-item"><a href="/kb/guides">Guides</a></li>
     <li class="breadcrumb-item active">{{ current.title }}</li>
   </ol>
 </nav>

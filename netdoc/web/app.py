@@ -29,37 +29,37 @@ except ImportError:
 API_URL = os.getenv("NETDOC_API_URL", "http://localhost:8000")
 GRAFANA_URL = os.getenv("GRAFANA_URL", "/grafana")
 
-# Krotkie opisy podatnosci uzywane w tooltipach (security.html)
+# Short vulnerability descriptions used in tooltips (security.html)
 _VULN_HINTS: dict = {
-    "default_credentials":  {"short": "Urzadzenie loguje sie na domyslnym loginie i hasle producenta.",                                          "cvss": "9.8"},
-    "open_telnet":          {"short": "Urzadzenie udostepnia zarzadzanie przez Telnet — protokol bez szyfrowania.",                              "cvss": "7.5"},
-    "anonymous_ftp":        {"short": "Serwer FTP przyjmuje polaczenia bez zadnego hasla (login: anonymous).",                                   "cvss": "7.5"},
-    "open_ftp":             {"short": "Serwer FTP dziala bez szyfrowania — hasla i pliki widoczne w sieci.",                                    "cvss": "5.9"},
-    "snmp_public":          {"short": "Urzadzenie odpowiada na SNMP z domyslna nazwa spolecznosci 'public'.",                                   "cvss": "5.3"},
-    "mqtt_noauth":          {"short": "Broker MQTT akceptuje polaczenia bez loginu i hasla.",                                                    "cvss": "8.1"},
-    "redis_noauth":         {"short": "Baza danych Redis dostepna bez uwierzytelnienia.",                                                        "cvss": "9.8"},
-    "elasticsearch_noauth": {"short": "Klaster Elasticsearch dostepny bez hasla — pelny dostep do danych.",                                    "cvss": "9.8"},
-    "docker_api_exposed":   {"short": "Docker daemon nasluchuje na porcie sieciowym — mozliwy RCE i eskalacja uprawnien.",                      "cvss": "9.8"},
-    "http_management":      {"short": "Interfejs webowy urzadzenia dostepny przez HTTP zamiast HTTPS.",                                         "cvss": "6.5"},
-    "ssl_expired":          {"short": "Certyfikat bezpieczenstwa strony lub uslugi wygasl.",                                                    "cvss": "5.3"},
-    "ssl_self_signed":      {"short": "Usluga uzywa certyfikatu wystawionego przez siebie, a nie zaufany urzad.",                              "cvss": "3.7"},
-    "ipmi_exposed":         {"short": "Interfejs zarzadzania serwerem (IPMI/BMC) dostepny z sieci.",                                            "cvss": "9.8"},
-    "rdp_exposed":          {"short": "Pulpit zdalny Windows (RDP) dostepny bezposrednio z sieci.",                                             "cvss": "8.1"},
-    "vnc_noauth":           {"short": "Pulpit zdalny VNC dostepny bez zadnego hasla.",                                                          "cvss": "9.8"},
-    "mongo_noauth":         {"short": "Baza danych MongoDB dostepna bez hasla — pelny dostep do wszystkich kolekcji.",                         "cvss": "9.8"},
-    "rtsp_noauth":          {"short": "Strumien wideo z kamery dostepny bez loginu i hasla.",                                                   "cvss": "7.5"},
-    "modbus_exposed":       {"short": "Protokol przemyslowy Modbus dostepny bez uwierzytelnienia.",                                             "cvss": "9.1"},
-    "mysql_noauth":         {"short": "Serwer bazy danych MySQL dostepny bez hasla dla konta root.",                                            "cvss": "9.8"},
-    "postgres_weak_creds":  {"short": "Serwer PostgreSQL dostepny z domyslnymi lub slabymi poswiadczeniami.",                                  "cvss": "9.8"},
-    "mssql_weak_creds":     {"short": "SQL Server z pustym lub slabym haslem dla konta administratora sa.",                                     "cvss": "9.8"},
-    "vnc_weak_creds":       {"short": "Serwer VNC zabezpieczony haslem, ale haslo jest trywialne do zlamania.",                                "cvss": "9.8"},
-    "couchdb_noauth":       {"short": "Baza danych CouchDB dostepna bez loginu — pelny dostep przez HTTP API.",                                "cvss": "9.8"},
-    "memcached_exposed":    {"short": "Serwer cache Memcached dostepny bez uwierzytelnienia — wyciek danych i amplifikacja DDoS.",              "cvss": "7.5"},
-    "influxdb_noauth":      {"short": "Baza szeregów czasowych InfluxDB dostepna bez tokenu — pelny dostep do metryk.",                        "cvss": "9.1"},
-    "cassandra_noauth":     {"short": "Klaster bazy danych Cassandra dostepny przez CQL bez uwierzytelnienia.",                                "cvss": "9.8"},
-    "rtsp_weak_creds":      {"short": "Kamera IP wymaga hasla, ale przyjmuje powszechne domyslne poswiadczenia.",                              "cvss": "8.1"},
-    "firewall_disabled":    {"short": "Host ma nadmiernie duzo otwartych portow — brak firewalla lub blad konfiguracji.",                      "cvss": "7.5"},
-    "unauth_reboot":        {"short": "Endpoint restartu urzadzenia dostepny bez logowania — atakujacy moze zdalnie zrestartowac urzadzenie.", "cvss": "9.1"},
+    "default_credentials":  {"short": "Device is accessible with the manufacturer's default username and password.",                            "cvss": "9.8"},
+    "open_telnet":          {"short": "Device exposes management via Telnet — an unencrypted protocol.",                                       "cvss": "7.5"},
+    "anonymous_ftp":        {"short": "FTP server accepts connections without any password (login: anonymous).",                               "cvss": "7.5"},
+    "open_ftp":             {"short": "FTP server operates without encryption — passwords and files visible on the network.",                  "cvss": "5.9"},
+    "snmp_public":          {"short": "Device responds to SNMP with the default community string 'public'.",                                   "cvss": "5.3"},
+    "mqtt_noauth":          {"short": "MQTT broker accepts connections without username or password.",                                         "cvss": "8.1"},
+    "redis_noauth":         {"short": "Redis database accessible without authentication.",                                                     "cvss": "9.8"},
+    "elasticsearch_noauth": {"short": "Elasticsearch cluster accessible without a password — full data access.",                              "cvss": "9.8"},
+    "docker_api_exposed":   {"short": "Docker daemon listening on a network port — RCE and privilege escalation possible.",                   "cvss": "9.8"},
+    "http_management":      {"short": "Device web interface accessible over HTTP instead of HTTPS.",                                          "cvss": "6.5"},
+    "ssl_expired":          {"short": "Security certificate for the site or service has expired.",                                            "cvss": "5.3"},
+    "ssl_self_signed":      {"short": "Service uses a self-signed certificate instead of a trusted authority.",                               "cvss": "3.7"},
+    "ipmi_exposed":         {"short": "Server management interface (IPMI/BMC) accessible from the network.",                                 "cvss": "9.8"},
+    "rdp_exposed":          {"short": "Windows Remote Desktop (RDP) directly accessible from the network.",                                   "cvss": "8.1"},
+    "vnc_noauth":           {"short": "VNC remote desktop accessible without any password.",                                                  "cvss": "9.8"},
+    "mongo_noauth":         {"short": "MongoDB database accessible without a password — full access to all collections.",                    "cvss": "9.8"},
+    "rtsp_noauth":          {"short": "Camera video stream accessible without username or password.",                                         "cvss": "7.5"},
+    "modbus_exposed":       {"short": "Industrial Modbus protocol accessible without authentication.",                                        "cvss": "9.1"},
+    "mysql_noauth":         {"short": "MySQL database server accessible without a password for the root account.",                            "cvss": "9.8"},
+    "postgres_weak_creds":  {"short": "PostgreSQL server accessible with default or weak credentials.",                                      "cvss": "9.8"},
+    "mssql_weak_creds":     {"short": "SQL Server with empty or weak password for the 'sa' administrator account.",                           "cvss": "9.8"},
+    "vnc_weak_creds":       {"short": "VNC server is password-protected, but the password is trivially weak.",                               "cvss": "9.8"},
+    "couchdb_noauth":       {"short": "CouchDB database accessible without login — full access via HTTP API.",                               "cvss": "9.8"},
+    "memcached_exposed":    {"short": "Memcached cache server accessible without authentication — data leak and DDoS amplification risk.",    "cvss": "7.5"},
+    "influxdb_noauth":      {"short": "InfluxDB time-series database accessible without a token — full access to metrics.",                  "cvss": "9.1"},
+    "cassandra_noauth":     {"short": "Cassandra database cluster accessible via CQL without authentication.",                               "cvss": "9.8"},
+    "rtsp_weak_creds":      {"short": "IP camera requires a password but accepts common default credentials.",                               "cvss": "8.1"},
+    "firewall_disabled":    {"short": "Host has an excessive number of open ports — firewall missing or misconfigured.",                      "cvss": "7.5"},
+    "unauth_reboot":        {"short": "Device reboot endpoint accessible without authentication — attacker can remotely restart the device.", "cvss": "9.1"},
 }
 
 _SCREENSHOT_TTL = 43200  # 12h domyslnie — nadpisywane z DB (screenshot_ttl_hours)
@@ -1527,7 +1527,7 @@ def create_app():
         if err:
             flash(f"Blad usuwania: {err}", "danger")
         else:
-            flash("Urzadzenie usuniete. Pojawi sie ponownie po kolejnym skanie, jesli jest w sieci.", "info")
+            flash("Device deleted. It will reappear after the next scan if it is still on the network.", "info")
         return redirect(url_for("devices"))
 
     @app.route("/devices/<int:device_id>/flag", methods=["POST"])
