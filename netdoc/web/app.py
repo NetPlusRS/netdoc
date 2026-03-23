@@ -3072,6 +3072,32 @@ def create_app():
         except Exception as exc:
             return f"Błąd połączenia z API: {exc}", 500, {"Content-Type": "text/plain; charset=utf-8"}
 
+    @app.route("/api/logs/broadcast")
+    def logs_broadcast_proxy():
+        tail = request.args.get("tail", 200, type=int)
+        try:
+            resp = requests.get(f"{API_URL}/api/logs/broadcast?tail={tail}", timeout=10)
+            return resp.text, 200, {"Content-Type": "text/plain; charset=utf-8"}
+        except Exception as exc:
+            return f"Error connecting to API: {exc}", 500, {"Content-Type": "text/plain; charset=utf-8"}
+
+    @app.route("/api/broadcast/stats")
+    def broadcast_stats():
+        """Zwraca statystyki ostatniego cyklu broadcast discovery z SystemStatus."""
+        db = SessionLocal()
+        try:
+            from netdoc.storage.models import SystemStatus
+            keys = [
+                "broadcast_last_at", "broadcast_last_discovered", "broadcast_last_saved",
+                "broadcast_unifi", "broadcast_mndp", "broadcast_mdns", "broadcast_ssdp",
+                "broadcast_lldp",
+            ]
+            rows = db.query(SystemStatus).filter(SystemStatus.key.in_(keys)).all()
+            stats = {r.key: r.value for r in rows}
+            return jsonify(stats)
+        finally:
+            db.close()
+
     @app.route("/api/logs/docker/<container>")
     def logs_docker_proxy(container):
         """Czyta stdout/stderr kontenera Docker przez Python Docker SDK (socket /var/run/docker.sock)."""

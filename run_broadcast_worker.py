@@ -557,8 +557,21 @@ def _save_results(db, all_results: list[dict]) -> int:
             device_type = device_type,
         )
 
+        # Dodatkowe dane bez dedykowanego pola → asset_notes (tymczasowo)
+        extra_parts = []
+        services = r.get("services", [])
+        if services:
+            extra_parts.append("mDNS services: " + ", ".join(sorted(services)))
+        if r.get("serial_number"):
+            extra_parts.append("Serial: " + r["serial_number"])
+        if r.get("server_header") and not vendor:
+            extra_parts.append("UPnP server: " + r["server_header"])
+
         try:
-            upsert_device(db, data)
+            dev = upsert_device(db, data)
+            # Zapisz extra dane do asset_notes jesli pole puste
+            if extra_parts and dev and not dev.asset_notes:
+                dev.asset_notes = "[broadcast] " + " | ".join(extra_parts)
             db.commit()
             saved += 1
             logger.info(
@@ -579,6 +592,21 @@ def _save_results(db, all_results: list[dict]) -> int:
 # Glowny cykl
 # ===========================================================================
 
+def _set_status(db, updates: dict) -> None:
+    """Zapisuje klucze do tabeli system_status (category=broadcast_worker)."""
+    from netdoc.storage.models import SystemStatus
+    for key, value in updates.items():
+        row = db.query(SystemStatus).filter(SystemStatus.key == key).first()
+        if row:
+            row.value = str(value)
+        else:
+            db.add(SystemStatus(key=key, value=str(value), category="broadcast_worker"))
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
 def discover_once() -> dict:
     """Jeden pelny cykl broadcast+multicast discovery. Zwraca statystyki."""
     from netdoc.storage.database import SessionLocal
@@ -586,32 +614,41 @@ def discover_once() -> dict:
     bind_ip = _get_local_ip()
     logger.info("=== Broadcast discovery — bind_ip=%s ===", bind_ip)
 
+    per_proto: dict[str, list] = {}
     all_results: list[dict] = []
 
-    for name, fn in [
-        ("UniFi",   lambda: _discover_unifi(bind_ip)),
-        ("MNDP",    lambda: _discover_mndp(bind_ip)),
-        ("mDNS",    lambda: _discover_mdns(bind_ip)),
-        ("SSDP",    lambda: _discover_ssdp(bind_ip)),
+    for name, key, fn in [
+        ("UniFi", "broadcast_unifi",  lambda: _discover_unifi(bind_ip)),
+        ("MNDP",  "broadcast_mndp",   lambda: _discover_mndp(bind_ip)),
+        ("mDNS",  "broadcast_mdns",   lambda: _discover_mdns(bind_ip)),
+        ("SSDP",  "broadcast_ssdp",   lambda: _discover_ssdp(bind_ip)),
     ]:
         try:
             found = fn()
             logger.info("%-8s %d device(s)", name, len(found))
+            per_proto[key] = found
             all_results.extend(found)
         except Exception as exc:
             logger.warning("%-8s failed: %s", name, exc)
+            per_proto[key] = []
 
     total = len(all_results)
     logger.info("Total discovered: %d", total)
 
-    if not all_results:
-        return {"discovered": 0, "saved": 0}
-
     with SessionLocal() as db:
-        saved = _save_results(db, all_results)
+        saved = _save_results(db, all_results) if all_results else 0
+        _set_status(db, {
+            "broadcast_last_at":         datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            "broadcast_last_discovered": total,
+            "broadcast_last_saved":      saved,
+            "broadcast_unifi":           len(per_proto.get("broadcast_unifi", [])),
+            "broadcast_mndp":            len(per_proto.get("broadcast_mndp", [])),
+            "broadcast_mdns":            len(per_proto.get("broadcast_mdns", [])),
+            "broadcast_ssdp":            len(per_proto.get("broadcast_ssdp", [])),
+        })
 
     logger.info("Saved/updated in DB: %d", saved)
-    return {"discovered": total, "saved": saved}
+    return {"discovered": total, "saved": saved, "per_proto": {k: len(v) for k, v in per_proto.items()}}
 
 
 # ===========================================================================

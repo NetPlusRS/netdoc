@@ -45,6 +45,11 @@
     </button>
   </li>
   <li class="nav-item">
+    <button class="nav-link" data-tab="broadcast">
+      <i class="bi bi-broadcast me-1"></i>Broadcast
+    </button>
+  </li>
+  <li class="nav-item">
     <button class="nav-link" data-tab="ai">
       <i class="bi bi-cpu me-1"></i>AI Queries
     </button>
@@ -179,6 +184,29 @@
         <span class="text-muted small">File: <code>logs/cred.log</code></span>
       </div>
       <pre id="credOutput" class="mb-0 p-3 font-monospace small"
+           style="background:#0d1117;color:#c9d1d9;max-height:72vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all">Loading...</pre>
+    </div>
+
+    {# ── Broadcast/Multicast Discovery ── #}
+    <div id="tab-broadcast" style="display:none">
+      {# Statystyki ostatniego cyklu #}
+      <div class="d-flex align-items-center gap-3 p-2 border-bottom flex-wrap" style="background:var(--bg3)">
+        <select class="form-select form-select-sm" style="width:120px" id="broadcastTail">
+          <option value="100">100 lines</option>
+          <option value="200" selected>200 lines</option>
+          <option value="500">500 lines</option>
+        </select>
+        <div id="broadcastStats" class="d-flex gap-2 flex-wrap align-items-center">
+          <span class="badge bg-secondary" id="bs-last">last run: —</span>
+          <span class="badge bg-primary"   title="Ubiquiti UniFi UDP 10001">UniFi: <span id="bs-unifi">—</span></span>
+          <span class="badge bg-warning text-dark" title="MikroTik MNDP UDP 5678">MNDP: <span id="bs-mndp">—</span></span>
+          <span class="badge bg-info text-dark"    title="mDNS multicast 224.0.0.251:5353">mDNS: <span id="bs-mdns">—</span></span>
+          <span class="badge bg-success"  title="SSDP/UPnP multicast 239.255.255.255:1900">SSDP: <span id="bs-ssdp">—</span></span>
+          <span class="badge bg-secondary" title="Total discovered / saved to DB">Total: <span id="bs-total">—</span> / saved: <span id="bs-saved">—</span></span>
+        </div>
+        <span class="text-muted small ms-auto">File: <code>logs/broadcast.log</code></span>
+      </div>
+      <pre id="broadcastOutput" class="mb-0 p-3 font-monospace small"
            style="background:#0d1117;color:#c9d1d9;max-height:72vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all">Loading...</pre>
     </div>
 
@@ -487,13 +515,36 @@ document.querySelectorAll("#aiDetailTabs .nav-link").forEach(btn => {
   });
 });
 
+function fetchBroadcast() {
+  const tail = document.getElementById("broadcastTail").value;
+  const pre  = document.getElementById("broadcastOutput");
+  fetch("/api/logs/broadcast?tail=" + tail)
+    .then(r => r.text())
+    .then(t => { pre.innerHTML = colorizeLog(t); pre.scrollTop = pre.scrollHeight; setStatus("ok"); })
+    .catch(() => setStatus("err"));
+  // Statystyki ostatniego cyklu
+  fetch("/api/broadcast/stats")
+    .then(r => r.json())
+    .then(s => {
+      document.getElementById("bs-last").textContent   = "last run: " + (s.broadcast_last_at   || "—");
+      document.getElementById("bs-unifi").textContent  = s.broadcast_unifi  ?? "—";
+      document.getElementById("bs-mndp").textContent   = s.broadcast_mndp   ?? "—";
+      document.getElementById("bs-mdns").textContent   = s.broadcast_mdns   ?? "—";
+      document.getElementById("bs-ssdp").textContent   = s.broadcast_ssdp   ?? "—";
+      document.getElementById("bs-total").textContent  = s.broadcast_last_discovered ?? "—";
+      document.getElementById("bs-saved").textContent  = s.broadcast_last_saved      ?? "—";
+    })
+    .catch(() => {});
+}
+
 function refreshActive() {
-  if      (activeTab === "events")   fetchEvents();
-  else if (activeTab === "scanner")  fetchScanner();
-  else if (activeTab === "watchdog") fetchWatchdog();
-  else if (activeTab === "workers")  fetchWorkers();
-  else if (activeTab === "cred")     fetchCred();
-  else if (activeTab === "ai")       fetchAiLogs();
+  if      (activeTab === "events")    fetchEvents();
+  else if (activeTab === "scanner")   fetchScanner();
+  else if (activeTab === "watchdog")  fetchWatchdog();
+  else if (activeTab === "workers")   fetchWorkers();
+  else if (activeTab === "cred")      fetchCred();
+  else if (activeTab === "broadcast") fetchBroadcast();
+  else if (activeTab === "ai")        fetchAiLogs();
 }
 
 function setStatus(state) {

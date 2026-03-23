@@ -8,7 +8,8 @@ router = APIRouter(prefix="/api/logs", tags=["logs"])
 _LOG_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "logs"))
 LOG_FILE = os.path.join(_LOG_DIR, "scanner.log")
 _WATCHDOG_LOG = os.path.join(_LOG_DIR, "watchdog.log")
-_CRED_LOG = os.path.join(_LOG_DIR, "cred.log")
+_CRED_LOG      = os.path.join(_LOG_DIR, "cred.log")
+_BROADCAST_LOG = os.path.join(_LOG_DIR, "broadcast.log")
 
 
 def _read_tail(path: str, tail: int) -> str:
@@ -39,3 +40,9 @@ def watchdog_log(tail: int = Query(default=200, ge=10, le=2000)):
 def cred_log(tail: int = Query(default=200, ge=10, le=2000)):
     """Zwraca ostatnie N linii pliku logs/cred.log."""
     return _read_tail(_CRED_LOG, tail)
+
+
+@router.get("/broadcast", response_class=PlainTextResponse)
+def broadcast_log(tail: int = Query(default=200, ge=10, le=2000)):
+    """Zwraca ostatnie N linii pliku logs/broadcast.log."""
+    return _read_tail(_BROADCAST_LOG, tail)
