@@ -2162,18 +2162,18 @@ def create_app():
             payload["device_id"] = int(device_id)
         data, err = _api("post", "/api/credentials/", json=payload)
         if err:
-            flash(f"Blad: {err}", "danger")
+            flash(f"Error: {err}", "danger")
         else:
-            flash("Credential dodany.", "success")
+            flash("Credential added.", "success")
         return redirect(url_for("credentials"))
 
     @app.route("/credentials/<int:cred_id>/delete", methods=["POST"])
     def credential_delete(cred_id):
         _, err = _api("delete", f"/api/credentials/{cred_id}")
         if err:
-            flash(f"Blad: {err}", "danger")
+            flash(f"Error: {err}", "danger")
         else:
-            flash("Credential usuniety.", "success")
+            flash("Credential deleted.", "success")
         return redirect(url_for("credentials"))
 
     @app.route("/credentials/<int:cred_id>/edit", methods=["POST"])
@@ -2191,9 +2191,9 @@ def create_app():
             payload["password"] = password
         _, err = _api("put", f"/api/credentials/{cred_id}", json=payload)
         if err:
-            flash(f"Blad: {err}", "danger")
+            flash(f"Error: {err}", "danger")
         else:
-            flash("Credential zaktualizowany.", "success")
+            flash("Credential updated.", "success")
         return redirect(url_for("credentials"))
 
     # ── scan ───────────────────────────────────────────────────────────────────

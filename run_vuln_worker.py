@@ -1086,6 +1086,47 @@ def check_snmp_public(device_id: int, ip: str = ""):
     return None
 
 
+def _onvif_get_device_info(ip: str, port: int) -> dict:
+    """Próbuje pobrać GetDeviceInformation z ONVIF bez auth (best-effort).
+
+    Nie wszystkie kamery pozwalają na to bez logowania — zwraca pusty dict
+    jeśli endpoint wymaga auth lub nie odpowiada.
+    """
+    import re as _re
+    _SOAP = (
+        b'<?xml version="1.0"?>'
+        b'<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"'
+        b' xmlns:tds="http://www.onvif.org/ver10/device/wsdl">'
+        b'<s:Body><tds:GetDeviceInformation/></s:Body></s:Envelope>'
+    )
+    try:
+        r = httpx.post(
+            f"http://{ip}:{port}/onvif/device_service",
+            content=_SOAP,
+            headers={"Content-Type": "application/soap+xml; charset=utf-8"},
+            timeout=_HTTP_TIMEOUT,
+            follow_redirects=False,
+        )
+        if r.status_code != 200:
+            return {}
+        body = r.text
+        def _tag(name: str) -> Optional[str]:
+            m = _re.search(rf'<(?:[^:>]+:)?{name}>([^<]+)<', body)
+            return m.group(1).strip() if m else None
+        result = {}
+        if _tag("Manufacturer"):
+            result["vendor"] = _tag("Manufacturer")
+        if _tag("Model"):
+            result["model"] = _tag("Model")
+        if _tag("FirmwareVersion"):
+            result["os_version"] = _tag("FirmwareVersion")
+        if _tag("SerialNumber"):
+            result["serial_number"] = _tag("SerialNumber")
+        return result
+    except Exception:
+        return {}
+
+
 def check_onvif_noauth(ip: str) -> Optional[dict]:
     """Sprawdza czy kamera/NVR udostępnia ONVIF GetCapabilities bez uwierzytelnienia.
 
@@ -1120,6 +1161,8 @@ def check_onvif_noauth(ip: str) -> Optional[dict]:
                 "action not authorized", "authentication required",
             ))
             if r.status_code == 200 and has_caps_response and not has_auth_error:
+                # Best-effort: próbuj pobrać dane urządzenia (nie wszystkie kamery pozwalają)
+                device_info = _onvif_get_device_info(ip, port)
                 return {
                     "vuln_type": VulnType.onvif_noauth, "severity": VulnSeverity.high,
                     "title": f"ONVIF kamera — zarządzanie bez uwierzytelnienia (port {port})",
@@ -1130,6 +1173,7 @@ def check_onvif_noauth(ip: str) -> Optional[dict]:
                         "strumienie wideo, sterować PTZ, zmieniać konfigurację kamery "
                         "i pobierać nagrania bez żadnych uprawnień."
                     ),
+                    "enrichment": device_info,  # może być {} jeśli kamera wymaga auth
                 }
         except Exception:
             continue
@@ -1620,6 +1664,34 @@ def _scan_device(device_id: int, ip: str, device_type, close_after: int = 3,
                              "severity": v["severity"].value, "title": v["title"]}))
                 logger.warning("NOWA PODATNOSC %-18s %-28s %s",
                                ip, v["vuln_type"].value, v["title"])
+
+            # Enrichment z ONVIF — aktualizuj Device gdy mamy dane z GetDeviceInformation
+            enrichment = v.get("enrichment")
+            if enrichment and v["vuln_type"] == VulnType.onvif_noauth:
+                dev = db.query(Device).filter(Device.id == device_id).first()
+                if dev:
+                    dev.device_type = DeviceType.camera
+                    if enrichment.get("vendor") and not dev.vendor:
+                        dev.vendor = enrichment["vendor"]
+                    if enrichment.get("model") and not dev.model:
+                        dev.model = enrichment["model"]
+                    if enrichment.get("os_version") and not dev.os_version:
+                        dev.os_version = enrichment["os_version"]
+                    if enrichment.get("serial_number") and not dev.serial_number:
+                        dev.serial_number = enrichment["serial_number"]
+                    logger.info("ONVIF enrich %-18s type=camera vendor=%s model=%s serial=%s fw=%s",
+                                ip,
+                                enrichment.get("vendor", "-"),
+                                enrichment.get("model", "-"),
+                                enrichment.get("serial_number", "-"),
+                                enrichment.get("os_version", "-"))
+            elif v["vuln_type"] == VulnType.onvif_noauth:
+                # Nawet bez GetDeviceInformation — wiemy że to kamera
+                dev = db.query(Device).filter(Device.id == device_id).first()
+                if dev and dev.device_type == DeviceType.unknown:
+                    dev.device_type = DeviceType.camera
+                    logger.info("ONVIF enrich %-18s type=camera (no device info)", ip)
+
         closed_count = _close_stale(db, device_id, found_keys, close_after)
         if closed_count:
             db.add(Event(device_id=device_id,

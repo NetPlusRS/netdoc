@@ -115,20 +115,47 @@ _DEFAULT_DEV_TIMEOUT_S   = int(os.getenv("CRED_DEVICE_TIMEOUT_S", "120"))   # ma
 
 # Domyslne pary SSH/Telnet probowane gdy baza nie ma global credentials
 SSH_CREDENTIAL_FALLBACK = [
-    ("admin",   "admin"),        ("admin",   ""),
-    ("admin",   "password"),     ("admin",   "1234"),
-    ("admin",   "12345"),        ("admin",   "admin123"),
-    ("admin",   "cisco"),        ("admin",   "ubnt"),
-    ("root",    "root"),         ("root",    ""),
-    ("root",    "admin"),        ("root",    "password"),
-    ("root",    "toor"),         ("root",    "alpine"),
-    ("cisco",   "cisco"),        ("cisco",   "cisco123"),
-    ("cisco",   "Cisco"),        ("ubnt",    "ubnt"),
-    ("pi",      "raspberry"),    ("pi",      "pi"),
-    ("user",    "user"),         ("user",    "password"),
-    ("guest",   "guest"),        ("guest",   ""),
-    ("support", "support"),      ("operator","operator"),
-    ("manager", "manager"),      ("service", "service"),
+    # --- admin ---
+    ("admin",       "admin"),        ("admin",       ""),
+    ("admin",       "password"),     ("admin",       "1234"),
+    ("admin",       "12345"),        ("admin",       "123456"),
+    ("admin",       "admin123"),     ("admin",       "Admin"),
+    ("admin",       "Admin123"),     ("admin",       "Admin@123"),
+    ("admin",       "pass"),         ("admin",       "pass123"),
+    ("admin",       "qwerty"),       ("admin",       "cisco"),
+    ("admin",       "ubnt"),         ("admin",       "P@ssw0rd"),
+    # --- root ---
+    ("root",        "root"),         ("root",        ""),
+    ("root",        "admin"),        ("root",        "password"),
+    ("root",        "pass"),         ("root",        "pass1"),
+    ("root",        "pass123"),      ("root",        "1234"),
+    ("root",        "12345"),        ("root",        "123456"),
+    ("root",        "toor"),         ("root",        "alpine"),
+    ("root",        "P@ssw0rd"),     ("root",        "Password1"),
+    # --- Cisco ---
+    ("cisco",       "cisco"),        ("cisco",       "cisco123"),
+    ("cisco",       "Cisco"),        ("enable",      "enable"),
+    # --- Ubiquiti ---
+    ("ubnt",        "ubnt"),
+    # --- MikroTik ---
+    ("mikrotik",    ""),
+    # --- Huawei ---
+    ("huawei",      "Admin@123"),
+    # --- Juniper ScreenOS ---
+    ("netscreen",   "netscreen"),
+    # --- Fortinet FortiOS ---
+    ("admin",       "fortinet"),
+    # --- VyOS / OpenWRT ---
+    ("vyos",        "vyos"),         ("root",        "openwrt"),
+    # --- Raspberry Pi / Ubuntu ---
+    ("pi",          "raspberry"),    ("pi",          "pi"),
+    ("ubuntu",      "ubuntu"),
+    # --- Generic ---
+    ("user",        "user"),         ("user",        "password"),
+    ("guest",       "guest"),        ("guest",       ""),
+    ("support",     "support"),      ("operator",    "operator"),
+    ("manager",     "manager"),      ("service",     "service"),
+    ("test",        "test"),         ("test",        ""),
 ]
 
 # Telnet - te same pary co SSH (port 23)
@@ -136,18 +163,36 @@ TELNET_CREDENTIAL_FALLBACK = SSH_CREDENTIAL_FALLBACK
 
 # API/HTTP - pary do paneli www urzadzen sieciowych i kamer
 API_CREDENTIAL_FALLBACK = [
+    # --- admin (core) ---
     ("admin",         "admin"),        ("admin",         ""),
     ("admin",         "password"),     ("admin",         "1234"),
-    ("admin",         "12345"),        ("admin",         "admin123"),
-    ("admin",         "admin1234"),    ("admin",         "cisco"),
+    ("admin",         "12345"),        ("admin",         "123456"),
+    ("admin",         "admin123"),     ("admin",         "admin1234"),
+    ("admin",         "Admin"),        ("admin",         "Admin123"),
+    ("admin",         "Admin@123"),    ("admin",         "pass"),
+    ("admin",         "pass123"),      ("admin",         "qwerty"),
+    ("admin",         "1111"),         ("admin",         "access"),
+    # --- Hikvision / Chinese cameras ---
+    ("admin",         "Admin12345"),   ("admin",         "888888"),
+    ("admin",         "666666"),
+    ("admin",         "111111"),       ("admin",         "000000"),
+    # --- Administrator (Windows NVR / VMS) ---
     ("Administrator", ""),             ("Administrator", "admin"),
-    ("administrator", "administrator"),("root",          ""),
-    ("root",          "root"),         ("root",          "admin"),
+    ("administrator", "administrator"),
+    # --- root ---
+    ("root",          ""),             ("root",          "root"),
+    ("root",          "admin"),        ("root",          "pass"),
+    ("root",          "pass1"),        ("root",          "12345"),
+    ("root",          "123456"),       ("root",          "password"),
+    # --- Cisco / Ubiquiti / MikroTik ---
     ("cisco",         "cisco"),        ("ubnt",          "ubnt"),
+    ("admin",         "cisco"),        ("admin",         "ubnt"),
+    # --- Generic roles ---
     ("supervisor",    "supervisor"),   ("admin",         "supervisor"),
+    ("operator",      "operator"),     ("technician",    "technician"),
+    ("monitor",       "monitor"),      ("user",          "user"),
     ("guest",         "guest"),        ("guest",         ""),
     ("webmaster",     "webmaster"),    ("service",       "service"),
-    ("monitor",       "monitor"),      ("user",          "user"),
 ]
 
 # RDP - najpopularniejsze domyslne Windows credentials
@@ -174,7 +219,7 @@ RDP_CREDENTIAL_FALLBACK = [
     ("Administrator", "HP@dmin"),      ("Administrator", "Lenovo1234"),
     ("Administrator", "Wyse"),         ("Administrator", "scada"),
     # --- NVR / VMS / OT HMI ---
-    ("Administrator", "12345"),        ("Administrator", "Admin12345"),
+    ("Administrator", "Admin12345"),
     ("Administrator", "supervisor"),   ("operator",      "operator"),
     ("engineer",      "engineer"),     ("service",       "service"),
     # --- Sezonowe / popularne schematy ---
@@ -201,7 +246,7 @@ VNC_CREDENTIAL_FALLBACK = [
     ("",  "Siemens"),    ("",  "1"),          ("",  "100"),
     ("",  "Schneid"),    ("",  "Rockwell"),   ("",  "scada"),   # Schneider→8
     # --- NVR / thin client ---
-    ("",  "Admin123"),   ("",  "12345"),      ("",  "TightVNC"),  # Admin12345→8
+    ("",  "Admin123"),   ("",  "TightVNC"),
     ("",  "realvnc"),    ("",  "vncpassw"),                       # vncpasswd→8
     # --- Popularne krotkie hasla ---
     ("",  "secret"),     ("",  "pass"),       ("",  "0000"),
@@ -216,41 +261,53 @@ VNC_CREDENTIAL_FALLBACK = [
     # --- Obciecione do 8 znakow (VNC limit!) ---
     ("",  "Password"),   ("",  "passw0rd"),   ("",  "changeme"),
     ("",  "Welcome1"),
+    # --- Dodatkowe czeste ---
+    ("",  "vnc123"),     ("",  "abc123"),     ("",  "admin123"),
+    ("",  "pass1234"),   ("",  "2580"),        ("",  "5900"),
 ]
 
 # FTP - dedykowana lista (poprzednio uzywano SSH_CREDENTIAL_FALLBACK — blednie!)
 # Zrodla: SecLists/FTP, CIRT.net, vendor manuals, CVE research
 FTP_CREDENTIAL_FALLBACK = [
-    # --- Anonimowe (najczestszy problem — drukarki, NAS, kamery!) ---
+    # --- Anonymous (printers, NAS, cameras!) ---
     ("anonymous", ""),             ("anonymous", "anonymous"),
     ("anonymous", "ftp"),          ("ftp",       ""),
-    ("ftp",       "ftp"),
-    # --- Brak hasla ---
+    ("ftp",       "ftp"),          ("ftp",       "ftp123"),
+    # --- No password ---
     ("admin",     ""),             ("root",      ""),
-    # --- Podstawowe pary ---
+    # --- admin ---
     ("admin",     "admin"),        ("admin",     "password"),
     ("admin",     "1234"),         ("admin",     "12345"),
+    ("admin",     "123456"),       ("admin",     "admin123"),
+    ("admin",     "pass"),         ("admin",     "1111"),
+    ("admin",     "access"),       ("admin",     "hp"),
+    ("admin",     "Admin12345"),
+    # --- root ---
     ("root",      "root"),         ("root",      "password"),
-    ("user",      "user"),         ("guest",     "guest"),
-    ("guest",     ""),
-    # --- Drukarki (scan-to-FTP) ---
+    ("root",      "pass"),         ("root",      "pass1"),
+    ("root",      "pass123"),      ("root",      "toor"),
+    ("root",      "1234"),         ("root",      "12345"),
+    ("root",      "123456"),
+    # --- Printers (scan-to-FTP) ---
     ("administrator",""),          ("JetDirect", ""),
-    ("admin",     "hp"),           ("supervisor","supervisor"),
-    ("admin",     "1111"),         ("admin",     "access"),
-    # --- Kamery IP ---
-    ("admin",     "12345"),        ("admin",     "Admin12345"),
-    ("root",      "pass"),
-    # --- NAS ---
-    ("admin",     "infrant1"),     ("root",      ""),
-    # --- Serwery / Windows ---
-    ("Administrator",""),          ("ftpuser",   "ftpuser"),
+    ("Administrator",""),
+    ("supervisor","supervisor"),
+    # --- NAS (Synology, QNAP, Netgear ReadyNAS) ---
+    ("admin",     "infrant1"),     ("admin",     "nas"),
+    ("nas",       "nas"),
+    # --- Windows / servers ---
+    ("ftpuser",   "ftpuser"),      ("ftpadmin",  "ftpadmin"),
     ("upload",    "upload"),       ("backup",    "backup"),
-    # --- Routery ---
+    ("data",      "data"),         ("share",     "share"),
+    # --- Routers ---
     ("cisco",     "cisco"),        ("ubnt",      "ubnt"),
     ("mikrotik",  ""),
-    # --- Generic slabe ---
-    ("test",      "test"),         ("support",   "support"),
-    ("service",   "service"),      ("ftp",       "ftp123"),
+    # --- Pi / IoT ---
+    ("pi",        "raspberry"),
+    # --- Generic ---
+    ("user",      "user"),         ("guest",     "guest"),
+    ("guest",     ""),             ("test",      "test"),
+    ("support",   "support"),      ("service",   "service"),
 ]
 
 # MSSQL (SQL Server) - domyslne i popularne slabe hasla
@@ -278,29 +335,43 @@ MSSQL_CREDENTIAL_FALLBACK = [
     ("sa",    "mssql"),
     ("sa",    "MSSQLSvc"),
     ("sa",    "MSSQLService"),
-    # Polskie systemy ERP — domyslne hasla instalatora
+    # Polish ERP systems — installer defaults
     ("sa",    "Insert2019"),  # Insert GT (Subiekt GT, Rachmistrz GT)
     ("sa",    "Insert2020"),
     ("sa",    "Insert2021"),
     ("sa",    "Insert2022"),
     ("sa",    "Insert2023"),
-    ("sa",    "Optima2022"),  # Comarch Optima
+    ("sa",    "Insert2024"),
+    ("sa",    "Insert2025"),
+    ("sa",    "Optima2021"),  # Comarch Optima
+    ("sa",    "Optima2022"),
+    ("sa",    "Optima2023"),
+    ("sa",    "Optima2024"),
     ("sa",    "OptimaSA"),
     ("sa",    "Symfonia1"),   # Sage Symfonia
-    # Inne konta dostawcow oprogramowania
+    ("sa",    "Symfonia2"),
+    # Other vendor defaults
     ("admin", "admin"),
     ("admin", ""),
     ("sa",    "Sa123456"),
     ("sa",    "Sql123456"),
+    ("sa",    "sql"),
+    ("sa",    "123456"),
+    ("sa",    "Admin@123"),
+    ("sa",    "Sqlserver1"),
+    ("sa",    "Database1"),
+    ("dbo",   "dbo"),
 ]
 
 # MySQL - domyslne i slabe credentiale
 # Zrodlo: SecLists mysql-betterdefaultpasslist.txt + popularne instalacje
 MYSQL_CREDENTIAL_FALLBACK = [
-    ("root",  ""),            # MySQL domyslnie puste haslo root (niebezpieczne!)
+    ("root",  ""),            # MySQL default: empty root password
     ("root",  "root"),
     ("root",  "mysql"),
     ("root",  "password"),
+    ("root",  "pass"),
+    ("root",  "pass1"),
     ("root",  "toor"),
     ("root",  "admin"),
     ("root",  "Password1"),
@@ -310,10 +381,16 @@ MYSQL_CREDENTIAL_FALLBACK = [
     ("root",  "123456"),
     ("root",  "root123"),
     ("root",  "mysql123"),
+    ("root",  "changeme"),
+    ("root",  "welcome"),
     ("mysql", "mysql"),
     ("mysql", ""),
     ("admin", "admin"),
     ("admin", ""),
+    ("admin", "password"),
+    ("admin", "123456"),
+    ("test",  "test"),
+    ("test",  ""),
 ]
 
 # PostgreSQL - domyslne i slabe credentiale
@@ -322,16 +399,60 @@ POSTGRES_CREDENTIAL_FALLBACK = [
     ("postgres", "postgres"),
     ("postgres", ""),
     ("postgres", "password"),
+    ("postgres", "pass"),
     ("postgres", "postgres123"),
-    ("postgres", "secret"),
-    ("postgres", "changeme"),
+    ("postgres", "1234"),
+    ("postgres", "12345"),
+    ("postgres", "123456"),
     ("postgres", "admin"),
+    ("postgres", "admin123"),
+    ("postgres", "Admin123"),
+    ("postgres", "secret"),
+    ("postgres", "secret123"),
+    ("postgres", "changeme"),
     ("postgres", "Password1"),
     ("postgres", "P@ssw0rd"),
+    ("pgsql",    "pgsql"),
     ("admin",    "admin"),
     ("admin",    ""),
+    ("admin",    "password"),
+    ("admin",    "123456"),
     ("root",     "root"),
     ("root",     ""),
+    ("root",     "password"),
+]
+
+# RTSP cameras — username/password pairs for IP cameras
+# Sources: Shodan research, IPVM defaults database, vendor manuals, CVE-2021-33544 etc.
+RTSP_CREDENTIAL_FALLBACK = [
+    # --- No auth ---
+    ("",          ""),
+    # --- admin variants (Hikvision, Dahua, Foscam, Amcrest, Reolink, generic) ---
+    ("admin",     ""),             ("admin",     "admin"),
+    ("admin",     "12345"),        ("admin",     "Admin12345"),
+    ("admin",     "1234"),         ("admin",     "admin1234"),
+    ("admin",     "Admin123"),     ("admin",     "Admin@123"),
+    ("admin",     "admin123"),     ("admin",     "123456"),
+    ("admin",     "password"),     ("admin",     "Admin"),
+    ("admin",     "foscam"),       ("admin",     "vivotek"),
+    ("admin",     "4321"),         ("admin",     "notadmin"),
+    ("admin",     "888888"),       ("admin",     "666666"),
+    ("admin",     "111111"),       ("admin",     "1111"),
+    ("admin",     "0000"),
+    # --- root variants (Axis, generic Linux cameras) ---
+    ("root",      "pass"),         ("root",      "pass1"),
+    ("root",      "pass12"),       ("root",      "pass123"),
+    ("root",      "password"),     ("root",      "Password1"),
+    ("root",      ""),             ("root",      "root"),
+    ("root",      "admin"),        ("root",      "1234"),
+    ("root",      "12345"),        ("root",      "123456"),
+    ("root",      "axis"),
+    # --- Vendor-specific accounts ---
+    ("service",   "service"),      ("live",      "live"),
+    ("viewer",    "viewer"),
+    # --- Generic ONVIF / RTSP ---
+    ("user",      "user"),         ("guest",     "guest"),
+    ("operator",  "operator"),
 ]
 
 METRICS_PORT       = int(os.getenv("CRED_METRICS_PORT",      "8003"))
@@ -1174,6 +1295,80 @@ def discover_vnc(ip: str, pairs: list, ports: tuple = _VNC_PORTS) -> Optional[tu
     return None
 
 
+# RTSP cameras (port 554, 8554, 10554) ----------------------------------------
+_RTSP_PORTS = (554, 8554, 10554, 5554)
+
+
+def discover_rtsp(ip: str, pairs: list) -> Optional[tuple]:
+    """Sprawdza RTSP credentials dla kamer IP.
+
+    Protokol: wyslij DESCRIBE rtsp://ip/ RTSP/1.0 z Basic auth.
+    Sukces = odpowiedz 200 OK (bez auth) lub 200 po podaniu credentials.
+    Brak autoryzacji = 401 Unauthorized.
+    Brak RTSP = inny status lub brak odpowiedzi.
+
+    Standardowe porty: 554 (domyslny), 8554, 10554, 5554.
+    """
+    import base64
+
+    open_port = None
+    for port in _RTSP_PORTS:
+        try:
+            with socket.create_connection((ip, port), timeout=2):
+                open_port = port
+                break
+        except OSError:
+            continue
+    if open_port is None:
+        return None
+
+    def _rtsp_request(username: str, password: str) -> Optional[int]:
+        """Wysyla RTSP DESCRIBE i zwraca kod odpowiedzi lub None."""
+        try:
+            with socket.create_connection((ip, open_port), timeout=4) as s:
+                s.settimeout(4)
+                cseq = 1
+                req = (
+                    f"DESCRIBE rtsp://{ip}:{open_port}/ RTSP/1.0\r\n"
+                    f"CSeq: {cseq}\r\n"
+                    f"User-Agent: NetDoc/1.0\r\n"
+                )
+                if username or password:
+                    creds = base64.b64encode(
+                        f"{username}:{password}".encode()
+                    ).decode()
+                    req += f"Authorization: Basic {creds}\r\n"
+                req += "\r\n"
+                s.sendall(req.encode())
+                resp = s.recv(256).decode(errors="ignore")
+                # RTSP/1.0 200 OK  lub  RTSP/1.0 401 Unauthorized
+                if resp.startswith("RTSP/"):
+                    parts = resp.split(None, 2)
+                    if len(parts) >= 2:
+                        return int(parts[1])
+        except Exception:
+            pass
+        return None
+
+    # Najpierw sprawdz czy kamera w ogole odpowiada na RTSP
+    status = _rtsp_request("", "")
+    if status is None:
+        return None   # nie RTSP
+    if status == 200:
+        return ("", "")   # brak auth — zwroc puste credentials
+
+    for u, p in pairs:
+        if _VERBOSE:
+            logger.info("RTSP proba %-18s port=%-5d u=%-15s p=%s", ip, open_port, u, p or "(puste)")
+        code = _rtsp_request(u, p)
+        if code == 200:
+            logger.info("RTSP OK   %-18s port=%-5d u=%s", ip, open_port, u)
+            return (u, p)
+        if code is None:
+            break   # kamera przestala odpowiadac — zatrzymaj
+    return None
+
+
 # Telnet (port 23) -------------------------------------------------------------
 _TELNET_PORTS = (23, 2323)
 
@@ -1697,6 +1892,7 @@ def _process_device(device_id: int, ip: str,
                     mssql_pairs: list | None = None,
                     mysql_pairs: list | None = None,
                     postgres_pairs: list | None = None,
+                    rtsp_pairs: list | None = None,
                     pairs_per_cycle: int = 1) -> dict:
     """Testuje credentials na jednym urzadzeniu.
     Uzywa rotacji: per cykl testuje max `pairs_per_cycle` nowych par (dotad nieprobowanych).
@@ -1707,10 +1903,11 @@ def _process_device(device_id: int, ip: str,
     if mssql_pairs    is None: mssql_pairs    = []
     if mysql_pairs    is None: mysql_pairs    = []
     if postgres_pairs is None: postgres_pairs = []
+    if rtsp_pairs     is None: rtsp_pairs     = []
 
     res = {"ssh": False, "telnet": False, "web": False, "ftp": False,
            "rdp": False, "vnc": False,
-           "mssql": False, "mysql": False, "postgres": False, "new": 0}
+           "mssql": False, "mysql": False, "postgres": False, "rtsp": False, "new": 0}
 
     # PERF-09: jedna sesja przez całe _process_device zamiast 5-8 osobnych SessionLocal()
     db = SessionLocal()
@@ -1731,9 +1928,10 @@ def _process_device(device_id: int, ip: str,
         mssql_to_try    = _filter_untried(mssql_pairs,    tried.get("mssql",    set()), pairs_per_cycle)
         mysql_to_try    = _filter_untried(mysql_pairs,    tried.get("mysql",    set()), pairs_per_cycle)
         postgres_to_try = _filter_untried(postgres_pairs, tried.get("postgres", set()), pairs_per_cycle)
+        rtsp_to_try     = _filter_untried(rtsp_pairs,     tried.get("rtsp",     set()), pairs_per_cycle)
 
         if not any([ssh_to_try, telnet_to_try, web_to_try, ftp_to_try, rdp_to_try, vnc_to_try,
-                    mssql_to_try, mysql_to_try, postgres_to_try]):
+                    mssql_to_try, mysql_to_try, postgres_to_try, rtsp_to_try]):
             # Wszystkie pary wyczerpane — czekamy retry_days i resetujemy rotacje
             logger.info("WYCZERPANO %-18s wszystkie pary — reset rotacji po retry_days", ip)
             _mark_checked(db, device_id)
@@ -1812,8 +2010,8 @@ def _process_device(device_id: int, ip: str,
                     logger.info("FTP brak: %-18s (wyprobowano %d par)", ip, len(ftp_to_try))
 
         if rdp_to_try:
-            if not _tcp_open(ip, 445, timeout=1.5):
-                logger.info("RDP skip: %-18s brak portu 445 (SMB)", ip)
+            if not _tcp_open(ip, 3389, timeout=1.5):
+                logger.info("RDP skip: %-18s brak portu 3389 (RDP)", ip)
             else:
                 logger.info("TEST RDP  %-18s (%d/%d par, cykl=%d)",
                             ip, len(rdp_to_try), len(rdp_pairs), pairs_per_cycle)
@@ -1847,40 +2045,68 @@ def _process_device(device_id: int, ip: str,
                     logger.info("VNC brak: %-18s (wyprobowano %d hasel)", ip, len(vnc_to_try))
 
         if mssql_to_try:
-            logger.info("TEST MSSQL %-18s (%d/%d par, cykl=%d)",
-                        ip, len(mssql_to_try), len(mssql_pairs), pairs_per_cycle)
-            _mark_pairs_tried(tried, "mssql", mssql_to_try)
-            pair = discover_mssql(ip, mssql_to_try)
-            if pair:
-                _save_cred(db, device_id, CredentialMethod.mssql, pair[0], pair[1])
-                logger.info("MSSQL OK: %-18s user=%s", ip, pair[0])
-                res["mssql"] = True; res["new"] += 1
+            if not _tcp_open(ip, 1433, timeout=1.5):
+                logger.info("MSSQL skip: %-18s brak portu 1433", ip)
             else:
-                logger.info("MSSQL brak: %-18s (wyprobowano %d par)", ip, len(mssql_to_try))
+                logger.info("TEST MSSQL %-18s (%d/%d par, cykl=%d)",
+                            ip, len(mssql_to_try), len(mssql_pairs), pairs_per_cycle)
+                _mark_pairs_tried(tried, "mssql", mssql_to_try)
+                pair = discover_mssql(ip, mssql_to_try)
+                if pair:
+                    _save_cred(db, device_id, CredentialMethod.mssql, pair[0], pair[1])
+                    logger.info("MSSQL OK: %-18s user=%s", ip, pair[0])
+                    res["mssql"] = True; res["new"] += 1
+                else:
+                    logger.info("MSSQL brak: %-18s (wyprobowano %d par)", ip, len(mssql_to_try))
 
         if mysql_to_try:
-            logger.info("TEST MySQL %-18s (%d/%d par, cykl=%d)",
-                        ip, len(mysql_to_try), len(mysql_pairs), pairs_per_cycle)
-            _mark_pairs_tried(tried, "mysql", mysql_to_try)
-            pair = discover_mysql(ip, mysql_to_try)
-            if pair:
-                _save_cred(db, device_id, CredentialMethod.mysql, pair[0], pair[1])
-                logger.info("MySQL OK: %-18s user=%s", ip, pair[0])
-                res["mysql"] = True; res["new"] += 1
+            if not _tcp_open(ip, 3306, timeout=1.5):
+                logger.info("MySQL skip: %-18s brak portu 3306", ip)
             else:
-                logger.info("MySQL brak: %-18s (wyprobowano %d par)", ip, len(mysql_to_try))
+                logger.info("TEST MySQL %-18s (%d/%d par, cykl=%d)",
+                            ip, len(mysql_to_try), len(mysql_pairs), pairs_per_cycle)
+                _mark_pairs_tried(tried, "mysql", mysql_to_try)
+                pair = discover_mysql(ip, mysql_to_try)
+                if pair:
+                    _save_cred(db, device_id, CredentialMethod.mysql, pair[0], pair[1])
+                    logger.info("MySQL OK: %-18s user=%s", ip, pair[0])
+                    res["mysql"] = True; res["new"] += 1
+                else:
+                    logger.info("MySQL brak: %-18s (wyprobowano %d par)", ip, len(mysql_to_try))
 
         if postgres_to_try:
-            logger.info("TEST PgSQL %-18s (%d/%d par, cykl=%d)",
-                        ip, len(postgres_to_try), len(postgres_pairs), pairs_per_cycle)
-            _mark_pairs_tried(tried, "postgres", postgres_to_try)
-            pair = discover_postgres(ip, postgres_to_try)
-            if pair:
-                _save_cred(db, device_id, CredentialMethod.postgres, pair[0], pair[1])
-                logger.info("PgSQL OK: %-18s user=%s", ip, pair[0])
-                res["postgres"] = True; res["new"] += 1
+            if not _tcp_open(ip, 5432, timeout=1.5):
+                logger.info("PgSQL skip: %-18s brak portu 5432", ip)
             else:
-                logger.info("PgSQL brak: %-18s (wyprobowano %d par)", ip, len(postgres_to_try))
+                logger.info("TEST PgSQL %-18s (%d/%d par, cykl=%d)",
+                            ip, len(postgres_to_try), len(postgres_pairs), pairs_per_cycle)
+                _mark_pairs_tried(tried, "postgres", postgres_to_try)
+                pair = discover_postgres(ip, postgres_to_try)
+                if pair:
+                    _save_cred(db, device_id, CredentialMethod.postgres, pair[0], pair[1])
+                    logger.info("PgSQL OK: %-18s user=%s", ip, pair[0])
+                    res["postgres"] = True; res["new"] += 1
+                else:
+                    logger.info("PgSQL brak: %-18s (wyprobowano %d par)", ip, len(postgres_to_try))
+
+        if rtsp_to_try:
+            _open_rtsp = any(
+                open_ports.get(p) or _tcp_open(ip, p, timeout=1.5)
+                for p in _RTSP_PORTS
+            )
+            if not _open_rtsp:
+                logger.info("RTSP skip: %-18s brak portow 554/8554/10554", ip)
+            else:
+                logger.info("TEST RTSP %-18s (%d/%d par, cykl=%d)",
+                            ip, len(rtsp_to_try), len(rtsp_pairs), pairs_per_cycle)
+                _mark_pairs_tried(tried, "rtsp", rtsp_to_try)
+                pair = discover_rtsp(ip, rtsp_to_try)
+                if pair:
+                    _save_cred(db, device_id, CredentialMethod.rtsp, pair[0], pair[1])
+                    logger.info("RTSP OK:  %-18s user=%s", ip, pair[0] or "(no auth)")
+                    res["rtsp"] = True; res["new"] += 1
+                else:
+                    logger.info("RTSP brak: %-18s (wyprobowano %d par)", ip, len(rtsp_to_try))
 
         # Niestandardowe porty — probujemy jesli lista portow sie zmienila
         if open_ports:
@@ -1926,12 +2152,14 @@ def _process_device_with_timeout(timeout_s: int, device_id: int, ip: str,
                                   rdp_pairs: list, vnc_pairs: list, pairs_per_cycle: int,
                                   mssql_pairs: list | None = None,
                                   mysql_pairs: list | None = None,
-                                  postgres_pairs: list | None = None) -> dict:
+                                  postgres_pairs: list | None = None,
+                                  rtsp_pairs: list | None = None) -> dict:
     """Uruchamia _process_device w watku z timeoutem. Jesli przekroczy — zwraca timeout=True."""
     # BUG-WRK-05: mutable default arguments replaced with None — coerce here
     if mssql_pairs    is None: mssql_pairs    = []
     if mysql_pairs    is None: mysql_pairs    = []
     if postgres_pairs is None: postgres_pairs = []
+    if rtsp_pairs     is None: rtsp_pairs     = []
 
     # BUG-CONC-2: prune zakończonych wątków z listy dangling przed dodaniem nowych
     global _dangling_threads
@@ -1950,7 +2178,7 @@ def _process_device_with_timeout(timeout_s: int, device_id: int, ip: str,
         result[0] = _process_device(device_id, ip, ssh_pairs, web_pairs,
                                      ftp_pairs, rdp_pairs, vnc_pairs,
                                      mssql_pairs, mysql_pairs, postgres_pairs,
-                                     pairs_per_cycle)
+                                     rtsp_pairs, pairs_per_cycle)
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
@@ -1959,9 +2187,9 @@ def _process_device_with_timeout(timeout_s: int, device_id: int, ip: str,
         logger.warning("TIMEOUT   %-18s exceeded %ds — skipping device", ip, timeout_s)
         _dangling_threads.append(t)  # śledź wątek — może nadal trzymać socket SSH
         return {"ssh": False, "telnet": False, "web": False, "ftp": False, "rdp": False,
-                "mssql": False, "mysql": False, "postgres": False, "new": 0, "timeout": True}
+                "mssql": False, "mysql": False, "postgres": False, "rtsp": False, "new": 0, "timeout": True}
     return result[0] or {"ssh": False, "telnet": False, "web": False, "ftp": False, "rdp": False,
-                          "mssql": False, "mysql": False, "postgres": False, "new": 0}
+                          "mssql": False, "mysql": False, "postgres": False, "rtsp": False, "new": 0}
 
 
 # Main loop -------------------------------------------------------------------
@@ -2075,6 +2303,17 @@ def scan_once() -> None:
         else:
             logger.info("PostgreSQL credential testing WYLACZONY (cred_postgres_enabled=0)")
             postgres_pairs = []
+        # RTSP — wczytaj pary lub wyczysc jesli wylaczone
+        if method_flags.get("cred_rtsp_enabled", True):
+            _rtsp_db = [(r.username or "", r.password_encrypted or "") for r in
+                        db.query(Credential).filter(
+                            Credential.device_id.is_(None),
+                            Credential.method    == CredentialMethod.rtsp,
+                        ).order_by(Credential.priority).limit(max_creds).all()]
+            rtsp_pairs = _rtsp_db if _rtsp_db else RTSP_CREDENTIAL_FALLBACK[:max_creds]
+        else:
+            logger.info("RTSP credential testing WYLACZONY (cred_rtsp_enabled=0)")
+            rtsp_pairs = []
         # Zapisz znacznik poczatku cyklu (do obliczenia ETA w panelu www)
         from netdoc.storage.models import SystemStatus as SS
         _now_iso = datetime.utcnow().isoformat()
@@ -2099,7 +2338,7 @@ def scan_once() -> None:
         len(mssql_pairs), len(mysql_pairs), len(postgres_pairs),
         pairs_per_cycle, ssh_w, dev_timeout,
     )
-    ssh_ok = telnet_ok = web_ok = ftp_ok = rdp_ok = mssql_ok = mysql_ok = postgres_ok = new_t = timeouts = 0
+    ssh_ok = telnet_ok = web_ok = ftp_ok = rdp_ok = mssql_ok = mysql_ok = postgres_ok = rtsp_ok = new_t = timeouts = 0
 
     # Rownolegle testowanie ROZNYCH IP jednoczesnie (kazde IP dostaje max pairs_per_cycle par).
     # Brak ryzyka lockoutu — kazde IP odpytywane 1x per cykl,
@@ -2112,6 +2351,7 @@ def scan_once() -> None:
             dev_timeout, dev_id, dev_ip,
             ssh_pairs, web_pairs, ftp_pairs, rdp_pairs, vnc_pairs,
             pairs_per_cycle, mssql_pairs, mysql_pairs, postgres_pairs,
+            rtsp_pairs,
         )
 
     with ThreadPoolExecutor(max_workers=min(ssh_w, len(candidates))) as pool:
@@ -2141,6 +2381,7 @@ def scan_once() -> None:
             if r.get("mssql"):     mssql_ok    += 1
             if r.get("mysql"):     mysql_ok    += 1
             if r.get("postgres"):  postgres_ok += 1
+            if r.get("rtsp"):      rtsp_ok     += 1
             if r.get("timeout"):   timeouts    += 1
             new_t += r["new"]
 
@@ -2150,8 +2391,8 @@ def scan_once() -> None:
     g_web_ok.set(web_ok); g_ftp_ok.set(ftp_ok); g_rdp_ok.set(rdp_ok)
     g_mssql_ok.set(mssql_ok); g_mysql_ok.set(mysql_ok); g_postgres_ok.set(postgres_ok)
     g_new.set(_total_new); g_duration.set(round(elapsed, 1))
-    logger.info("Cred done: SSH=%d TEL=%d Web=%d FTP=%d RDP=%d MSSQL=%d MySQL=%d PG=%d new=%d timeout=%d  %.1fs",
-                ssh_ok, telnet_ok, web_ok, ftp_ok, rdp_ok, mssql_ok, mysql_ok, postgres_ok, new_t, timeouts, elapsed)
+    logger.info("Cred done: SSH=%d TEL=%d Web=%d FTP=%d RDP=%d VNC=%d MSSQL=%d MySQL=%d PG=%d RTSP=%d new=%d timeout=%d  %.1fs",
+                ssh_ok, telnet_ok, web_ok, ftp_ok, rdp_ok, 0, mssql_ok, mysql_ok, postgres_ok, rtsp_ok, new_t, timeouts, elapsed)
 
 
 
@@ -2169,6 +2410,7 @@ def _seed_default_credentials() -> None:
             (CredentialMethod.mssql,    MSSQL_CREDENTIAL_FALLBACK),
             (CredentialMethod.mysql,    MYSQL_CREDENTIAL_FALLBACK),
             (CredentialMethod.postgres, POSTGRES_CREDENTIAL_FALLBACK),
+            (CredentialMethod.rtsp,     RTSP_CREDENTIAL_FALLBACK),
         ]
         for method, fallback in seeds:
             count = db.query(Credential).filter(

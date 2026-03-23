@@ -40,6 +40,138 @@ g_duration = Gauge("netdoc_snmp_duration_s","Czas trwania ostatniego cyklu [s]")
 
 
 
+# ---------------------------------------------------------------------------
+# LLDP enrichment przez SNMP walk (lldpRemTable)
+# ---------------------------------------------------------------------------
+# OID prefix: 1.0.8802.1.1.2.1.4.1.1 (lldpRemEntry)
+#  .4  lldpRemChassisIdSubtype
+#  .5  lldpRemChassisId
+#  .6  lldpRemPortIdSubtype
+#  .7  lldpRemPortId
+#  .8  lldpRemPortDesc
+#  .9  lldpRemSysName
+#  .10 lldpRemSysDesc
+_LLDP_REM_TABLE = "1.0.8802.1.1.2.1.4.1.1"
+
+
+def _enrich_lldp(ip: str, community: str, timeout: int = 2) -> list[dict]:
+    """Odpytuje switche o tabele sasiadow LLDP (lldpRemTable).
+
+    Zwraca liste slownikow z danymi sasiadow: ip, hostname, model, firmware.
+    Urzadzenia bez LLDP zwracaja pusta liste.
+    """
+    from netdoc.collector.snmp_walk import snmp_walk
+    from netdoc.collector.normalizer import normalize_mac
+
+    rows: dict[str, dict] = {}  # klucz: (localPort, remIdx)
+
+    try:
+        for oid_str, raw_val, _tag in snmp_walk(
+            ip, _LLDP_REM_TABLE, community=community, timeout=timeout, max_iter=300
+        ):
+            # OID format: 1.0.8802.1.1.2.1.4.1.1.<field>.<timeMark>.<localPort>.<remIdx>
+            suffix = oid_str[len(_LLDP_REM_TABLE):].lstrip(".")
+            parts = suffix.split(".")
+            if len(parts) < 4:
+                continue
+            field_id   = int(parts[0])
+            local_port = parts[2]
+            rem_idx    = parts[3]
+            key = (local_port, rem_idx)
+
+            if isinstance(raw_val, (bytes, bytearray)):
+                try:
+                    val = raw_val.decode("utf-8", errors="replace").strip()
+                except Exception:
+                    val = raw_val.hex()
+            else:
+                val = str(raw_val).strip() if raw_val is not None else ""
+
+            entry = rows.setdefault(key, {"local_port": local_port})
+
+            if   field_id == 5:   # lldpRemChassisId — moze byc MAC
+                if len(raw_val) == 6 if isinstance(raw_val, (bytes, bytearray)) else False:
+                    mac = normalize_mac("".join(f"{b:02x}" for b in raw_val))
+                    if mac:
+                        entry["mac"] = mac
+                else:
+                    entry.setdefault("chassis_id", val)
+            elif field_id == 9:   # lldpRemSysName
+                entry["hostname"] = val
+            elif field_id == 10:  # lldpRemSysDesc (sysDescr sasiada = firmware/model)
+                entry["sys_desc"] = val
+            elif field_id == 7:   # lldpRemPortId
+                entry["remote_port"] = val
+            elif field_id == 8:   # lldpRemPortDesc
+                entry.setdefault("remote_port_desc", val)
+
+    except Exception as exc:
+        logger.debug("LLDP walk %s: %s", ip, exc)
+        return []
+
+    return [v for v in rows.values() if v.get("hostname") or v.get("mac")]
+
+
+def _save_lldp_neighbors(db, src_device_id: int, src_ip: str, neighbors: list[dict]) -> int:
+    """Upsertuje sasiadow LLDP jako Device w bazie. Zwraca liczbe zapisanych."""
+    from netdoc.collector.discovery import upsert_device
+    from netdoc.collector.normalizer import DeviceData, normalize_mac
+
+    saved = 0
+    for n in neighbors:
+        ip = n.get("chassis_id")  # moze byc IP jako chassis ID
+        hostname = n.get("hostname", "").strip()
+
+        # Jesli chassis_id nie wyglada jak IP — szukamy urzadzenia po hostname
+        if not ip or not _is_ip(ip):
+            # Sprobuj znalezc po hostname
+            if hostname:
+                existing = db.query(Device).filter(Device.hostname == hostname).first()
+                if existing:
+                    # Uzupelnij dane jesli puste
+                    changed = False
+                    sys_desc = n.get("sys_desc", "")
+                    if sys_desc and not existing.os_version:
+                        existing.os_version = sys_desc[:120]
+                        changed = True
+                    if n.get("mac") and not existing.mac:
+                        existing.mac = normalize_mac(n["mac"])
+                        changed = True
+                    if changed:
+                        db.commit()
+                        saved += 1
+            continue  # nie mamy IP → nie mozemy zrobic upsert
+
+        data = DeviceData(
+            ip         = ip,
+            mac        = normalize_mac(n.get("mac")),
+            hostname   = hostname or None,
+            os_version = n.get("sys_desc", "")[:120] or None,
+        )
+        try:
+            upsert_device(db, data)
+            db.commit()
+            saved += 1
+            logger.info("LLDP neighbor: %-18s hostname=%-28s via %s port=%s",
+                        ip, hostname or "-", src_ip, n.get("local_port", "?"))
+        except Exception as exc:
+            logger.debug("LLDP save error %s: %s", ip, exc)
+            db.rollback()
+
+    return saved
+
+
+def _is_ip(s: str) -> bool:
+    """Prosta walidacja IPv4."""
+    parts = s.split(".")
+    if len(parts) != 4:
+        return False
+    try:
+        return all(0 <= int(p) <= 255 for p in parts)
+    except ValueError:
+        return False
+
+
 def _poll_device(device_id: int, ip: str, community: str,
                  hostname: str | None, os_version: str | None, location: str | None,
                  snmp_timeout: int = 2) -> dict:
@@ -187,6 +319,27 @@ def scan_once() -> None:
     g_polled.set(polled); g_success.set(success)
     g_failed.set(failed); g_new_cred.set(0); g_duration.set(round(elapsed, 1))
     logger.info("SNMP poll done: %d ok / %d failed  %.1fs", success, failed, elapsed)
+
+    # LLDP enrichment — dla urzadzen z dzialajacym SNMP pytamy o sasiadow
+    lldp_total = 0
+    lldp_devices = [d for d in devices if d.snmp_community]
+    if lldp_devices:
+        logger.info("LLDP enrichment: checking %d devices for neighbors", len(lldp_devices))
+        db_lldp = SessionLocal()
+        try:
+            for d in lldp_devices:
+                neighbors = _enrich_lldp(d.ip, d.snmp_community, timeout=snmp_timeout)
+                if neighbors:
+                    n_saved = _save_lldp_neighbors(db_lldp, d.id, d.ip, neighbors)
+                    if n_saved:
+                        lldp_total += n_saved
+                        logger.info("LLDP %-18s: %d neighbor(s) updated", d.ip, n_saved)
+        except Exception as exc:
+            logger.warning("LLDP enrichment error: %s", exc)
+        finally:
+            db_lldp.close()
+        if lldp_total:
+            logger.info("LLDP total neighbors updated: %d", lldp_total)
 
 
 def _wait_for_schema(max_retries: int = 12, wait_s: int = 10) -> None:

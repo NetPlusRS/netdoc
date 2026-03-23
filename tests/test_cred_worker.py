@@ -795,7 +795,8 @@ def test_process_device_mssql_found_saves_credential():
          patch.object(w, "discover_mysql", return_value=None), \
          patch.object(w, "discover_postgres", return_value=None), \
          patch.object(w, "_save_cred") as mock_save, \
-         patch.object(w, "_save_tried"):
+         patch.object(w, "_save_tried"), \
+         patch("run_cred_worker._tcp_open", return_value=True):
         res = w._process_device(99, "10.0.0.5", [], [], [], [],
                                  mssql_pairs=[("sa", "Wapro3000")], pairs_per_cycle=1)
     assert res["mssql"] is True
@@ -815,7 +816,8 @@ def test_process_device_mysql_found_saves_credential():
          patch.object(w, "discover_mysql", return_value=("root", "")), \
          patch.object(w, "discover_postgres", return_value=None), \
          patch.object(w, "_save_cred") as mock_save, \
-         patch.object(w, "_save_tried"):
+         patch.object(w, "_save_tried"), \
+         patch("run_cred_worker._tcp_open", return_value=True):
         res = w._process_device(99, "10.0.0.6", [], [], [], [],
                                  mysql_pairs=[("root", "")], pairs_per_cycle=1)
     assert res["mysql"] is True
@@ -834,7 +836,8 @@ def test_process_device_postgres_found_saves_credential():
          patch.object(w, "discover_mysql", return_value=None), \
          patch.object(w, "discover_postgres", return_value=("postgres", "postgres")), \
          patch.object(w, "_save_cred") as mock_save, \
-         patch.object(w, "_save_tried"):
+         patch.object(w, "_save_tried"), \
+         patch("run_cred_worker._tcp_open", return_value=True):
         res = w._process_device(99, "10.0.0.7", [], [], [], [],
                                  postgres_pairs=[("postgres", "postgres")], pairs_per_cycle=1)
     assert res["postgres"] is True
@@ -2166,3 +2169,235 @@ class TestBanCooldown:
         assert second_ban >= first_ban, (
             "Drugi _record_protection powinien utrzymac lub przedluzyc ban"
         )
+
+
+# === NOWE TESTY: discover_rtsp ============================================
+
+def test_discover_rtsp_all_ports_closed_returns_none():
+    """Gdy wszystkie porty RTSP (554/8554/10554/5554) sa zamkniete zwraca None."""
+    with patch("socket.create_connection", side_effect=OSError("refused")):
+        assert w.discover_rtsp("10.0.0.1", [("admin", "admin")]) is None
+
+
+def test_discover_rtsp_port_open_but_not_rtsp_returns_none():
+    """Port otwarty ale odpowiedz nie zaczyna sie od RTSP/1.0 zwraca None."""
+    # Uzyj _rtsp_request ktory zwraca None gdy odpowiedz nie jest RTSP
+    with patch("socket.create_connection") as mc:
+        mock_sock = MagicMock()
+        mock_sock.__enter__ = lambda s: mock_sock
+        mock_sock.__exit__ = MagicMock(return_value=False)
+        mock_sock.settimeout = MagicMock()
+        mock_sock.sendall = MagicMock()
+        # Pierwsza proba (TCP connect na 554) - sukces
+        # Kolejne proby (RTSP DESCRIBE) - odpowiedz HTTP zamiast RTSP
+        http_resp = b"HTTP/1.1 200 OK"
+        mock_sock.recv = MagicMock(return_value=http_resp)
+        mc.return_value = mock_sock
+        result = w.discover_rtsp("10.0.0.1", [("admin", "admin")])
+    assert result is None
+
+
+def test_discover_rtsp_returns_empty_pair_when_no_auth_required():
+    """Kamera zwraca 200 bez credentials (brak auth) — zwraca (empty, empty)."""
+    calls = [0]
+    class _Sock:
+        def __enter__(s): return s
+        def __exit__(s, *a): pass
+        def settimeout(s, t): pass
+        def sendall(s, d): pass
+        def recv(s, n):
+            calls[0] += 1
+            return b"RTSP/1.0 200 OK"
+    with patch("socket.create_connection", return_value=_Sock()):
+        result = w.discover_rtsp("10.0.0.1", [("admin", "admin")])
+    assert result == ("", "")
+
+
+def test_discover_rtsp_returns_pair_on_correct_credentials():
+    """Kamera wymaga auth (401 bez creds) i zwraca 200 z admin:12345."""
+    calls = [0]
+    class _Sock:
+        def __enter__(s): return s
+        def __exit__(s, *a): pass
+        def settimeout(s, t): pass
+        def sendall(s, d): pass
+        def recv(s, n):
+            calls[0] += 1
+            # Pierwsza proba (bez auth) -> 401
+            # Druga proba (admin:12345) -> 200
+            if calls[0] <= 2: return b"RTSP/1.0 401 Unauthorized"
+            return b"RTSP/1.0 200 OK"
+    with patch("socket.create_connection", return_value=_Sock()):
+        result = w.discover_rtsp("10.0.0.1", [("admin", "wrongpass"), ("admin", "12345")])
+    assert result == ("admin", "12345")
+
+
+def test_discover_rtsp_stops_on_none_response():
+    """Gdy kamera przerywa polaczenie (recv zwraca None/OSError) — stop."""
+    calls = [0]
+    class _Sock:
+        def __enter__(s): return s
+        def __exit__(s, *a): pass
+        def settimeout(s, t): pass
+        def sendall(s, d): pass
+        def recv(s, n):
+            raise OSError("connection reset")
+    with patch("socket.create_connection", return_value=_Sock()):
+        result = w.discover_rtsp("10.0.0.1", [("admin", "admin")])
+    assert result is None
+
+
+def test_rtsp_credential_fallback_list_not_empty():
+    """RTSP_CREDENTIAL_FALLBACK musi zawierac co najmniej 1 pare."""
+    assert len(w.RTSP_CREDENTIAL_FALLBACK) > 0
+
+
+def test_rtsp_credential_fallback_contains_empty_auth():
+    """Pierwsza para w RTSP_CREDENTIAL_FALLBACK to brak auth (empty, empty)."""
+    assert w.RTSP_CREDENTIAL_FALLBACK[0] == ("", "")
+
+
+def test_rtsp_credential_fallback_contains_admin_variants():
+    """Lista RTSP zawiera popularne warianty admin."""
+    usernames = [u for u, _ in w.RTSP_CREDENTIAL_FALLBACK]
+    assert "admin" in usernames
+    assert "root" in usernames
+
+
+# === NOWE TESTY: _seed_default_credentials z rtsp =========================
+
+def test_seed_default_credentials_seeds_rtsp(db):
+    """_seed_default_credentials wstawia RTSP_CREDENTIAL_FALLBACK do bazy."""
+    from netdoc.storage.models import Credential, CredentialMethod
+    with patch("run_cred_worker.SessionLocal", return_value=db):
+        w._seed_default_credentials()
+    rtsp_creds = db.query(Credential).filter(
+        Credential.device_id.is_(None),
+        Credential.method == CredentialMethod.rtsp,
+    ).all()
+    assert len(rtsp_creds) > 0, "_seed_default_credentials powinna wstawic RTSP credentials"
+    usernames = [c.username for c in rtsp_creds]
+    assert "admin" in usernames, "Lista RTSP powinna zawierac admin"
+
+
+def test_seed_default_credentials_does_not_duplicate_rtsp(db):
+    """Gdy RTSP credentials juz istnieja seed nie wstawia duplikatow."""
+    from netdoc.storage.models import Credential, CredentialMethod
+    with patch("run_cred_worker.SessionLocal", return_value=db):
+        w._seed_default_credentials()
+        count_before = db.query(Credential).filter(
+            Credential.device_id.is_(None),
+            Credential.method == CredentialMethod.rtsp,
+        ).count()
+        # Drugi seed — nie powinien dodac nic
+        w._seed_default_credentials()
+        count_after = db.query(Credential).filter(
+            Credential.device_id.is_(None),
+            Credential.method == CredentialMethod.rtsp,
+        ).count()
+    assert count_before == count_after, "Drugi seed nie powinien duplikowac RTSP credentials"
+
+
+
+
+# === NOWE TESTY: _process_device z rtsp_pairs =============================
+
+def test_process_device_rtsp_found_saves_credential():
+    mock_save = MagicMock()
+    mock_db = _make_mock_db_for_db_protocols()
+    with patch("run_cred_worker.SessionLocal", return_value=mock_db):
+        with patch.object(w, "_get_device_open_ports", return_value={554: {"service": "rtsp"}}):
+            with patch.object(w, "discover_ssh", return_value=None):
+                with patch.object(w, "discover_ftp", return_value=None):
+                    with patch.object(w, "discover_rdp", return_value=None):
+                        with patch.object(w, "_web_detect_auth", return_value=False):
+                            with patch.object(w, "discover_mssql", return_value=None):
+                                with patch.object(w, "discover_mysql", return_value=None):
+                                    with patch.object(w, "discover_postgres", return_value=None):
+                                        with patch.object(w, "discover_rtsp", return_value=("admin", "12345")):
+                                            with patch.object(w, "_tcp_open", return_value=True):
+                                                with patch.object(w, "_save_cred", mock_save):
+                                                    with patch.object(w, "_save_tried"):
+                                                        res = w._process_device(
+                                                            99, "10.0.0.9", [], [], [], [],
+                                                            rtsp_pairs=[("admin", "12345")],
+                                                            pairs_per_cycle=1)
+    assert res["rtsp"] is True
+    assert res["new"] >= 1
+    mock_save.assert_called()
+
+
+def test_process_device_rtsp_skip_when_port_closed():
+    """Gdy brak portu RTSP discover_rtsp nie jest wywolywane."""
+    saved_tried = [None]
+    def _capture_save(device_id, tried):
+        saved_tried[0] = tried
+    with patch("run_cred_worker.SessionLocal", return_value=_make_mock_db_for_process()):
+        with patch.object(w, "_tcp_open", return_value=False):
+            with patch.object(w, "_get_device_open_ports", return_value=dict()):
+                with patch.object(w, "_save_tried", side_effect=_capture_save):
+                    with patch.object(w, "discover_ssh", return_value=None):
+                        with patch.object(w, "discover_ftp", return_value=None):
+                            with patch.object(w, "discover_rdp", return_value=None):
+                                with patch.object(w, "discover_web", return_value=None):
+                                    with patch.object(w, "discover_rtsp") as mock_rtsp:
+                                        w._process_device(
+                                            1, "10.0.0.1", [], [], [], [],
+                                            rtsp_pairs=[("admin", "admin")],
+                                            pairs_per_cycle=1)
+    mock_rtsp.assert_not_called()
+    if saved_tried[0] is not None:
+        assert "rtsp" not in saved_tried[0] or not saved_tried[0].get("rtsp")
+
+
+def test_process_device_no_rtsp_pairs_skips_rtsp():
+    """_process_device pomija RTSP gdy brak par credentials."""
+    mock_db = _make_mock_db_for_db_protocols()
+    with patch("run_cred_worker.SessionLocal", return_value=mock_db):
+        with patch.object(w, "_get_device_open_ports", return_value=dict()):
+            with patch.object(w, "discover_ssh", return_value=None):
+                with patch.object(w, "discover_ftp", return_value=None):
+                    with patch.object(w, "discover_rdp", return_value=None):
+                        with patch.object(w, "_web_detect_auth", return_value=False):
+                            with patch.object(w, "discover_mssql", return_value=None):
+                                with patch.object(w, "discover_mysql", return_value=None):
+                                    with patch.object(w, "discover_postgres", return_value=None):
+                                        with patch.object(w, "discover_rtsp") as mock_rtsp:
+                                            with patch.object(w, "_save_tried"):
+                                                res = w._process_device(
+                                                    99, "10.0.0.10", [], [], [], [],
+                                                    rtsp_pairs=list(),
+                                                    pairs_per_cycle=1)
+    mock_rtsp.assert_not_called()
+    assert res["rtsp"] is False
+
+
+# === NOWE TESTY: pre-check portu 3389 dla RDP (fix 445->3389) ==============
+
+def test_process_device_rdp_precheck_uses_3389_not_445():
+    """Regresja: _process_device sprawdza port 3389 dla RDP (nie 445)."""
+    import inspect
+    src = inspect.getsource(w._process_device)
+    assert "3389" in src, "_process_device powinien sprawdzac port 3389 dla RDP"
+
+
+def test_process_device_rdp_skips_when_port_3389_closed():
+    """Gdy port 3389 zamkniety discover_rdp nie jest wywolywane."""
+    probed_ports = []
+    def _fake_tcp_open(ip, port, timeout=2.0):
+        probed_ports.append(port)
+        return False
+    with patch("run_cred_worker.SessionLocal", return_value=_make_mock_db_for_process()):
+        with patch.object(w, "_tcp_open", side_effect=_fake_tcp_open):
+            with patch.object(w, "_get_device_open_ports", return_value=dict()):
+                with patch.object(w, "discover_rdp") as mock_rdp:
+                    with patch.object(w, "discover_ssh", return_value=None):
+                        with patch.object(w, "discover_ftp", return_value=None):
+                            with patch.object(w, "discover_web", return_value=None):
+                                with patch.object(w, "_save_tried"):
+                                    w._process_device(
+                                        1, "10.0.0.1",
+                                        [], [], [], [("admin", "admin")],
+                                        pairs_per_cycle=1)
+    assert 3389 in probed_ports, "Pre-check RDP powinien testowac port 3389"
+    mock_rdp.assert_not_called()
