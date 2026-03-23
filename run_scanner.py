@@ -2498,6 +2498,7 @@ _DOCKER_SERVICES = [
     "netdoc-loki",
     "netdoc-promtail",
     "netdoc-grafana",
+    "netdoc-nginx",
     "netdoc-api",
     "netdoc-web",
     "netdoc-ping",

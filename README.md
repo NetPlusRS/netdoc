@@ -94,7 +94,9 @@ netdoc-uninstall.bat
 Menu:
 
 - **[1]** Stop containers — data preserved
-- **[2]** Full uninstall — removes containers, volumes, Task Scheduler tasks
+- **[2]** Full uninstall — removes containers, volumes, Task Scheduler tasks (type `REMOVE` to confirm)
+- **[3]** Full uninstall automatic — same as [2] but auto-confirms after a 3-second countdown (press any key to cancel)
+- **[4]** Cancel — exit without changes
 
 ---
 

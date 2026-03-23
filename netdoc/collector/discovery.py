@@ -1010,13 +1010,13 @@ def get_scan_targets(db):
         if cidr not in targets:
             targets.add(cidr)
             _upsert_network(db, cidr, NetworkSource.auto)
-            logger.info("Auto-wykryto nowa siec: %s (dodano do celów skanowania)", cidr)
+            logger.info("Auto-detected new network: %s (added to scan targets)", cidr)
     for net in db.query(DiscoveredNetwork).filter(DiscoveredNetwork.is_active == True).all():
         targets.add(net.cidr)
     if not targets:
-        logger.error("Brak sieci do skanowania! Podaj NETWORK_RANGES w .env lub upewnij sie ze maszyna ma prywatny adres IP.")
+        logger.error("No networks to scan! Set NETWORK_RANGES in .env or make sure the machine has a private IP address.")
     result = sorted(targets)
-    logger.info("Zakresy do skanowania (%d): %s", len(result), ", ".join(result))
+    logger.info("Scan targets (%d): %s", len(result), ", ".join(result))
     return result
 
 
@@ -1260,12 +1260,12 @@ def _full_scan_one_group(hosts: list, port_batches: list, batch_pause_s: float =
             if port_range not in host_states.get(h, {}).get("done_ranges", [])
         ]
         if not pending:
-            logger.info("Full scan: partia portow %d/%d [%s] — pomijam (juz ukonczona dla wszystkich hostow)",
+            logger.info("Full scan: port batch %d/%d [%s] — skipping (already completed for all hosts)",
                         i + 1, total, port_range)
             continue
 
         logger.info(
-            "Full scan: %d hostow — partia portow %d/%d [%s]",
+            "Full scan: %d hosts — port batch %d/%d [%s]",
             len(pending), i + 1, total, port_range,
         )
         nm = nmap.PortScanner(nmap_search_path=_NMAP_SEARCH_PATH)
@@ -1416,15 +1416,15 @@ def full_port_scan(hosts, workers=FULL_SCAN_WORKERS, batch_size=FULL_SCAN_BATCH_
             if len(host_states.get(h, {}).get("done_ranges", [])) >= len(port_batches)
         ]
         if done_hosts:
-            logger.info("Full scan: %d hostow juz w pelni ukonczone — wznawianie pominie ich odkrywanie", len(done_hosts))
+            logger.info("Full scan: %d hosts already fully completed — resume will skip them", len(done_hosts))
 
     batches = [hosts[i:i + batch_size] for i in range(0, len(hosts), batch_size)]
     logger.info(
-        "Full port scan: %d hostow w %d grupach po max %d (workers=%d) | "
-        "partie portow: %d x ~%d portow | pauza: %.1fs | wznawianie: %s",
+        "Full port scan: %d hosts in %d groups of max %d (workers=%d) | "
+        "port batches: %d x ~%d ports | pause: %.1fs | resume: %s",
         len(hosts), len(batches), batch_size, workers,
         len(port_batches), settings["full_port_batch"] or 65535, batch_pause_s,
-        "wl." if resume_enabled else "wyl.",
+        "on" if resume_enabled else "off",
     )
 
     results = {}
@@ -1465,7 +1465,7 @@ def full_port_scan(hosts, workers=FULL_SCAN_WORKERS, batch_size=FULL_SCAN_BATCH_
                 except Exception:
                     pass
 
-    logger.info("Full port scan zakonczone: %d hostow z otwartymi portami", len(results))
+    logger.info("Full port scan complete: %d hosts with open ports", len(results))
     if resume_enabled:
         _clear_full_scan_state()
     return results
@@ -1552,10 +1552,10 @@ def run_full_scan(db, ips=None, progress_callback=None):
     else:
         active_ips = [d.ip for d in db.query(Device).filter(Device.is_active == True).all()]
     if not active_ips:
-        logger.info("Full scan: brak aktywnych urzadzen")
+        logger.info("Full scan: no active devices")
         return 0
 
-    logger.info("Full scan: skanowanie %d urzadzen: %s", len(active_ips), ", ".join(active_ips))
+    logger.info("Full scan: scanning %d devices: %s", len(active_ips), ", ".join(active_ips))
     saved_total = [0]
 
     def _on_batch(done, total, batch_ips, batch_result=None):

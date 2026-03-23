@@ -758,19 +758,19 @@ def test_chat_page_returns_200(client):
 
 
 def test_chat_has_quick_reports_panel(client):
-    """Strona czatu musi zawierac panel szybkich raportow."""
+    """Chat page must contain the quick reports panel."""
     html = client.get("/chat").data.decode()
-    assert "quick-panel" in html, "Brak panelu szybkich raportow w chat.html"
-    assert "Szybkie raporty" in html, "Brak naglowka 'Szybkie raporty'"
-    assert "quick-btn" in html, "Brak przyciskow quick-btn"
+    assert "quick-panel" in html, "Missing quick reports panel in chat.html"
+    assert "Quick reports" in html, "Missing 'Quick reports' header"
+    assert "quick-btn" in html, "Missing quick-btn buttons"
 
 
 def test_chat_quick_reports_has_expected_questions(client):
-    """Panel szybkich raportow musi zawierac kluczowe pytania."""
+    """Quick reports panel must contain key questions."""
     html = client.get("/chat").data.decode()
-    assert "Kompleksowy raport bezpieczenstwa" in html
-    assert "podatnosci krytyczne" in html
-    assert "polaczenia internetowego" in html
+    assert "Comprehensive security report" in html
+    assert "critical" in html
+    assert "Internet connection" in html
 
 
 def test_chat_has_pdf_export_button(client):
@@ -1987,9 +1987,9 @@ def test_kb_ports_filter_search_ssh(client):
 
 
 def test_kb_ports_filter_search_no_results(client):
-    """/kb/ports?q=xyznonexistent pokazuje komunikat o braku wyników."""
+    """/kb/ports?q=xyznonexistent shows a no-results message."""
     html = client.get("/kb/ports?q=xyznonexistent_port_name_abc").data.decode()
-    assert "Brak wyników" in html
+    assert "No results" in html
 
 
 def test_kb_ports_filter_category_web(client):
@@ -2126,18 +2126,18 @@ def test_kb_ports_tpl_filter_reset_link():
 
 
 def test_kb_ports_tpl_no_results_alert():
-    """Szablon ma alert gdy brak wyników filtrowania."""
-    assert "Brak wyników" in _KB_PORTS_TPL
+    """Template has an alert when no filter results."""
+    assert "No results" in _KB_PORTS_TPL
 
 
 def test_kb_ports_tpl_found_count():
-    """Szablon pokazuje licznik 'Znaleziono: N wpisów'."""
-    assert "Znaleziono" in _KB_PORTS_TPL
+    """Template shows a found-count label."""
+    assert "Found:" in _KB_PORTS_TPL
 
 
 def test_kb_ports_tpl_not_found_on_any_device():
-    """Szablon ma tekst 'Nie wykryto w żadnym urządzeniu' jako fallback."""
-    assert "Nie wykryto w żadnym urządzeniu" in _KB_PORTS_TPL
+    """Template has 'Not detected on any device' as fallback text."""
+    assert "Not detected on any device" in _KB_PORTS_TPL
 
 
 def test_kb_ports_tpl_device_link_format():
@@ -2197,9 +2197,9 @@ def test_kb_ports_vendor_search(client):
     """Szukanie po nazwie vendora zwraca pasujące wpisy."""
     html = client.get("/kb/ports?q=cisco").data.decode()
     # Cisco pojawia się w wielu wpisach — musi byc wynik
-    assert "Znaleziono" in html
-    assert "0" not in html.split("Znaleziono")[1].split("wpisów")[0].strip() or \
-           "Brak wyników" not in html
+    assert "Found:" in html
+    assert "0" not in html.split("Found:")[1].split("entries")[0].strip() or \
+           "No results" not in html
 
 
 def test_kb_ports_search_by_port_number(client):
@@ -3985,7 +3985,7 @@ class TestAiBadgeAndReport:
             with app.test_client() as c:
                 resp = c.get("/devices/ai-report")
         assert resp.status_code == 200
-        assert "Raport AI" in resp.data.decode()
+        assert "AI Report" in resp.data.decode()
 
     def test_ai_report_page_no_jinja_errors(self):
         app, ms = _build_app()
@@ -4991,8 +4991,8 @@ class TestFullScanAlreadyQueued:
         messages   = [msg for _cat, msg in flashes]
         assert "warning" in categories, \
             f"Flash musi byc 'warning' gdy IP juz w kolejce, got categories={categories}"
-        assert any("kolejce" in msg for msg in messages), \
-            f"Flash musi zawierac 'kolejce', got messages={messages}"
+        assert any("already queued" in msg for msg in messages), \
+            f"Flash musi zawierac 'already queued', got messages={messages}"
 
     def test_full_scan_new_ip_shows_info(self):
         """Gdy IP nie jest w kolejce, flash powinien byc kategoria 'info' z tekstem o zaplanowaniu."""
@@ -5011,8 +5011,8 @@ class TestFullScanAlreadyQueued:
         messages   = [msg for _cat, msg in flashes]
         assert "info" in categories, \
             f"Flash musi byc 'info' dla nowego IP, got categories={categories}"
-        assert any("zaplanowany" in msg for msg in messages), \
-            f"Flash musi zawierac 'zaplanowany', got messages={messages}"
+        assert any("scheduled" in msg for msg in messages), \
+            f"Flash musi zawierac 'scheduled', got messages={messages}"
 
 
 # ── Scenariusze z życia codziennego: czyszczenie portów ──────────────────────

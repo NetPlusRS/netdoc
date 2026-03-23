@@ -452,7 +452,7 @@ class TestCommunityWorkerScanOnce:
                 with caplog.at_level(logging.WARNING):
                     scan_once()
 
-        assert any("Brak community" in r.message for r in caplog.records)
+        assert any("No communities" in r.message for r in caplog.records)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

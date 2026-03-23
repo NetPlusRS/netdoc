@@ -155,8 +155,8 @@ def scan_local_interfaces() -> List[InterfaceInfo]:
         import psutil
     except ImportError:
         logger.warning(
-            "psutil nie jest zainstalowany — auto-wykrywanie sieci niedostepne. "
-            "pip install psutil  lub podaj NETWORK_RANGES w .env"
+            "psutil is not installed — automatic network detection unavailable. "
+            "pip install psutil  or set NETWORK_RANGES in .env"
         )
         return []
 
@@ -185,19 +185,19 @@ def scan_local_interfaces() -> List[InterfaceInfo]:
 
             if vpn:
                 logger.warning(
-                    "Wykryto interfejs VPN: %s (%s) -> %s [%s]. "
-                    "Ta siec NIE bedzie skanowana automatycznie. "
-                    "Wlacz SCAN_VPN_NETWORKS=true w .env aby zezwolic.",
+                    "VPN interface detected: %s (%s) -> %s [%s]. "
+                    "This network will NOT be scanned automatically. "
+                    "Enable SCAN_VPN_NETWORKS=true in .env to allow it.",
                     iface_name, ip, cidr, vpn_reason,
                 )
             elif virtual:
                 logger.info(
-                    "Wykryto interfejs wirtualny: %s (%s) -> %s [%s]. "
-                    "Pomijany (SCAN_VIRTUAL_NETWORKS=false).",
+                    "Virtual interface detected: %s (%s) -> %s [%s]. "
+                    "Skipping (SCAN_VIRTUAL_NETWORKS=false).",
                     iface_name, ip, cidr, virtual_reason,
                 )
             else:
-                logger.info("Wykryto lokalna siec: %s (interfejs: %s, IP: %s)", cidr, iface_name, ip)
+                logger.info("Local network detected: %s (interface: %s, IP: %s)", cidr, iface_name, ip)
 
     return result
 
@@ -232,20 +232,20 @@ def detect_local_networks(include_vpn: bool = False,
         skipped_virt = [i.cidr for i in interfaces if i.is_virtual and not i.is_vpn]
         if skipped_vpn and not include_vpn:
             logger.warning(
-                "Wszystkie wykryte sieci to VPN (%s). "
-                "Uzyj SCAN_VPN_NETWORKS=true w .env aby je skanowac.",
+                "All detected networks are VPN (%s). "
+                "Set SCAN_VPN_NETWORKS=true in .env to enable scanning them.",
                 ", ".join(skipped_vpn),
             )
         elif skipped_virt and not include_virtual:
             logger.warning(
-                "Wszystkie wykryte sieci to wirtualne (%s). "
-                "Uzyj SCAN_VIRTUAL_NETWORKS=true w .env aby je skanowac.",
+                "All detected networks are virtual (%s). "
+                "Set SCAN_VIRTUAL_NETWORKS=true in .env to enable scanning them.",
                 ", ".join(skipped_virt),
             )
         else:
             logger.warning(
-                "Nie wykryto zadnych prywatnych sieci lokalnych. "
-                "Podaj NETWORK_RANGES w .env lub podlacz do sieci."
+                "No private local networks detected. "
+                "Set NETWORK_RANGES in .env or connect to a network."
             )
 
     return result

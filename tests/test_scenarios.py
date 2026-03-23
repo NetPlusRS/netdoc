@@ -71,7 +71,7 @@ class TestFreshInstallScenario:
         # I exit 1 gdy timeout
         assert "exit 1" in text
         # Z komunikatem o ikonke w zasobniku
-        assert "zasobniku" in text or "ikonk" in text
+        assert "tray" in text.lower()
 
     def test_setup_runs_first_scan_on_fresh_install(self):
         """Na koniec setup uruchamia pierwsze skanowanie."""
@@ -308,12 +308,12 @@ class TestPortConflictScenario:
     def test_setup_mentions_port_conflicts_in_error_handling(self):
         """Po nieudanym docker compose up setup wymienia mozliwe przyczyny."""
         text = SETUP_PS.read_text(encoding="utf-8")
-        assert "Port" in text and ("zajety" in text or "busy" in text or "5000" in text)
+        assert "Port" in text and ("in use" in text or "busy" in text or "80" in text)
 
     def test_all_exposed_ports_documented_in_setup(self):
         """Kluczowe porty powinny byc wspomniane w komunikatach setup."""
         text = SETUP_PS.read_text(encoding="utf-8")
-        key_ports = ["5000", "8000", "3000"]
+        key_ports = ["80", "8000"]
         found = [p for p in key_ports if p in text]
         assert len(found) >= 2, (
             f"Setup nie wymienia kluczowych portow ({key_ports}). "
@@ -325,20 +325,19 @@ class TestPortConflictScenario:
         data  = yaml.safe_load(COMPOSE_FILE.read_text(encoding="utf-8"))
         setup = SETUP_PS.read_text(encoding="utf-8")
 
-        # Web: 5000
-        web_ports = data["services"]["web"].get("ports", [])
-        assert any("5000" in str(p) for p in web_ports), "Web nie uzywa portu 5000"
-        assert "5000" in setup, "Setup nie wymienia portu 5000 (web panel)"
+        # Nginx: 80 (reverse proxy for web + grafana)
+        nginx_ports = data["services"]["nginx"].get("ports", [])
+        assert any("80" in str(p) for p in nginx_ports), "Nginx nie uzywa portu 80"
+        assert "80" in setup, "Setup nie wymienia portu 80 (nginx)"
 
         # API: 8000
         api_ports = data["services"]["api"].get("ports", [])
         assert any("8000" in str(p) for p in api_ports), "API nie uzywa portu 8000"
         assert "8000" in setup, "Setup nie wymienia portu 8000 (API)"
 
-        # Grafana: 3000
-        grafana_ports = data["services"]["grafana"].get("ports", [])
-        assert any("3000" in str(p) for p in grafana_ports), "Grafana nie uzywa portu 3000"
-        assert "3000" in setup, "Setup nie wymienia portu 3000 (Grafana)"
+        # Grafana: dostepna przez nginx (expose only, nie ports)
+        grafana_expose = data["services"]["grafana"].get("expose", [])
+        assert any("3000" in str(p) for p in grafana_expose), "Grafana nie wystawia portu 3000 (expose)"
 
 
 # ── Scenario 8: Weryfikacja kontenerow przed otwarciem przegladarki ───────────
@@ -480,7 +479,7 @@ class TestBugRegression:
         """BUG: Komunikat bledu docker compose up nie wymienial Docker socket jako przyczyny."""
         text = SETUP_PS.read_text(encoding="utf-8")
         # Sekcja bledu compose up
-        start = text.find("compose up zakonczyl")
+        start = text.find("compose up failed")
         compose_error = text[start:text.find("exit 1", start)]
         assert "socket" in compose_error.lower() or "docker.sock" in compose_error.lower() \
                or "Advanced" in compose_error, (
@@ -561,7 +560,7 @@ class TestBugRegressionRound2:
         z jezykiem innym niz angielski (np. polskim).
         Fix: uzyj exit code zamiast dopasowania tekstu."""
         text = SETUP_PS.read_text(encoding="utf-8")
-        wsl_section = text[text.find("Sprawdzam WSL2"):text.find("Sprawdzam Docker Desktop")]
+        wsl_section = text[text.find("Checking WSL2"):text.find("Checking Docker Desktop")]
         # Sprawdz ze glowna logika opiera sie na $LASTEXITCODE, nie na -match "Default"
         assert "$LASTEXITCODE -eq 0" in wsl_section, (
             "Wykrywanie WSL musi opierac sie na exit code, nie na tekscie wyjscia. "

@@ -324,8 +324,8 @@ class TestPortConsistency:
     EXPECTED_PORTS = {
         "netdoc-postgres":   15432,
         "netdoc-api":        8000,
-        "netdoc-web":        5000,
-        "netdoc-grafana":    3000,
+        "netdoc-nginx":      80,
+        "netdoc-grafana":    0,       # internal only (nginx proxy)
         "netdoc-prometheus": 9090,
         "netdoc-ping":       8001,
         "netdoc-snmp":       8002,

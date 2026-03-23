@@ -204,13 +204,13 @@ def _client_with_db(db_engine):
 
 
 def test_devices_html_has_full_scan_column_header(db_engine):
-    """Naglowek kolumny pelnego skanu jest obecny w HTML."""
+    """Full scan column header is present in HTML."""
     app, Session = _client_with_db(db_engine)
     with patch("netdoc.web.app.SessionLocal", side_effect=Session):
         with patch("netdoc.web.app.requests", _api_mock()):
             with app.test_client() as c:
                 html = c.get("/devices").data.decode()
-    assert "Pełny skan portów 1-65535" in html
+    assert "Full port scan 1-65535" in html
 
 
 def test_devices_html_check_icon_when_fresh_full_scan(db_engine):
@@ -288,7 +288,7 @@ def test_devices_html_circle_icon_when_no_full_scan(db_engine):
     assert "bi-circle text-secondary" in html
     # Sprawdzamy ze ikonka kolumny nie ma title wskazujacego na wykonany skan
     # (bi-check-circle-fill wystepuje rowniez w JS-stringu AI, wiec nie sprawdzamy globalnie)
-    assert 'title="Pełny skan (1-65535)' not in html
+    assert 'title="Full scan (1-65535)' not in html
 
 
 def test_devices_html_tooltip_contains_port_count(db_engine):
@@ -306,7 +306,7 @@ def test_devices_html_tooltip_contains_port_count(db_engine):
             with app.test_client() as c:
                 html = c.get("/devices").data.decode()
 
-    assert "7 portów" in html
+    assert "7 ports" in html
 
 
 def test_devices_html_tooltip_contains_scan_date(db_engine):
@@ -330,7 +330,7 @@ def test_devices_html_tooltip_contains_scan_date(db_engine):
 
 
 def test_devices_html_popover_shows_full_scan_row(db_engine):
-    """Popover statusu zawiera wiersz 'Pełny skan (1-65535)'."""
+    """Status popover contains 'Full scan (1-65535)' row."""
     from sqlalchemy.orm import sessionmaker
     Session = sessionmaker(bind=db_engine)
     db = Session()
@@ -344,11 +344,11 @@ def test_devices_html_popover_shows_full_scan_row(db_engine):
             with app.test_client() as c:
                 html = c.get("/devices").data.decode()
 
-    assert "Pełny skan (1-65535)" in html
+    assert "Full scan (1-65535)" in html
 
 
 def test_devices_html_popover_shows_brak_when_no_full_scan(db_engine):
-    """Popover statusu zawiera 'Pełny skan: brak' gdy brak nmap_full."""
+    """Status popover contains 'Full scan: none' when no nmap_full exists."""
     from sqlalchemy.orm import sessionmaker
     Session = sessionmaker(bind=db_engine)
     db = Session()
@@ -362,8 +362,8 @@ def test_devices_html_popover_shows_brak_when_no_full_scan(db_engine):
             with app.test_client() as c:
                 html = c.get("/devices").data.decode()
 
-    assert "Pełny skan" in html
-    assert "brak" in html
+    assert "Full scan" in html
+    assert "none" in html
 
 
 def test_devices_html_two_devices_independent_icons(db_engine):
@@ -412,10 +412,10 @@ def test_popover_quick_ports_from_nmap_not_nmap_full(db_engine):
             with app.test_client() as c:
                 html = c.get("/devices").data.decode()
 
-    # Sekcja szybkiego skanu musi byc (device ma nmap)
-    assert "Porty (nmap)" in html
-    # Sekcja pelnego skanu musi byc (device ma nmap_full)
-    assert "Otwarte" in html
+    # Quick scan section must be present (device has nmap)
+    assert "Ports (nmap)" in html
+    # Full scan section must be present (device has nmap_full)
+    assert "Open:" in html
     # Port 9090 istnieje TYLKO w nmap_full — nie moze trafioc do sekcji "Porty (nmap)"
     # Weryfikujemy ze oba bloki sa rozlaczne: "9090" jest w HTML (jest w Otwarte),
     # ale gdyby trafil do Porty(nmap) oznaczaloby ze bug powrocil
@@ -438,10 +438,10 @@ def test_popover_no_quick_ports_when_only_nmap_full(db_engine):
             with app.test_client() as c:
                 html = c.get("/devices").data.decode()
 
-    # Brak szybkiego skanu — sekcja "Porty (nmap):" nie powinna sie pojawiac
-    assert "Porty (nmap)" not in html
-    # Ale pelny skan i jego porty sa widoczne
-    assert "Otwarte" in html
+    # No quick scan — "Ports (nmap):" section must not appear
+    assert "Ports (nmap)" not in html
+    # But full scan and its ports must be visible
+    assert "Open:" in html
 
 
 def test_popover_quick_scan_time_is_from_nmap_not_nmap_full(db_engine):

@@ -1474,9 +1474,9 @@ def create_app():
                 db.add(SystemStatus(key="scan_requested", value="full_single", category="scanner"))
             db.commit()
             if already_queued:
-                flash(f"{dev.ip} ({dev.hostname or 'brak hostname'}) jest już w kolejce pełnego skanu.", "warning")
+                flash(f"{dev.ip} ({dev.hostname or 'no hostname'}) is already queued for full scan.", "warning")
             else:
-                flash(f"Pełny skan portów 1-65535 dla {dev.ip} ({dev.hostname or 'brak hostname'}) zaplanowany. Zostanie wykonany przy następnym cyklu skanera.", "info")
+                flash(f"Full port scan 1-65535 for {dev.ip} ({dev.hostname or 'no hostname'}) scheduled. It will run on the next scanner cycle.", "info")
         finally:
             db.close()
         return redirect(url_for("devices"))
@@ -1488,7 +1488,7 @@ def create_app():
         param = f"?scan_type={scan_type}" if scan_type else ""
         data, err = _api("delete", f"/api/devices/{device_id}/scan-results{param}")
         if err:
-            flash(f"Błąd czyszczenia portów: {err}", "danger")
+            flash(f"Error clearing ports: {err}", "danger")
         else:
             deleted = (data or {}).get("deleted", 0)
             label = {"nmap_full": "pełnego skanu", "nmap": "szybkiego skanu"}.get(scan_type, "wszystkich skanów")
@@ -1510,7 +1510,7 @@ def create_app():
         qs = ("?" + "&".join(params)) if params else ""
         data, err = _api("delete", f"/api/devices/scan-results{qs}")
         if err:
-            flash(f"Błąd czyszczenia portów: {err}", "danger")
+            flash(f"Error clearing ports: {err}", "danger")
         else:
             deleted = (data or {}).get("deleted", 0)
             label = {"nmap_full": "pełnego skanu", "nmap": "szybkiego skanu"}.get(scan_type, "wszystkich skanów")
