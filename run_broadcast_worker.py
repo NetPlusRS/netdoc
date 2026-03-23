@@ -382,6 +382,12 @@ def _save_one(db, r: dict) -> bool:
     protocol = r.get("protocol", "")
     services = r.get("services", [])
     hostname = r.get("hostname") or r.get("friendly_name") or None
+    # Odrzuc UUID-like hostname z mDNS (np. "f742ad63-3442-62de-cf7e-4d728b36398c")
+    # — to jest mDNS instance ID, nie uzyteczna nazwa hosta
+    if hostname and re.match(
+        r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', hostname, re.IGNORECASE
+    ):
+        hostname = None
     vendor   = r.get("vendor")
     if not vendor and protocol == "mndp":   vendor = "MikroTik"
     if not vendor and protocol == "unifi":  vendor = "Ubiquiti"

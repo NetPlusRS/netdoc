@@ -22,30 +22,8 @@ def _make_postgres_engine():
     )
 
 
-def _make_sqlite_engine():
-    engine = create_engine(
-        "sqlite:///netdoc_fallback.db",
-        connect_args={"check_same_thread": False},
-        echo=False,
-    )
-
-    @sa_event.listens_for(engine, "connect")
-    def set_fk(conn, _):
-        conn.execute("PRAGMA foreign_keys=ON")
-
-    return engine
-
-
 def _build_engine():
-    """
-    Laczy sie z PostgreSQL.
-    Gdy REQUIRE_POSTGRES=1 (ustawione w Docker Compose) — rzuca wyjatek jesli PostgreSQL niedostepny.
-    Bez tej flagi (lokalnie / testy) — fallback do SQLite.
-    """
-    import os
-    if "sqlite" in settings.database_url:
-        return _make_sqlite_engine()
-
+    """Laczy sie z PostgreSQL. Rzuca RuntimeError jesli baza niedostepna."""
     try:
         eng = _make_postgres_engine()
         with eng.connect() as conn:
@@ -53,16 +31,11 @@ def _build_engine():
         logger.info("Polaczono z PostgreSQL: %s", settings.database_url)
         return eng
     except Exception as exc:
-        if os.getenv("REQUIRE_POSTGRES", "0") == "1":
-            raise RuntimeError(
-                f"PostgreSQL wymagany (REQUIRE_POSTGRES=1) ale niedostepny: {exc}"
-            ) from exc
-        logger.warning(
-            "PostgreSQL niedostepny (%s) — fallback do SQLite. "
-            "Ustaw REQUIRE_POSTGRES=1 w produkcji.",
-            exc,
-        )
-        return _make_sqlite_engine()
+        raise RuntimeError(
+            f"PostgreSQL niedostepny: {exc}\n"
+            "Sprawdz czy kontener netdoc-postgres dziala (docker compose ps).\n"
+            "Uzyj run_broadcast_worker.py --wait lub poczekaj az baza bedzie gotowa."
+        ) from exc
 
 
 engine = _build_engine()
@@ -75,8 +48,6 @@ def _migrate_enum_values() -> None:
     Wywolywane przy kazdym starcie — bezpieczne gdy wartosc juz istnieje.
     Nie robi nic w SQLite (enums sa tam przechowywane jako TEXT).
     """
-    if engine.dialect.name != "postgresql":
-        return
     enum_updates = [
         ("devicetype",      ["inverter", "workstation", "phone", "domain_controller"]),
         ("credentialmethod", ["rdp", "vnc", "ftp", "postgres", "mssql", "mysql", "rtsp"]),
@@ -100,8 +71,6 @@ def _migrate_enum_values() -> None:
 
 def _migrate_columns() -> None:
     """Dodaje brakujace kolumny do istniejacych tabel (bezpieczne - IF NOT EXISTS)."""
-    if engine.dialect.name != "postgresql":
-        return
     migrations = [
         "ALTER TABLE vulnerabilities ADD COLUMN IF NOT EXISTS suppressed BOOLEAN DEFAULT FALSE",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS is_trusted BOOLEAN NOT NULL DEFAULT FALSE",

@@ -789,7 +789,12 @@ def discover_ssh(ip: str, pairs: list, open_ports: dict | None = None) -> Option
     def _probe(pair):
         if found:
             return None
+        # Sprawdz ban PRZED kazdym polaczeniem — inny worker mogl go ustawic
+        if _ip_ban_until.get(ip, 0.0) > time.monotonic():
+            return None
         for port in ports:
+            if _ip_ban_until.get(ip, 0.0) > time.monotonic():
+                return None  # ban ustawiony przez rownolegly worker
             if _try_ssh(ip, port, pair[0], pair[1]):
                 return pair
         return None
@@ -1596,12 +1601,26 @@ def _probe_port(ip: str, port: int, service_name: str,
                     return (CredentialMethod.ssh, u, p)
         elif svc in ("http", "https"):
             base = f"{svc}://{ip}:{port}"
+            # Dla niestandardowych portow (non-80/443/8080/8443) wymagamy session cookie
+            # jako potwierdzenia — samo slowo kluczowe jest za slabe (urzadzenia przemyslowe
+            # moga zwracac dowolna tresc na HTTP 200 na wlasnym protokole).
+            _std_web = {80, 443, 8080, 8443, 8888, 8008}
+            _strict = port not in _std_web
             for u, p in web_pairs[:MAX]:
                 try:
                     if _web_basic_ok(base, u, p):
+                        if _strict:
+                            # Dodatkowa weryfikacja: sprawdz ze zle haslo NIE przechodzi
+                            _bad = _web_basic_ok(base, u, "THIS_IS_WRONG_PASS_xXx123!")
+                            if _bad:
+                                continue  # urzadzenie akceptuje wszystko → false positive
                         return (CredentialMethod.api, u, p)
                     for path in ("/", "/login", "/admin", "/management"):
                         if _web_form_ok(f"{base}{path}", u, p):
+                            if _strict:
+                                _bad = _web_form_ok(f"{base}{path}", u, "THIS_IS_WRONG_PASS_xXx123!")
+                                if _bad:
+                                    continue
                             return (CredentialMethod.api, u, p)
                 except Exception:
                     pass

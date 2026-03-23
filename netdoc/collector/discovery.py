@@ -2090,8 +2090,14 @@ def upsert_device(db, device_data):
                 )
             else:
                 device.hostname = device_data.hostname
+        # vendor: aktualizuj tylko gdy urzadzenie nie ma jeszcze vendor
+        # lub gdy nowy vendor jest bogatszy w informacje (dluzszy string)
+        # Nie nadpisuj "Cisco Systems" oui-generic "Hon Hai Precision Ind. Co.,Ltd."
         if device_data.vendor:
-            device.vendor = device_data.vendor
+            if not device.vendor:
+                device.vendor = device_data.vendor
+            elif len(device_data.vendor) > len(device.vendor or ""):
+                device.vendor = device_data.vendor
         if device_data.os_version:
             device.os_version = device_data.os_version
         if device_data.mac:

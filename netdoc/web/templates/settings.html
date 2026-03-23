@@ -603,15 +603,15 @@
   <div class="card-body">
     <p class="mb-2 small text-muted">
       Odpowiednik konsoli:
-      <code>docker compose down -v &amp;&amp; docker system prune -af --volumes</code>
+      <code>docker compose down -v --rmi all</code>
     </p>
     <div class="alert alert-warning small mb-3">
       <strong>What this operation does:</strong>
       <ul class="mb-0 mt-1">
         <li>Stops and removes <strong>all netdoc containers</strong> (API, Web, Postgres, workers, Grafana, Loki…)</li>
-        <li>Removes <strong>all Docker volumes</strong> — PostgreSQL, Grafana, Prometheus and Loki data will be <strong>permanently lost</strong></li>
-        <li>Removes the <code>netdoc_default</code> network and all orphans</li>
-        <li>Clears <strong>all Docker images</strong> on the system and build cache</li>
+        <li>Removes <strong>all netdoc volumes</strong> — PostgreSQL, Grafana, Prometheus and Loki data will be <strong>permanently lost</strong></li>
+        <li>Removes the <code>netdoc_default</code> network</li>
+        <li>Removes <strong>netdoc Docker images</strong> only — other projects on this host are <strong>not affected</strong></li>
         <li class="text-danger fw-bold">After completion the web page will stop responding</li>
         <li>To restart the environment: <code>docker compose up -d --build</code></li>
       </ul>

@@ -2792,22 +2792,31 @@ def create_app():
                     except Exception as exc:
                         yield _msg(f"  ✗ {n.name}: {exc}")
 
-            # 4. Docker system prune: kontenery, obrazy, wolumeny, cache
-            yield _msg("▶ Docker system prune (obrazy, orphany, cache)…")
+            # 4. Usuń tylko obrazy netdoc (nie system-wide prune — nie dotykamy innych projektów)
+            yield _msg("▶ Usuwanie obrazów netdoc…")
             try:
-                client.containers.prune()
-                img = client.images.prune(filters={"dangling": False})
-                deleted = len(img.get("ImagesDeleted") or [])
-                freed_gb = (img.get("SpaceReclaimed") or 0) / 1024 ** 3
+                freed = 0
+                deleted = 0
+                for img in client.images.list():
+                    tags = img.tags or []
+                    is_netdoc = any(
+                        t.startswith("netdoc") or "/netdoc" in t or "netdoc-" in t
+                        for t in tags
+                    ) or not tags  # untagged (dangling) after container removal
+                    if is_netdoc:
+                        try:
+                            size = img.attrs.get("Size", 0)
+                            client.images.remove(img.id, force=True)
+                            freed += size
+                            deleted += 1
+                            tag_str = tags[0] if tags else img.short_id
+                            yield _msg(f"  ✓ {tag_str}")
+                        except Exception as exc:
+                            yield _msg(f"  ✗ {tags}: {exc}")
+                freed_gb = freed / 1024 ** 3
                 yield _msg(f"  ✓ Usunięto {deleted} obrazów — zwolniono {freed_gb:.2f} GB")
             except Exception as exc:
-                yield _msg(f"  ✗ Prune obrazów: {exc}")
-            try:
-                client.volumes.prune()
-                client.networks.prune()
-                yield _msg("  ✓ Orphan volumes i sieci wyczyszczone")
-            except Exception as exc:
-                yield _msg(f"  ✗ Prune volumes/networks: {exc}")
+                yield _msg(f"  ✗ Usuwanie obrazów: {exc}")
 
             yield _msg("✅ Gotowe! Zatrzymuję i usuwam kontener web…")
             yield _msg("DONE")
