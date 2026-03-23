@@ -12,7 +12,8 @@ if sys.platform == "win32":
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 GRAFANA = "http://localhost/grafana"
-OUT = Path("C:/Users/Yeszie/OneDrive/netdoc-www/screenshots")
+import os as _os
+OUT = Path(_os.getenv("SCREENSHOTS_DIR", Path(__file__).parent.parent.parent / "screenshots"))
 VIEWPORT = {"width": 1440, "height": 900}
 AUTH = "Basic " + base64.b64encode(b"admin:netdoc").decode()
 

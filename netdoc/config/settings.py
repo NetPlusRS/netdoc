@@ -1,11 +1,17 @@
+import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, computed_field
 from typing import List, Optional
 
+# Resolve .env from project root (2 levels up from netdoc/config/),
+# regardless of working directory when the process was started.
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_ENV_FILE = os.path.join(_PROJECT_ROOT, ".env")
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
     )

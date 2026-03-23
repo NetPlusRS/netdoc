@@ -238,8 +238,8 @@ $gitOk = Install-WithWinget -Id "Git.Git" -Label "git" -CommandCheck "git"
 if (-not $gitOk) {
     # May be installed but not in PATH  -  check common locations
     $gitPaths = @(
-        "C:\Program Files\Git\cmd\git.exe",
-        "C:\Program Files (x86)\Git\cmd\git.exe"
+        "$env:ProgramFiles\Git\cmd\git.exe",
+        "${env:ProgramFiles(x86)}\Git\cmd\git.exe"
     )
     foreach ($p in $gitPaths) {
         if (Test-Path $p) {
@@ -260,8 +260,8 @@ if (-not $gitOk) {
 Write-Step "Checking nmap (required by python-nmap for port scanning)..."
 
 $nmapKnownPaths = @(
-    "C:\Program Files (x86)\Nmap\nmap.exe",
-    "C:\Program Files\Nmap\nmap.exe"
+    "${env:ProgramFiles(x86)}\Nmap\nmap.exe",
+    "$env:ProgramFiles\Nmap\nmap.exe"
 )
 
 $nmapFound = Get-Command nmap -ErrorAction SilentlyContinue
@@ -298,7 +298,7 @@ if ($nmapFound) {
         } else {
             Write-Warn "nmap installed but not found in PATH."
             Write-Info "A terminal restart may be required after installation."
-            Write-Info "Nmap installs by default to: C:\Program Files (x86)\Nmap\"
+            Write-Info "Nmap installs by default to: ${env:ProgramFiles(x86)}\Nmap\"
         }
     }
 }
@@ -359,8 +359,8 @@ if (-not $pythonCmd) {
     foreach ($pyPath in @(
         "$env:LOCALAPPDATA\Programs\Python\Python312",
         "$env:LOCALAPPDATA\Programs\Python\Python312\Scripts",
-        "C:\Python312",
-        "C:\Python312\Scripts"
+        "$env:ProgramFiles\Python312",
+        "$env:ProgramFiles\Python312\Scripts"
     )) {
         if ((Test-Path $pyPath) -and ($env:PATH -notlike "*$pyPath*")) {
             $env:PATH += ";$pyPath"

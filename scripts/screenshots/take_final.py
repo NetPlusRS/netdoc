@@ -12,7 +12,8 @@ if sys.platform == "win32":
 
 FLASK = "http://localhost"
 GRAFANA = "http://localhost/grafana"
-OUT = Path("C:/Users/Yeszie/OneDrive/netdoc-www/screenshots")
+import os as _os
+OUT = Path(_os.getenv("SCREENSHOTS_DIR", Path(__file__).parent.parent.parent / "screenshots"))
 OUT.mkdir(parents=True, exist_ok=True)
 VIEWPORT = {"width": 1440, "height": 900}
 

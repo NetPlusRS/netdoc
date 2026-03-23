@@ -7,7 +7,8 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 FLASK = "http://localhost"
-OUT = Path("C:/Users/Yeszie/OneDrive/netdoc-www/screenshots")
+import os as _os
+OUT = Path(_os.getenv("SCREENSHOTS_DIR", Path(__file__).parent.parent.parent / "screenshots"))
 VIEWPORT = {"width": 1440, "height": 900}
 
 FONT_CSS = "* { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important; }"

@@ -11,6 +11,23 @@ $ComposeFile = Join-Path $ProjectDir "docker-compose.yml"
 $LogFile     = Join-Path $ProjectDir "logs\watchdog.log"
 $MaxLogLines = 1000
 
+# Resolve Python — prefer .venv inside project, fall back to first python in PATH
+$_venvPython = Join-Path $ProjectDir ".venv\Scripts\python.exe"
+if (Test-Path $_venvPython) {
+    $PythonExe = $_venvPython
+} else {
+    $PythonCmd = Get-Command python -ErrorAction SilentlyContinue
+    if ($PythonCmd) { $PythonExe = $PythonCmd.Source } else { $PythonExe = $null }
+    if (-not $PythonExe) {
+        $PythonCmd3 = Get-Command python3 -ErrorAction SilentlyContinue
+        if ($PythonCmd3) { $PythonExe = $PythonCmd3.Source }
+    }
+    if (-not $PythonExe) {
+        Write-Host "[ERROR] Python not found in PATH and no .venv present — watchdog cannot start processes." -ForegroundColor Red
+        # Continue anyway — Docker container checks will still work
+    }
+}
+
 $ExpectedContainers = @(
     "netdoc-postgres"
     "netdoc-prometheus"
@@ -60,7 +77,7 @@ function Wait-ForDocker {
     while ($waited -lt $MaxWaitSec) {
         Start-Sleep -Seconds 10
         $waited += 10
-        $result = docker info 2>&1
+        docker info 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
             Write-Log "Docker Desktop responding after ${waited}s — OK" "INFO"
             return $true
@@ -111,7 +128,24 @@ function Repair-DockerDesktop {
     Start-Sleep -Seconds 3
 
     # Step 4: Start Docker Desktop again
-    $dockerExe = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+    # Resolve Docker Desktop executable — prefer PATH, fall back to common install locations
+    $dockerExe = $null
+    $ddCmd = Get-Command "Docker Desktop" -ErrorAction SilentlyContinue
+    if ($ddCmd) {
+        $dockerExe = $ddCmd.Source
+    } else {
+        foreach ($p in @(
+            "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe",
+            "${env:ProgramFiles(x86)}\Docker\Docker\Docker Desktop.exe",
+            "$env:LOCALAPPDATA\Docker\Docker Desktop.exe"
+        )) {
+            if (Test-Path $p) { $dockerExe = $p; break }
+        }
+    }
+    if (-not $dockerExe) {
+        Write-Log "ERROR: Docker Desktop executable not found — cannot restart Docker." "ERROR"
+        return $false
+    }
     if (-not (Test-Path $dockerExe)) {
         Write-Log "ERROR: Docker Desktop not found at: $dockerExe" "ERROR"
         return $false
@@ -134,10 +168,9 @@ function Repair-DockerDesktop {
 }
 
 # ── Check if Docker daemon is running — with auto-repair ───────────────────────
-$dockerOk = $false
 $dockerInfo = docker info 2>&1
 if ($LASTEXITCODE -eq 0) {
-    $dockerOk = $true
+    # Docker is running — nothing to do
 } else {
     # Docker not responding — check if it's a temporary issue or a hang
     Write-Log "docker info returned an error: $($dockerInfo | Select-Object -First 1)" "WARN"
@@ -148,7 +181,6 @@ if ($LASTEXITCODE -eq 0) {
         Write-Log "Docker repair failed — watchdog ending cycle." "ERROR"
         exit 1
     }
-    $dockerOk = $true
     Write-Log "Docker repaired successfully." "INFO"
 }
 
@@ -199,7 +231,6 @@ if ($missing.Count -eq 0) {
 
 # ── Scanner — monitoring lock file and run regularity ─────────────────────────
 $ScannerPid  = Join-Path $ProjectDir "scanner.pid"
-$ScannerLog  = Join-Path $ProjectDir "logs\scanner.log"
 $TaskName    = "NetDocScanner"
 
 # 1. Check if lock file exists but process is dead (stale lock)
@@ -259,6 +290,73 @@ if ($null -eq $scannerTask) {
     } catch {
         Write-Log "Cannot read NetDocScanner task state: $_" "WARN"
     }
+}
+
+# ── Broadcast Worker — continuous listener, monitoring via broadcast.pid ──────
+$BroadcastPid    = Join-Path $ProjectDir "broadcast.pid"
+$BroadcastScript = Join-Path $ProjectDir "run_broadcast_worker.py"
+$BroadcastTask   = "NetDocBroadcast"
+
+# 1. Check if PID file exists but process is dead (stale lock)
+if (Test-Path $BroadcastPid) {
+    $pidContent = Get-Content $BroadcastPid -ErrorAction SilentlyContinue
+    $pidValue   = [int]($pidContent -as [int])
+    if ($pidValue -gt 0) {
+        $proc = Get-Process -Id $pidValue -ErrorAction SilentlyContinue
+        if ($null -eq $proc) {
+            Write-Log "Stale broadcast.pid (PID=$pidValue is dead) — removing." "WARN"
+            Remove-Item $BroadcastPid -Force -ErrorAction SilentlyContinue
+        } else {
+            if (-not $Quiet) {
+                Write-Log "Broadcast worker running (PID=$pidValue) — OK"
+            }
+        }
+    } else {
+        Write-Log "Invalid broadcast.pid — removing." "WARN"
+        Remove-Item $BroadcastPid -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# 2. If no PID file — worker is not running, start via Task Scheduler
+if (-not (Test-Path $BroadcastPid)) {
+    $bcastTask = Get-ScheduledTask -TaskName $BroadcastTask -ErrorAction SilentlyContinue
+    if ($null -eq $bcastTask) {
+        # Register the task if missing
+        Write-Log "Broadcast task '$BroadcastTask' not found — registering..." "WARN"
+        $bcastAction   = New-ScheduledTaskAction `
+            -Execute $PythonExe `
+            -Argument "-u `"$BroadcastScript`"" `
+            -WorkingDirectory $ProjectDir
+        $bcastTrigger  = New-ScheduledTaskTrigger -AtLogOn
+        $bcastSettings = New-ScheduledTaskSettingsSet `
+            -ExecutionTimeLimit (New-TimeSpan -Minutes 0) `
+            -MultipleInstances IgnoreNew `
+            -StartWhenAvailable `
+            -DontStopIfGoingOnBatteries `
+            -AllowStartIfOnBatteries `
+            -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+        $bcastPrincipal = New-ScheduledTaskPrincipal `
+            -UserId $env:USERNAME `
+            -LogonType Interactive `
+            -RunLevel Highest
+        try {
+            Register-ScheduledTask `
+                -TaskName $BroadcastTask `
+                -Action $bcastAction `
+                -Trigger $bcastTrigger `
+                -Settings $bcastSettings `
+                -Principal $bcastPrincipal `
+                -Description "NetDoc broadcast/multicast discovery — continuous listener" `
+                -ErrorAction Stop | Out-Null
+            Write-Log "Broadcast task registered." "WARN"
+        } catch {
+            Write-Log "ERROR: cannot register '$BroadcastTask': $_" "ERROR"
+        }
+    }
+    # Start the task (idempotent — already running → IgnoreNew)
+    Write-Log "Broadcast worker not running — starting task '$BroadcastTask'..." "WARN"
+    Start-ScheduledTask -TaskName $BroadcastTask -ErrorAction SilentlyContinue
+    Write-Log "Broadcast worker start requested." "WARN"
 }
 
 # ── Lab environment — monitoring based on lab_monitoring_enabled setting ───────

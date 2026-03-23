@@ -5,10 +5,27 @@
 # Mode: --once (single run) — each execution is a fresh process loading the current code from disk.
 # Scheduler triggers a scan every SCAN_INTERVAL_MIN minutes.
 
-$TaskName        = "NetDocScanner"
-$PythonExe       = "C:\Python311\python.exe"
-$ScriptPath      = "$PSScriptRoot\run_scanner.py"
-$WorkingDir      = $PSScriptRoot
+$TaskName   = "NetDocScanner"
+$ScriptPath = "$PSScriptRoot\run_scanner.py"
+$WorkingDir = $PSScriptRoot
+
+# Resolve Python — prefer .venv inside project, fall back to first python in PATH
+$_venvPython = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
+if (Test-Path $_venvPython) {
+    $PythonExe = $_venvPython
+} else {
+    $PythonCmd = Get-Command python -ErrorAction SilentlyContinue
+    if ($PythonCmd) { $PythonExe = $PythonCmd.Source } else { $PythonExe = $null }
+    if (-not $PythonExe) {
+        $PythonCmd3 = Get-Command python3 -ErrorAction SilentlyContinue
+        if ($PythonCmd3) { $PythonExe = $PythonCmd3.Source }
+    }
+    if (-not $PythonExe) {
+        Write-Host "ERROR: Python not found in PATH and no .venv present." -ForegroundColor Red
+        exit 1
+    }
+}
+Write-Host "Python: $PythonExe"
 $ScanIntervalMin = 5   # how often to run the next scan in minutes (min. 5, scan takes ~5 min)
 
 Write-Host "Registering task: $TaskName"
