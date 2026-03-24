@@ -39,14 +39,16 @@ class CredentialOut(BaseModel):
 def list_credentials(db: Session = Depends(get_db)):
     """Lista wszystkich credentials. Hasla nie sa zwracane."""
     rows = db.query(Credential).order_by(Credential.method, Credential.priority).all()
+    # Build device_id → ip map in one query to avoid N+1
+    device_ids = {r.device_id for r in rows if r.device_id}
+    ip_map: dict = {}
+    if device_ids:
+        for dev in db.query(Device).filter(Device.id.in_(device_ids)).all():
+            ip_map[dev.id] = dev.ip
     result = []
     for r in rows:
-        ip = None
-        if r.device_id:
-            dev = db.query(Device).filter(Device.id == r.device_id).first()
-            ip = dev.ip if dev else None
         result.append(CredentialOut(
-            id=r.id, device_id=r.device_id, device_ip=ip,
+            id=r.id, device_id=r.device_id, device_ip=ip_map.get(r.device_id),
             method=r.method.value, username=r.username,
             priority=r.priority, notes=r.notes,
             last_success_at=r.last_success_at,
