@@ -2082,7 +2082,7 @@ def upsert_device(db, device_data):
                          details={"ip": device_data.ip, "reason": "powrot po nieobecnosci"}))
         device.last_seen = now
         device.is_active = True
-        if device_data.hostname and not device.hostname:
+        if device_data.hostname and device_data.hostname != device.hostname:
             conflict = _hostname_conflict(db, device_data.hostname, device_data.ip)
             if conflict:
                 logger.warning(
@@ -2100,8 +2100,14 @@ def upsert_device(db, device_data):
                 device.vendor = device_data.vendor
             elif len(device_data.vendor) > len(device.vendor or ""):
                 device.vendor = device_data.vendor
+        # os_version: aktualizuj tylko gdy urzadzenie nie ma jeszcze wartosci
+        # lub gdy nowa jest bogatsza (dluzszy string — bardziej szczegolowa)
+        # Nie nadpisuj szczegolowego SNMP sysDescr generycznym "Linux 4.x" z nmap
         if device_data.os_version:
-            device.os_version = device_data.os_version
+            if not device.os_version:
+                device.os_version = device_data.os_version
+            elif len(device_data.os_version) > len(device.os_version):
+                device.os_version = device_data.os_version
         if device_data.mac:
             device.mac = normalize_mac(device_data.mac)
         # model ustawiamy tylko jesli nie byl wczesniej znany (nie nadpisujemy dokladniejszego)

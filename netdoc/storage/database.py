@@ -22,6 +22,14 @@ def _make_postgres_engine():
     )
 
 
+def _make_sqlite_engine(url: str = "sqlite:///:memory:"):
+    """Tworzy SQLite engine z wlaczonymi foreign keys (do testow i fallbacku)."""
+    from sqlalchemy.pool import StaticPool
+    eng = create_engine(url, connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    sa_event.listen(eng, "connect", lambda conn, _: conn.execute("PRAGMA foreign_keys=ON"))
+    return eng
+
+
 def _build_engine():
     """Laczy sie z PostgreSQL. Rzuca RuntimeError jesli baza niedostepna."""
     try:

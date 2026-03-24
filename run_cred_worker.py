@@ -811,6 +811,8 @@ def discover_ssh(ip: str, pairs: list, open_ports: dict | None = None) -> Option
             r = fut.result()
             if r and not found:
                 found.append(r)
+            if found or _is_banned(ip):
+                break
     return found[0] if found else None
 
 
@@ -1119,10 +1121,14 @@ def discover_web(ip: str, pairs: list,
     def _probe(pair):
         if found:
             return None
+        if _is_banned(ip):
+            return None
         u, p = pair
         if _VERBOSE:
             logger.info("WEB proba %-18s u=%-15s p=%s", ip, u, p or "(puste)")
         for port in _open_web_ports:
+            if _is_banned(ip):
+                return None
             scheme = "https" if port in (443, 8443) else "http"
             base = f"{scheme}://{ip}:{port}"
             if _web_basic_ok(base, u, p):
@@ -1150,6 +1156,8 @@ def discover_web(ip: str, pairs: list,
             r = fut.result()
             if r and not found:
                 found.append(r)
+            if found or _is_banned(ip):
+                break
     return found[0] if found else None
 
 
