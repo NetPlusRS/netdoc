@@ -105,7 +105,15 @@ def _safe_int(value) -> int | None:
 def update_oui_database(background_tasks: BackgroundTasks):
     """Pobiera aktualne bazy IEEE OUI (MA-L/MA-M/MA-S) w tle."""
     def _do_update():
-        oui_db.update(timeout=60)
+        results = oui_db.update(timeout=60)
+        if any(v.get("ok") for v in results.values()):
+            from netdoc.storage.database import SessionLocal
+            db = SessionLocal()
+            try:
+                _set_status(db, {"last_oui_update_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M")},
+                            category="scanner")
+            finally:
+                db.close()
 
     background_tasks.add_task(_do_update)
     status = oui_db.status()
