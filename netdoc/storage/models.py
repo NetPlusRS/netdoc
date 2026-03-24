@@ -137,6 +137,7 @@ class Device(Base):
     warranty_end = Column(DateTime, nullable=True)
     first_seen = Column(DateTime, default=datetime.utcnow)
     last_seen = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_ping_ok_at = Column(DateTime, nullable=True)  # ustawiany TYLKO przez ping worker gdy alive=True
     is_active = Column(Boolean, default=True)
     last_credential_ok_at = Column(DateTime, nullable=True)
 

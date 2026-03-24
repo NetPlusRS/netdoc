@@ -108,6 +108,10 @@ def _migrate_columns() -> None:
         # SNMP community discovery (2026-03-12)
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS snmp_community VARCHAR(64)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS snmp_ok_at TIMESTAMP",
+        # Ping worker — czas ostatniego udanego pingu (2026-03-24)
+        # Oddzielony od last_seen (ktory jest odswiezany przez discovery/ARP),
+        # pozwala na prawidlowe oznaczanie DOWN nawet gdy discovery falszywie odswierza last_seen.
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_ping_ok_at TIMESTAMP",
         # Usun stary constraint (za wazki — blokuje wiele hasel dla jednego usera)
         """
         DO $$ BEGIN

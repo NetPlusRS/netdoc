@@ -254,6 +254,7 @@ def poll_once() -> int:
 
             if alive:
                 device.last_seen = now
+                device.last_ping_ok_at = now  # BUG-L-STATUS-03: tylko ping worker ustawia to pole
                 up_lines.append(f"{device.ip}({rtt}ms)")
                 if not was_active:
                     device.is_active = True
@@ -268,12 +269,13 @@ def poll_once() -> int:
                 fails = _fail_counts[device.id]
                 down_lines.append(device.ip)
                 down += 1
-                # Oznaczamy DOWN tylko po _FAIL_THRESHOLD kolejnych nieudanych probach
-                # ORAZ gdy urzadzenie nie bylo widziane od dluzszego czasu
+                # Oznaczamy DOWN tylko po _FAIL_THRESHOLD kolejnych nieudanych probach.
+                # WAZNE: uzywa last_ping_ok_at (nie last_seen) — last_seen moze byc
+                # falszywie odswiezone przez discovery/ARP dla wylaczonego urzadzenia.
                 if (was_active
                         and fails >= _FAIL_THRESHOLD
-                        and device.last_seen is not None
-                        and device.last_seen < inactive_threshold):
+                        and (device.last_ping_ok_at is None
+                             or device.last_ping_ok_at < inactive_threshold)):
                     device.is_active = False
                     _events_down += 1
                     logger.info("DOWN: %s (%s) fail#%d od %s",

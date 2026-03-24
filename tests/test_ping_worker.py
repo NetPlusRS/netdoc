@@ -13,13 +13,19 @@ def _reset_globals():
     run_ping._events_down = 0
 
 
-def _make_device(id=1, ip="192.168.1.1", is_active=True, last_seen_minsago=1):
+def _make_device(id=1, ip="192.168.1.1", is_active=True, last_seen_minsago=1,
+                 last_ping_ok_at_minsago=None):
     d = MagicMock()
     d.id        = id
     d.ip        = ip
     d.hostname  = "test-host"
     d.is_active = is_active
     d.last_seen = datetime.utcnow() - timedelta(minutes=last_seen_minsago)
+    # None = urzadzenie nigdy nie bylo pomyslnie pingowane (DOWN condition fires)
+    d.last_ping_ok_at = (
+        datetime.utcnow() - timedelta(minutes=last_ping_ok_at_minsago)
+        if last_ping_ok_at_minsago is not None else None
+    )
     return d
 
 
@@ -111,11 +117,11 @@ def test_device_marked_down_after_threshold_failures():
 
 
 def test_device_not_marked_down_if_seen_recently():
-    """Urzadzenie NIE jest DOWN nawet po N niepowodzeniach gdy last_seen swiezy."""
+    """Urzadzenie NIE jest DOWN nawet po N niepowodzeniach gdy last_ping_ok_at swiezy."""
     _reset_globals()
     orig = run_ping._FAIL_THRESHOLD
     run_ping._FAIL_THRESHOLD = 2
-    d = _make_device(id=5, is_active=True, last_seen_minsago=1)
+    d = _make_device(id=5, is_active=True, last_seen_minsago=1, last_ping_ok_at_minsago=1)
 
     try:
         for _ in range(run_ping._FAIL_THRESHOLD + 1):
@@ -238,7 +244,8 @@ def test_check_uses_icmp_when_tcp_fails():
 
 
 def _make_monitored_device(id=99, ip="192.168.99.1", is_active=True,
-                            is_monitored=True, last_seen_minsago=10):
+                            is_monitored=True, last_seen_minsago=10,
+                            last_ping_ok_at_minsago=None):
     d = MagicMock()
     d.id           = id
     d.ip           = ip
@@ -247,6 +254,10 @@ def _make_monitored_device(id=99, ip="192.168.99.1", is_active=True,
     d.is_monitored = is_monitored
     d.monitor_note = None
     d.last_seen    = datetime.utcnow() - timedelta(minutes=last_seen_minsago)
+    d.last_ping_ok_at = (
+        datetime.utcnow() - timedelta(minutes=last_ping_ok_at_minsago)
+        if last_ping_ok_at_minsago is not None else None
+    )
     return d
 
 
