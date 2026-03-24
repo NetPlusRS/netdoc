@@ -2409,3 +2409,80 @@ def test_process_device_rdp_skips_when_port_3389_closed():
                                         pairs_per_cycle=1)
     assert 3389 in probed_ports, "Pre-check RDP powinien testowac port 3389"
     mock_rdp.assert_not_called()
+
+
+# === REGRESJA: ban propagation w discover_ssh / discover_web (BUG-L2) =========
+
+def test_discover_ssh_returns_none_when_ip_banned():
+    """discover_ssh zwraca None bez zadnych prob gdy IP ma aktywny ban."""
+    import time
+    w._ip_ban_until["10.1.2.3"] = time.monotonic() + 300
+    with patch.object(w, "_try_ssh") as mock_ssh:
+        result = w.discover_ssh("10.1.2.3", [("admin", "admin")],
+                                open_ports={"22": {}})
+    assert result is None
+    mock_ssh.assert_not_called()
+
+
+def test_discover_web_returns_none_when_ip_banned():
+    """discover_web zwraca None bez zadnych prob HTTP gdy IP ma aktywny ban."""
+    import time
+    w._ip_ban_until["10.1.2.4"] = time.monotonic() + 300
+    with patch.object(w, "_web_basic_ok") as mock_web:
+        with patch.object(w, "_web_form_ok") as mock_form:
+            result = w.discover_web("10.1.2.4", [("admin", "admin")],
+                                    open_ports_hint=[80])
+    assert result is None
+    mock_web.assert_not_called()
+    mock_form.assert_not_called()
+
+
+def test_discover_ssh_probe_aborts_when_ban_set_mid_execution():
+    """Gdy ban zostaje ustawiony w trakcie _probe, pozostale pary sa pomijane."""
+    import time
+    call_count = [0]
+
+    def _fake_try_ssh(ip, port, user, pwd):
+        call_count[0] += 1
+        # Po pierwszej probie ustaw ban — jak w rzeczywistosci po PROTECTION
+        w._ip_ban_until[ip] = time.monotonic() + 300
+        return False
+
+    with patch.object(w, "_try_ssh", side_effect=_fake_try_ssh):
+        result = w.discover_ssh(
+            "10.1.2.5",
+            [("u1", "p1"), ("u2", "p2"), ("u3", "p3"), ("u4", "p4")],
+            open_ports={"22": {}},
+        )
+
+    assert result is None
+    # Ban po pierwszej probie — nie wszystkie 4 pary moga byc przetestowane
+    assert call_count[0] < 4, (
+        f"Po ustawieniu banu przez pierwsza probe powinny byc <=3 proby, bylo {call_count[0]}"
+    )
+
+
+def test_discover_web_probe_aborts_when_ban_set_mid_execution():
+    """Gdy ban zostaje ustawiony w trakcie web _probe, pozostale pary sa pomijane."""
+    import time
+    call_count = [0]
+
+    def _fake_basic_ok(base, user, pwd):
+        call_count[0] += 1
+        w._ip_ban_until["10.1.2.6"] = time.monotonic() + 300
+        return False
+
+    with patch.object(w, "_web_basic_ok", side_effect=_fake_basic_ok):
+        with patch.object(w, "_web_form_ok", return_value=False):
+            with patch.object(w, "_web_moxa_login", return_value=False):
+                with patch.object(w, "_web_goahead_ok", return_value=False):
+                    result = w.discover_web(
+                        "10.1.2.6",
+                        [("u1", "p1"), ("u2", "p2"), ("u3", "p3"), ("u4", "p4")],
+                        open_ports_hint=[80],
+                    )
+
+    assert result is None
+    assert call_count[0] < 4, (
+        f"Po banie przez pierwsza probe powinny byc <=3 proby HTTP, bylo {call_count[0]}"
+    )

@@ -56,6 +56,39 @@ def test_trigger_oui_update(client):
     assert r.status_code == 200
 
 
+def test_oui_update_saves_last_oui_update_at(client, db):
+    """Po udanym pobraniu OUI last_oui_update_at jest zapisywany w SystemStatus."""
+    mock_oui = MagicMock()
+    mock_oui.update.return_value = {"IEEE MA-L": {"ok": True, "size_kb": 1024}}
+    mock_oui.status.return_value = {
+        "entries": 39000, "loaded": True, "needs_update": False, "files": {}
+    }
+    # SessionLocal importowany lokalnie wewnatrz _do_update — patchujemy w module zrodlowym
+    with patch("netdoc.api.routes.scan.oui_db", mock_oui):
+        with patch("netdoc.storage.database.SessionLocal", return_value=db):
+            r = client.post("/api/scan/update-oui")
+    assert r.status_code == 200
+    from netdoc.storage.models import SystemStatus
+    row = db.query(SystemStatus).filter_by(key="last_oui_update_at").first()
+    assert row is not None, "last_oui_update_at powinno byc zapisane po udanym update"
+
+
+def test_oui_update_does_not_save_timestamp_on_failure(client, db):
+    """Gdy pobieranie nie powiodlo sie (ok=False), last_oui_update_at nie jest zapisywany."""
+    mock_oui = MagicMock()
+    mock_oui.update.return_value = {"IEEE MA-L": {"ok": False, "error": "timeout"}}
+    mock_oui.status.return_value = {
+        "entries": 0, "loaded": False, "needs_update": True, "files": {}
+    }
+    with patch("netdoc.api.routes.scan.oui_db", mock_oui):
+        with patch("netdoc.storage.database.SessionLocal", return_value=db):
+            r = client.post("/api/scan/update-oui")
+    assert r.status_code == 200
+    from netdoc.storage.models import SystemStatus
+    row = db.query(SystemStatus).filter_by(key="last_oui_update_at").first()
+    assert row is None, "last_oui_update_at nie powinno byc zapisane po nieudanym update"
+
+
 # ─── Ustawienia intensywnosci skanowania ─────────────────────────────────────
 
 def test_scan_settings_contains_intensity_fields(client):
