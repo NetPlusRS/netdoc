@@ -471,6 +471,18 @@ _STANDARD_COVERED = {
     3389, 5000, 6379, 8000, 8080, 8443, 8888, 9200, 9201, 10000, 22222,
 }
 
+# Porty infrastruktury ktore NIGDY nie sa HTTP/SSH/credentials — nie probujemy
+_NEVER_PROBE_PORTS = {
+    514,   # syslog (rsh/rlogin legacy, rsyslog)
+    6514,  # syslog TLS
+    9090,  # Prometheus metrics
+    9100,  # Prometheus node exporter
+    8688,  # Vector metrics
+    15432, # PostgreSQL (niestandardowy port NetDoc)
+    2379, 2380,  # etcd
+    6443,  # Kubernetes API
+}
+
 
 def _tcp_open(ip: str, port: int, timeout: float = 2.0) -> bool:
     try:
@@ -1677,9 +1689,11 @@ def _probe_port(ip: str, port: int, service_name: str,
 
 def _should_probe_port(port: int, info) -> bool:
     """Czy dany port powinien byc sprawdzony przez banner-based probe?
-    - Niestandardowe porty: zawsze
+    - Niestandardowe porty: zawsze (chyba ze w _NEVER_PROBE_PORTS)
     - Standardowe porty: tylko gdy service nieznany (tcpwrapped lub brak)
     """
+    if port in _NEVER_PROBE_PORTS:
+        return False  # infrastruktura / syslog — nigdy nie testujemy
     svc = (info or {}).get("service", "") if isinstance(info, dict) else ""
     if port not in _STANDARD_COVERED:
         return True   # niestandardowy → zawsze sprawdzamy
@@ -2000,8 +2014,9 @@ def _process_device(device_id: int, ip: str,
         open_ports = _get_device_open_ports(device_id, db=db)
 
         if ssh_to_try:
-            _open_ssh = [p for p in _SSH_PORTS
-                         if open_ports.get(p) or _tcp_open(ip, p, timeout=1.5)]
+            # BUG-CRED-SSH-01: always TCP-probe — stale scan data (open_ports) can show port 22
+            # open even if SSH was later disabled, causing spurious auth attempts on wrong hosts.
+            _open_ssh = [p for p in _SSH_PORTS if _tcp_open(ip, p, timeout=1.5)]
             if not _open_ssh:
                 logger.info("SSH skip: %-18s brak otwartych portow SSH — para NIE zuzywa slotu", ip)
             else:
@@ -2263,6 +2278,16 @@ def scan_once() -> None:
         # (is_active flaga zmienia sie z opoznieniem do 5 min — dodatkowe zabezpieczenie
         # przed credential testing na offline urzadzeniach i ryzykiem AD lockout)
         recent_seen = datetime.utcnow() - timedelta(minutes=10)
+        # Wykryj IP hosta NetDoc (serwer na ktorym dziala aplikacja) — nie skanujemy samych siebie
+        _self_ips: set = set()
+        try:
+            _host_ips_row = db.query(SystemStatus).filter_by(key="scanner_host_ips").first()
+            if _host_ips_row and _host_ips_row.value:
+                _self_ips = {ip.strip() for ip in _host_ips_row.value.split(",") if ip.strip()}
+        except Exception:
+            pass
+        if _self_ips:
+            logger.info("Pomijam IP hosta NetDoc: %s", ", ".join(sorted(_self_ips)))
         # Wyciagnij (id, ip) przed zamknieciem sesji — ORM obiekty staja sie detached po db.close()
         candidates = [
             (d.id, d.ip) for d in db.query(Device).filter(
@@ -2271,6 +2296,7 @@ def scan_once() -> None:
                 (Device.last_credential_ok_at.is_(None)) |
                 (Device.last_credential_ok_at < threshold),
             ).all()
+            if d.ip not in _self_ips
         ]
         # SSH/Telnet — wczytaj pary lub wyczysc jesli wylaczone
         if method_flags.get("cred_ssh_enabled", True):

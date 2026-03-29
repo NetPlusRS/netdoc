@@ -68,7 +68,7 @@ def _check_raw_flag() -> None:
     if os.path.exists(_RAW_FLAG_FILE):
         if not _raw_enabled.is_set():
             _raw_enabled.set()
-            logger.info("RAW packet logging ENABLED → %s", _RAW_LOG_PATH)
+            logger.info("RAW packet logging ENABLED -> %s", _RAW_LOG_PATH)
     else:
         if _raw_enabled.is_set():
             _raw_enabled.clear()

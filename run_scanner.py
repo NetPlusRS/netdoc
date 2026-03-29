@@ -2231,6 +2231,18 @@ def run_scan_cycle(db, scan_type: str = "discovery") -> dict:
             import math as _math
             queue_row = db.query(SystemStatus).filter_by(key="full_scan_ip_queue").first()
             queued_ips = [x.strip() for x in (queue_row.value if queue_row else "").split(",") if x.strip()]
+            if queued_ips:
+                # BUG-FS-03: filter out inactive devices — scanning offline hosts wastes time
+                # and can corrupt scan results (nmap returns no data for unreachable hosts)
+                from netdoc.storage.models import Device as _Device
+                # Pomijaj tylko urzadzenia które SĄ w DB i są nieaktywne
+                # (IP których nie ma w DB przepuszczamy — mogą być nowe odkrycia)
+                inactive_set = {d.ip for d in db.query(_Device).filter(
+                    _Device.ip.in_(queued_ips), _Device.is_active == False).all()}
+                if inactive_set:
+                    logger.info("full_single: pomijam nieaktywne urzadzenia: %s", ", ".join(sorted(inactive_set)))
+                queued_ips = [ip for ip in queued_ips if ip not in inactive_set]
+                del _Device, inactive_set
             if not queued_ips:
                 logger.info("full_single: queue empty — performing discovery")
                 scan_type = "discovery"
@@ -2792,6 +2804,27 @@ def main():
         logger.warning("Failed to load/download OUI database: %s", _oui_exc)
 
     with SessionLocal() as db:
+        # Zapisz IP hosta (skanera) — workery Docker uzywaja tego do wykluczenia samego siebie
+        import socket as _sock
+        try:
+            # Zbierz wszystkie IPv4 ze wszystkich interfejsow (LAN + WiFi + VPN itp.)
+            _host_ips_set: set = set()
+            # Metoda 1: getaddrinfo(hostname) — zwraca IPs z DNS/hosts
+            for _info in _sock.getaddrinfo(_sock.gethostname(), None):
+                if _info[0] == _sock.AF_INET and not _info[4][0].startswith("127."):
+                    _host_ips_set.add(_info[4][0])
+            # Metoda 2: connect trick — wykrywa IP aktywnego interfejsu dla kazdej sieci
+            for _probe_dst in ("8.8.8.8", "192.168.0.1", "10.0.0.1", "172.16.0.1"):
+                try:
+                    _s = _sock.socket(_sock.AF_INET, _sock.SOCK_DGRAM)
+                    _s.connect((_probe_dst, 80))
+                    _host_ips_set.add(_s.getsockname()[0])
+                    _s.close()
+                except Exception:
+                    pass
+            _host_ips = [ip for ip in _host_ips_set if not ip.startswith("127.")]
+        except Exception:
+            _host_ips = []
         # Register scanner in DB BEFORE seeds — UI sees status immediately
         _set_status(db, {
             "scanner_mode": "host",
@@ -2799,6 +2832,7 @@ def main():
             "scanner_started_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
             "scanner_job": "-",
             "scanning_ips": "",   # clear after any previous failed scan
+            "scanner_host_ips": ",".join(_host_ips),
         })
         seed_snmp_communities(db)
         seed_default_credentials(db)

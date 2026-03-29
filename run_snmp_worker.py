@@ -344,7 +344,7 @@ def _poll_device(device_id: int, ip: str, community: str,
     PERF-03: dane device przekazane bezposrednio (nie re-query per watek).
     Otwiera DB tylko do zapisu wyniku, nie do odczytu device.
     """
-    from netdoc.collector.drivers.snmp import _snmp_get, OID_SYSNAME, OID_SYSDESCR, OID_SYSLOCATION
+    from netdoc.collector.drivers.snmp import _snmp_get, OID_SYSNAME, OID_SYSDESCR, OID_SYSLOCATION, OID_SYSCONTACT
 
     result = {"device_id": device_id, "success": False, "community": None}
     if not community:
@@ -375,10 +375,12 @@ def _poll_device(device_id: int, ip: str, community: str,
         sysdescr = _snmp_get(ip, community, OID_SYSDESCR,   timeout=snmp_timeout)
         sysloc   = _snmp_get(ip, community, OID_SYSLOCATION, timeout=snmp_timeout)
         uptime   = _snmp_get(ip, community, OID_SYSUPTIME,   timeout=snmp_timeout)
+        contact  = _snmp_get(ip, community, OID_SYSCONTACT,  timeout=snmp_timeout)
 
         if sysname  and not device.hostname:   device.hostname   = sysname
         if sysdescr and not device.os_version: device.os_version = sysdescr[:120]
         if sysloc   and not device.location:   device.location   = sysloc
+        if contact and contact.strip() and not device.sys_contact: device.sys_contact = contact.strip()[:255]
 
         # sysUpTime — zawsze aktualizuj jako tag w asset_notes
         if uptime is not None:
