@@ -92,11 +92,12 @@
               {% if d.asset_tag %}{% set _ = _inv_lines.append('<b>Asset tag:</b> ' ~ d.asset_tag) %}{% endif %}
               {% if d.responsible_person %}{% set _ = _inv_lines.append('<b>Owner:</b> ' ~ d.responsible_person) %}{% endif %}
               {% if d.asset_notes %}{% set _ = _inv_lines.append('<b>Notes:</b> ' ~ d.asset_notes[:60] ~ ('…' if d.asset_notes|length > 60 else '')) %}{% endif %}
-              <span data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-html="true"
+              <a href="/devices/{{ d.id }}" class="text-decoration-none font-monospace"
+                data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-html="true"
                 data-bs-title="<i class='bi bi-box-seam me-1'></i>Inventory"
                 data-bs-content="{{ _inv_lines | join('<br>') }}"
-                style="cursor:help; border-bottom:1px dashed #6c757d;">{{ d.mac }}</span>
-            {% else %}{{ d.mac or "—" }}{% endif %}
+                style="border-bottom:1px dashed #6c757d;">{{ d.mac }}</a>
+            {% else %}<a href="/devices/{{ d.id }}" class="text-decoration-none font-monospace">{{ d.mac or "—" }}</a>{% endif %}
           </td>
           <td>
             {# ── Buduj tresc popovera statusu ── #}
