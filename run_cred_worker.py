@@ -138,8 +138,9 @@ SSH_CREDENTIAL_FALLBACK = [
     ("root",        "toor"),         ("root",        "alpine"),
     ("root",        "P@ssw0rd"),     ("root",        "Password1"),
     # --- Cisco ---
-    ("cisco",       "cisco"),        ("cisco",       "cisco123"),
-    ("cisco",       "Cisco"),        ("enable",      "enable"),
+    ("admin",       "Cisco123"),     ("cisco",       "cisco"),
+    ("cisco",       "cisco123"),     ("cisco",       "Cisco"),
+    ("enable",      "enable"),
     # --- Ubiquiti ---
     ("ubnt",        "ubnt"),
     # --- MikroTik ---
@@ -2496,19 +2497,26 @@ def _seed_default_credentials() -> None:
             (CredentialMethod.rtsp,     RTSP_CREDENTIAL_FALLBACK),
         ]
         for method, fallback in seeds:
-            count = db.query(Credential).filter(
+            # Pobierz istniejące pary (user, pass) żeby nie duplikować
+            existing = db.query(
+                Credential.username, Credential.password_encrypted
+            ).filter(
                 Credential.device_id.is_(None),
                 Credential.method == method,
-            ).count()
-            if count > 0:
-                continue
+            ).all()
+            existing_set = {(u, p) for u, p in existing}
+            added = 0
             for u, p in fallback:
+                if (u, p) in existing_set:
+                    continue
                 db.add(Credential(
                     device_id=None, method=method,
                     username=u, password_encrypted=p, priority=1,
                     notes="auto-seeded default",
                 ))
-            logger.info("Seeded %d domyslnych %s credentials", len(fallback), method.value)
+                added += 1
+            if added:
+                logger.info("Seeded %d nowych %s credentials", added, method.value)
         db.commit()
     except Exception as e:
         db.rollback()
