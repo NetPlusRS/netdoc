@@ -289,6 +289,18 @@ def poll_once() -> int:
 
         db.commit()
 
+        # ── Zapis RTT do ClickHouse (batch, fire-and-forget) ─────────────────
+        try:
+            from netdoc.storage.clickhouse import insert_ping_batch
+            _ping_ts = datetime.utcnow()
+            _ping_rows = [
+                (_ping_ts, d.ip, float(results.get(d.id) or 0.0), 1 if results.get(d.id) is not None else 0)
+                for d in devices
+            ]
+            insert_ping_batch(_ping_rows)
+        except Exception as _ch_exc:
+            logger.debug("ClickHouse ping insert skipped: %s", _ch_exc)
+
         # Wyslij alerty dla monitorowanych urzadzen (po commit zeby device_id byl wazny)
         if monitored_alerts:
             try:

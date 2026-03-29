@@ -448,3 +448,49 @@ class DeviceAssessment(Base):
     model       = Column(String(64), nullable=True)
 
     device = relationship("Device")
+
+
+class DeviceFieldHistory(Base):
+    """Historia zmian pól urządzenia (hostname, firmware, vendor, model, location...).
+
+    Zapisywana przez snmp-worker przy wykryciu zmiany wartości pola.
+    Retencja: 90 dni (czyszczone przez worker).
+    """
+    __tablename__ = "device_field_history"
+    __table_args__ = (
+        Index("ix_dfh_device_changed", "device_id", "changed_at"),
+    )
+
+    id          = Column(Integer, primary_key=True)
+    device_id   = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"),
+                         nullable=False)
+    field_name  = Column(String(50),  nullable=False)   # "hostname","os_version","vendor","model"...
+    old_value   = Column(Text,        nullable=True)
+    new_value   = Column(Text,        nullable=True)
+    changed_at  = Column(DateTime,    default=datetime.utcnow, nullable=False)
+    source      = Column(String(20),  nullable=False, default="snmp")  # "snmp","discovery","manual"
+
+    device = relationship("Device", foreign_keys=[device_id])
+
+
+class InterfaceHistory(Base):
+    """Historia zmian stanu interfejsów (port up/down, zmiana prędkości, dodany/usunięty).
+
+    Zapisywana przez snmp-worker przy wykryciu zmiany w ifTable.
+    Retencja: 30 dni.
+    """
+    __tablename__ = "interface_history"
+    __table_args__ = (
+        Index("ix_ifh_device_changed", "device_id", "changed_at"),
+    )
+
+    id             = Column(Integer, primary_key=True)
+    device_id      = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"),
+                            nullable=False)
+    interface_name = Column(String(100), nullable=False)
+    event_type     = Column(String(20),  nullable=False)  # "up","down","speed_change","added","removed"
+    old_speed      = Column(Integer,     nullable=True)   # Mbps
+    new_speed      = Column(Integer,     nullable=True)   # Mbps
+    changed_at     = Column(DateTime,    default=datetime.utcnow, nullable=False)
+
+    device = relationship("Device", foreign_keys=[device_id])

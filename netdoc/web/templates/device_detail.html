@@ -1,0 +1,499 @@
+{% extends "base.html" %}
+{% block title %}{{ dev.hostname or dev.ip }} — Szczegóły{% endblock %}
+
+{% block head %}
+<style>
+  #rttChart { height: 160px; }
+  .param-table td:first-child { width: 42%; color: #6c757d; font-size: .85rem; }
+  .param-table td:last-child  { font-size: .9rem; word-break: break-all; }
+  .severity-critical { color: #dc3545; font-weight: 600; }
+  .severity-high     { color: #fd7e14; }
+  .severity-medium   { color: #ffc107; }
+  .severity-low      { color: #6c757d; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  {# ── Header ─────────────────────────────────────────────────────────── #}
+  <div class="d-flex align-items-center gap-2 mb-4 flex-wrap">
+    <a href="{{ url_for('devices') }}" class="btn btn-sm btn-outline-secondary">← Urządzenia</a>
+    <h4 class="mb-0">
+      {{ dev.hostname or dev.ip }}
+      {% if dev.hostname and dev.ip %}<small class="text-muted fw-normal"> ({{ dev.ip }})</small>{% endif %}
+    </h4>
+    <span class="badge {% if dev.is_active %}bg-success{% else %}bg-secondary{% endif %}">
+      {{ 'UP' if dev.is_active else 'DOWN' }}
+    </span>
+    {% if dev.device_type %}
+    <span class="badge bg-secondary">{{ dev.device_type.value }}</span>
+    {% endif %}
+    {% if dev.flag_color %}
+    <span class="badge" style="background:{{ dev.flag_color }}">&#9873;</span>
+    {% endif %}
+    {% if dev.is_trusted %}
+    <span class="badge bg-info text-dark">&#10003; Zaufane</span>
+    {% endif %}
+    {% if dev.is_monitored %}
+    <span class="badge bg-warning text-dark">&#128065; Monitorowane</span>
+    {% endif %}
+  </div>
+
+  <div class="row g-3">
+
+    {# ══════════════════════════════════════════════════════════════════════
+       KOLUMNA LEWA — parametry urządzenia
+    ══════════════════════════════════════════════════════════════════════ #}
+    <div class="col-12 col-xl-4">
+
+      {# ── Sieć ─────────────────────────────────────────────────────────── #}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">Sieć</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0 param-table">
+            <tr><td>IP</td><td><code>{{ dev.ip }}</code>
+              {% if dev.ip_type and dev.ip_type != 'unknown' %}
+              <span class="badge bg-light text-dark border ms-1">{{ dev.ip_type }}</span>
+              {% endif %}
+            </td></tr>
+            <tr><td>MAC</td><td>
+              {% if dev.mac %}<code>{{ dev.mac }}</code>{% else %}<span class="text-muted">—</span>{% endif %}
+            </td></tr>
+            <tr><td>Producent (OUI)</td><td>
+              {{ dev.vendor or '<span class="text-muted">—</span>' | safe }}
+            </td></tr>
+          </table>
+        </div>
+      </div>
+
+      {# ── Tożsamość ─────────────────────────────────────────────────────── #}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">Tożsamość</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0 param-table">
+            <tr><td>Hostname</td><td>{{ dev.hostname or '<span class="text-muted">—</span>' | safe }}</td></tr>
+            <tr><td>Model</td><td>{{ dev.model or '<span class="text-muted">—</span>' | safe }}</td></tr>
+            <tr><td>Typ urządzenia</td><td>{{ dev.device_type.value if dev.device_type else '—' }}</td></tr>
+            <tr><td>OS / Opis SNMP</td><td>
+              {% if dev.os_version %}
+              <span title="{{ dev.os_version }}">{{ dev.os_version[:80] }}{% if dev.os_version|length > 80 %}…{% endif %}</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td></tr>
+            <tr><td>Numer seryjny</td><td>{{ dev.serial_number or '<span class="text-muted">—</span>' | safe }}</td></tr>
+          </table>
+        </div>
+      </div>
+
+      {# ── Lokalizacja / Kontakt ──────────────────────────────────────────── #}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">Lokalizacja / Kontakt</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0 param-table">
+            <tr><td>Lokalizacja</td><td>{{ dev.location or '<span class="text-muted">—</span>' | safe }}</td></tr>
+            <tr><td>Site / Oddział</td><td>{{ dev.site_id or '<span class="text-muted">—</span>' | safe }}</td></tr>
+            <tr><td>Dział</td><td>{{ dev.owner_dept or '<span class="text-muted">—</span>' | safe }}</td></tr>
+            <tr><td>sysContact</td><td>{{ dev.sys_contact or '<span class="text-muted">—</span>' | safe }}</td></tr>
+            <tr><td>Osoba odpow.</td><td>{{ dev.responsible_person or '<span class="text-muted">—</span>' | safe }}</td></tr>
+          </table>
+        </div>
+      </div>
+
+      {# ── SNMP ──────────────────────────────────────────────────────────── #}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">SNMP</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0 param-table">
+            <tr><td>Community</td><td>
+              {% if dev.snmp_community %}
+              <code>{{ dev.snmp_community[:2] }}****</code>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td></tr>
+            <tr><td>Uptime</td><td>{{ dev.snmp_uptime or '<span class="text-muted">—</span>' | safe }}</td></tr>
+            <tr><td>Ostatni SNMP OK</td><td>
+              {% if dev.snmp_ok_at %}{{ dev.snmp_ok_at.strftime('%Y-%m-%d %H:%M') }}
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td></tr>
+          </table>
+        </div>
+      </div>
+
+      {# ── Status / Widoczność ────────────────────────────────────────────── #}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">Status</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0 param-table">
+            <tr><td>Pierwszy raz widziany</td><td>
+              {% if dev.first_seen %}{{ dev.first_seen.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}
+            </td></tr>
+            <tr><td>Ostatnio widziany</td><td>
+              {% if dev.last_seen %}{{ dev.last_seen.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}
+            </td></tr>
+            <tr><td>Ostatni ping OK</td><td>
+              {% if dev.last_ping_ok_at %}{{ dev.last_ping_ok_at.strftime('%Y-%m-%d %H:%M') }}
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td></tr>
+            <tr><td>Ostatni kredencjał OK</td><td>
+              {% if dev.last_credential_ok_at %}{{ dev.last_credential_ok_at.strftime('%Y-%m-%d %H:%M') }}
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td></tr>
+            <tr><td>Zaufane</td><td>
+              {% if dev.is_trusted %}<span class="text-success">Tak</span>
+                {% if dev.trust_category %}<span class="text-muted"> ({{ dev.trust_category }})</span>{% endif %}
+                {% if dev.trust_note %}<br><small class="text-muted">{{ dev.trust_note }}</small>{% endif %}
+              {% else %}<span class="text-muted">Nie</span>{% endif %}
+            </td></tr>
+            {% if dev.is_monitored %}
+            <tr><td>Monitorowane</td><td>
+              <span class="text-warning">Tak</span>
+              {% if dev.monitor_note %}<br><small class="text-muted">{{ dev.monitor_note }}</small>{% endif %}
+            </td></tr>
+            {% endif %}
+          </table>
+        </div>
+      </div>
+
+      {# ── Inwentarz (asset) ─────────────────────────────────────────────── #}
+      {% if dev.asset_tag or dev.purchase_date or dev.warranty_end or dev.support_end or dev.invoice_number or dev.purchase_vendor %}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">Inwentarz</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0 param-table">
+            {% if dev.asset_tag %}<tr><td>Tag środka trwałego</td><td>{{ dev.asset_tag }}</td></tr>{% endif %}
+            {% if dev.purchase_vendor %}<tr><td>Dostawca</td><td>{{ dev.purchase_vendor }}</td></tr>{% endif %}
+            {% if dev.purchase_date %}<tr><td>Data zakupu</td><td>{{ dev.purchase_date.strftime('%Y-%m-%d') }}</td></tr>{% endif %}
+            {% if dev.purchase_price %}<tr><td>Cena</td><td>{{ dev.purchase_price }} {{ dev.purchase_currency or 'PLN' }}</td></tr>{% endif %}
+            {% if dev.invoice_number %}<tr><td>Nr faktury</td><td>{{ dev.invoice_number }}</td></tr>{% endif %}
+            {% if dev.warranty_end %}<tr><td>Koniec gwarancji</td><td>{{ dev.warranty_end.strftime('%Y-%m-%d') }}</td></tr>{% endif %}
+            {% if dev.support_end %}<tr><td>Koniec wsparcia</td><td>{{ dev.support_end.strftime('%Y-%m-%d') }}</td></tr>{% endif %}
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if dev.asset_notes %}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">Notatki</div>
+        <div class="card-body">
+          <pre class="mb-0 small" style="white-space:pre-wrap">{{ dev.asset_notes }}</pre>
+        </div>
+      </div>
+      {% endif %}
+
+    </div>{# /col lewa #}
+
+    {# ══════════════════════════════════════════════════════════════════════
+       KOLUMNA PRAWA — statystyki, historia, syslog
+    ══════════════════════════════════════════════════════════════════════ #}
+    <div class="col-12 col-xl-8">
+
+      {# ── Ping Stats + RTT Chart ──────────────────────────────────────── #}
+      <div class="row g-3 mb-3">
+        <div class="col-12 col-lg-4">
+          <div class="card h-100">
+            <div class="card-header fw-semibold py-2">Ping (ostatnie 24h)</div>
+            <div class="card-body p-0">
+              {% if ping_stats and ping_stats.total %}
+              <table class="table table-sm mb-0 param-table">
+                <tr><td>Dostępność</td><td class="fw-bold">{{ ping_stats.uptime_pct }}%</td></tr>
+                <tr><td>RTT śr.</td><td>{{ ping_stats.avg_rtt_ms }} ms</td></tr>
+                <tr><td>RTT min</td><td>{{ ping_stats.min_rtt_ms }} ms</td></tr>
+                <tr><td>RTT max</td><td>{{ ping_stats.max_rtt_ms }} ms</td></tr>
+                <tr><td>Pomiarów</td><td>{{ ping_stats.total }}</td></tr>
+              </table>
+              {% else %}
+              <p class="text-muted small p-3 mb-0">Brak danych ping (ClickHouse niedostępny lub brak pomiarów).</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-8">
+          <div class="card h-100">
+            <div class="card-header fw-semibold py-2">Historia RTT (24h, co 5 min)</div>
+            <div class="card-body p-2">
+              {% if ping_history %}
+              <canvas id="rttChart"></canvas>
+              {% else %}
+              <p class="text-muted small p-2 mb-0">Brak danych historii RTT.</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# ── Interfejsy bieżące ──────────────────────────────────────────── #}
+      {% if interfaces %}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">Interfejsy <span class="badge bg-secondary">{{ interfaces|length }}</span></div>
+        <div class="card-body p-0">
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Nazwa</th>
+                <th>Status</th>
+                <th>Prędkość</th>
+                <th>MAC</th>
+                <th>IP</th>
+                <th>Opis</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for iface in interfaces %}
+              <tr>
+                <td><code class="small">{{ iface.name }}</code></td>
+                <td>
+                  {% if iface.oper_status %}
+                    <span class="badge bg-success">UP</span>
+                  {% elif iface.oper_status is not none and not iface.oper_status %}
+                    <span class="badge bg-danger">DOWN</span>
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                  {% if not iface.admin_status %}
+                    <span class="badge bg-secondary ms-1">adm off</span>
+                  {% endif %}
+                </td>
+                <td class="small">{{ (iface.speed|string + ' Mbps') if iface.speed else '—' }}</td>
+                <td class="small"><code>{{ iface.mac or '—' }}</code></td>
+                <td class="small"><code>{{ iface.ip or '—' }}</code></td>
+                <td class="small text-muted">{{ iface.description or '' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── Otwarte porty / ostatni skan ─────────────────────────────────── #}
+      {% if latest_scan and latest_scan.open_ports %}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">
+          Otwarte porty
+          <small class="text-muted fw-normal ms-2">skan {{ latest_scan.scan_time.strftime('%Y-%m-%d %H:%M') }}</small>
+        </div>
+        <div class="card-body">
+          <div class="d-flex flex-wrap gap-1">
+            {% for port in latest_scan.open_ports %}
+            <span class="badge bg-light text-dark border font-monospace">
+              {{ port.port }}/{{ port.proto or 'tcp' }}
+              {% if port.service %}<span class="text-muted"> {{ port.service }}</span>{% endif %}
+            </span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── Podatności ────────────────────────────────────────────────────── #}
+      {% if vulns %}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">
+          Podatności aktywne <span class="badge bg-danger">{{ vulns|length }}</span>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0">
+            <thead class="table-light">
+              <tr><th>Severity</th><th>Tytuł</th><th>Port</th><th>Wykryto</th></tr>
+            </thead>
+            <tbody>
+              {% for v in vulns %}
+              <tr>
+                <td><span class="severity-{{ v.severity.value }}">{{ v.severity.value }}</span></td>
+                <td class="small" title="{{ v.description or '' }}">{{ v.title }}</td>
+                <td class="small">{{ v.port or '—' }}</td>
+                <td class="small text-muted">{{ v.first_seen.strftime('%Y-%m-%d') }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── Sąsiedzi LLDP/CDP ─────────────────────────────────────────────── #}
+      {% if topo_links %}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">Sąsiedzi topologii (LLDP/CDP)</div>
+        <div class="card-body p-0">
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-light">
+              <tr><th>Protokół</th><th>Sąsiad</th><th>Port lokalny</th><th>Port zdalny</th><th>Ostatnio</th></tr>
+            </thead>
+            <tbody>
+              {% for link in topo_links %}
+              {% set neighbor = link.dst_device if link.src_device_id == dev.id else link.src_device %}
+              {% set local_if = link.src_interface if link.src_device_id == dev.id else link.dst_interface %}
+              {% set remote_if = link.dst_interface if link.src_device_id == dev.id else link.src_interface %}
+              <tr>
+                <td><span class="badge bg-light text-dark border">{{ link.protocol.value }}</span></td>
+                <td>
+                  <a href="{{ url_for('device_detail', device_id=neighbor.id) }}" class="text-decoration-none">
+                    {{ neighbor.hostname or neighbor.ip }}
+                  </a>
+                  {% if neighbor.hostname %}<small class="text-muted"> ({{ neighbor.ip }})</small>{% endif %}
+                </td>
+                <td class="small"><code>{{ local_if.name if local_if else '—' }}</code></td>
+                <td class="small"><code>{{ remote_if.name if remote_if else '—' }}</code></td>
+                <td class="small text-muted">{{ link.last_seen.strftime('%Y-%m-%d') }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── Historia zmian pól ──────────────────────────────────────────── #}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">Historia zmian pól (SNMP)</div>
+        <div class="card-body p-0">
+          {% if field_history %}
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-light">
+              <tr><th>Czas</th><th>Pole</th><th>Stara wartość</th><th>Nowa wartość</th></tr>
+            </thead>
+            <tbody>
+              {% for h in field_history %}
+              <tr>
+                <td class="text-muted small text-nowrap">{{ h.changed_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td><code>{{ h.field_name }}</code></td>
+                <td class="text-danger small">{{ h.old_value or '—' }}</td>
+                <td class="text-success small">{{ h.new_value or '—' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="text-muted small p-3 mb-0">Brak zapisanych zmian pól.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      {# ── Historia interfejsów ────────────────────────────────────────── #}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">Historia interfejsów (SNMP walk)</div>
+        <div class="card-body p-0">
+          {% if iface_history %}
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-light">
+              <tr><th>Czas</th><th>Interfejs</th><th>Zdarzenie</th><th>Prędkość</th></tr>
+            </thead>
+            <tbody>
+              {% for h in iface_history %}
+              <tr>
+                <td class="text-muted small text-nowrap">{{ h.changed_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td><code>{{ h.interface_name }}</code></td>
+                <td>
+                  {% if h.event_type == 'up' %}<span class="badge bg-success">UP</span>
+                  {% elif h.event_type == 'down' %}<span class="badge bg-danger">DOWN</span>
+                  {% elif h.event_type == 'speed_change' %}<span class="badge bg-warning text-dark">speed change</span>
+                  {% elif h.event_type == 'discovered' %}<span class="badge bg-secondary">odkryty</span>
+                  {% else %}<span class="badge bg-secondary">{{ h.event_type }}</span>{% endif %}
+                </td>
+                <td class="small">
+                  {% if h.event_type == 'speed_change' %}
+                    {{ (h.old_speed // 1000000) if h.old_speed else '?' }} →
+                    {{ (h.new_speed // 1000000) if h.new_speed else '?' }} Mbps
+                  {% elif h.new_speed %}
+                    {{ h.new_speed // 1000000 }} Mbps
+                  {% else %}—{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="text-muted small p-3 mb-0">Brak historii interfejsów (wymaga SNMP walk).</p>
+          {% endif %}
+        </div>
+      </div>
+
+      {# ── Ostatnie logi syslog ────────────────────────────────────────── #}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center">
+          <span>Ostatnie logi syslog (48h)</span>
+          <a href="{{ url_for('syslog') }}?src_ip={{ dev.ip }}" class="btn btn-sm btn-outline-secondary">Pełny syslog →</a>
+        </div>
+        <div class="card-body p-0">
+          {% if syslog_rows %}
+          <table class="table table-sm mb-0">
+            <thead class="table-light">
+              <tr><th>Czas</th><th>Sev</th><th>Program</th><th>Wiadomość</th></tr>
+            </thead>
+            <tbody>
+              {% for row in syslog_rows %}
+              <tr class="{% if row.severity <= 3 %}table-danger{% elif row.severity == 4 %}table-warning{% endif %}">
+                <td class="text-muted small text-nowrap">{{ row.timestamp[:16] if row.timestamp else '—' }}</td>
+                <td class="small">
+                  {% set sev_names = ['EMERG','ALERT','CRIT','ERR','WARN','NOTICE','INFO','DEBUG'] %}
+                  {{ sev_names[row.severity] if row.severity is not none and row.severity < 8 else row.severity }}
+                </td>
+                <td class="small text-muted">{{ row.program or '—' }}</td>
+                <td class="small font-monospace" style="max-width:500px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                    title="{{ row.message or '' }}">
+                  {{ row.message or '—' }}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="text-muted small p-3 mb-0">Brak logów syslog dla tego urządzenia w ostatnich 48h.</p>
+          {% endif %}
+        </div>
+      </div>
+
+    </div>{# /col prawa #}
+  </div>{# /row #}
+</div>{# /container-fluid #}
+
+{% if ping_history %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  const raw = {{ ping_history | tojson }};
+  const labels  = raw.map(r => r.bucket ? r.bucket.substring(11, 16) : '');
+  const rttData = raw.map(r => r.avg_rtt_ms ?? null);
+  const upPct   = raw.map(r => r.uptime_pct ?? 0);
+
+  const ctx = document.getElementById('rttChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Avg RTT (ms)',
+          data: rttData,
+          backgroundColor: 'rgba(13,110,253,0.6)',
+          yAxisID: 'y',
+          order: 2,
+        },
+        {
+          label: 'Dostępność (%)',
+          data: upPct,
+          type: 'line',
+          borderColor: 'rgba(25,135,84,0.9)',
+          backgroundColor: 'transparent',
+          pointRadius: 0,
+          yAxisID: 'y2',
+          order: 1,
+        },
+      ],
+    },
+    options: {
+      animation: false,
+      plugins: { legend: { position: 'bottom' } },
+      scales: {
+        y:  { beginAtZero: true, title: { display: true, text: 'RTT ms' } },
+        y2: { min: 0, max: 100, position: 'right', grid: { drawOnChartArea: false },
+              title: { display: true, text: '%' } },
+        x:  { ticks: { maxTicksLimit: 12, maxRotation: 0 } },
+      },
+    },
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

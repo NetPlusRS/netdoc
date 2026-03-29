@@ -18,7 +18,7 @@ from datetime import datetime
 from prometheus_client import Gauge, start_http_server
 
 from netdoc.storage.database import SessionLocal, init_db
-from netdoc.storage.models import Device, Credential, CredentialMethod, DeviceType
+from netdoc.storage.models import Device, Credential, CredentialMethod, DeviceType, DeviceFieldHistory, InterfaceHistory
 
 logging.basicConfig(
     level=logging.INFO,
@@ -377,6 +377,29 @@ def _poll_device(device_id: int, ip: str, community: str,
         uptime   = _snmp_get(ip, community, OID_SYSUPTIME,   timeout=snmp_timeout)
         contact  = _snmp_get(ip, community, OID_SYSCONTACT,  timeout=snmp_timeout)
 
+        # Zmiana detekcja: porównaj bieżące wartości z nowym odczytem SNMP.
+        # Historia logowana gdy pole już było ustawione (old != None) i SNMP zwraca inną wartość.
+        # Samo update'owanie pola "tylko gdy puste" — zachowane dla compat z manualną edycją.
+        _new_vals = {
+            "hostname":    sysname,
+            "os_version":  sysdescr[:120] if sysdescr else None,
+            "location":    sysloc,
+            "sys_contact": contact.strip()[:255] if contact and contact.strip() else None,
+        }
+        for _field, _new in _new_vals.items():
+            if not _new:
+                continue
+            _old = getattr(device, _field)
+            if _old is not None and _old != _new:
+                db.add(DeviceFieldHistory(
+                    device_id=device_id,
+                    field_name=_field,
+                    old_value=str(_old),
+                    new_value=str(_new),
+                    source="snmp",
+                ))
+                logger.info("Field change %s [%s]: %r → %r", ip, _field, _old, _new)
+
         if sysname  and not device.hostname:   device.hostname   = sysname
         if sysdescr and not device.os_version: device.os_version = sysdescr[:120]
         if sysloc   and not device.location:   device.location   = sysloc
@@ -493,6 +516,137 @@ def _enrich_arp(ip: str, community: str, timeout: int = 2) -> list[dict]:
         if v.get("mac"):  # potrzebujemy MAC żeby nie śmiecić w DB
             result.append(v)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Interface walk — zbiera ifDescr, ifOperStatus, ifSpeed z ifTable
+# ---------------------------------------------------------------------------
+_IF_TABLE_OID    = "1.3.6.1.2.1.2.2.1"   # ifEntry
+_IF_DESCR_ID     = 2   # ifDescr
+_IF_OPERSTATUS_ID= 8   # ifOperStatus: 1=up, 2=down, 3=testing, ...
+_IF_SPEED_ID     = 5   # ifSpeed (bps)
+
+
+def _enrich_interfaces(ip: str, community: str, timeout: int = 2) -> list[dict]:
+    """Czyta ifTable przez SNMP walk — zwraca listę {name, oper_status, speed_bps}.
+
+    Ignoruje loopback (lo) i interfejsy bez nazwy.
+    """
+    from netdoc.collector.snmp_walk import snmp_walk
+
+    ifaces: dict[str, dict] = {}  # klucz: ifIndex (str)
+    try:
+        for oid_str, raw_val, _tag in snmp_walk(
+            ip, _IF_TABLE_OID, community=community, timeout=timeout, max_iter=1000
+        ):
+            suffix = oid_str[len(_IF_TABLE_OID):].lstrip(".")
+            parts = suffix.split(".", 1)
+            if len(parts) < 2:
+                continue
+            try:
+                field_id = int(parts[0])
+                if_index = parts[1]
+            except ValueError:
+                continue
+            entry = ifaces.setdefault(if_index, {"index": if_index})
+            if field_id == _IF_DESCR_ID:
+                try:
+                    entry["name"] = (
+                        raw_val.decode("utf-8", errors="replace")
+                        if isinstance(raw_val, (bytes, bytearray))
+                        else str(raw_val)
+                    ).strip()
+                except Exception:
+                    pass
+            elif field_id == _IF_OPERSTATUS_ID:
+                try:
+                    entry["oper_status"] = int(raw_val)
+                except (TypeError, ValueError):
+                    pass
+            elif field_id == _IF_SPEED_ID:
+                try:
+                    entry["speed_bps"] = int(raw_val)
+                except (TypeError, ValueError):
+                    pass
+    except Exception as exc:
+        logger.debug("IF walk %s: %s", ip, exc)
+        return []
+
+    result = []
+    for v in ifaces.values():
+        name = v.get("name", "")
+        if not name or name.lower() in ("lo", "loopback"):
+            continue
+        result.append({
+            "name":        name,
+            "oper_status": v.get("oper_status"),
+            "speed_bps":   v.get("speed_bps"),
+        })
+    return result
+
+
+def _save_interface_history(db, device_id: int, ifaces: list[dict]) -> int:
+    """Porównuje stan interfejsów z ostatnim wpisem w historii i zapisuje zmiany.
+
+    Model InterfaceHistory:
+      event_type: "discovered" | "up" | "down" | "speed_change"
+      old_speed:  poprzednia prędkość (bps), None przy "discovered"/"up"/"down"
+      new_speed:  nowa prędkość (bps), None przy "up"/"down"
+    Zwraca liczbę zapisanych wpisów.
+    """
+    saved = 0
+    for iface in ifaces:
+        name    = iface["name"]
+        new_st  = iface.get("oper_status")   # 1=up, 2=down, inne=unknown
+        new_spd = iface.get("speed_bps")
+
+        # Ostatni wpis per interfejs = aktualny znany stan
+        last = (
+            db.query(InterfaceHistory)
+            .filter(InterfaceHistory.device_id == device_id,
+                    InterfaceHistory.interface_name == name)
+            .order_by(InterfaceHistory.changed_at.desc())
+            .first()
+        )
+
+        if last is None:
+            # Pierwsze wykrycie — zapisz stan bazowy
+            db.add(InterfaceHistory(
+                device_id=device_id, interface_name=name,
+                event_type="discovered", old_speed=None, new_speed=new_spd,
+            ))
+            saved += 1
+            continue
+
+        # Odczytaj ostatni znany stan
+        last_status = "up" if last.event_type == "up" else (
+                      "down" if last.event_type == "down" else None)
+        last_spd    = last.new_speed  # new_speed = prędkość przy speed_change/discovered
+
+        # Sprawdź zmianę statusu operacyjnego
+        curr_status = "up" if new_st == 1 else ("down" if new_st == 2 else None)
+        if curr_status and curr_status != last_status and last_status is not None:
+            db.add(InterfaceHistory(
+                device_id=device_id, interface_name=name,
+                event_type=curr_status, old_speed=None, new_speed=None,
+            ))
+            saved += 1
+
+        # Sprawdź zmianę prędkości
+        if new_spd is not None and last_spd is not None and new_spd != last_spd:
+            db.add(InterfaceHistory(
+                device_id=device_id, interface_name=name,
+                event_type="speed_change", old_speed=last_spd, new_speed=new_spd,
+            ))
+            saved += 1
+
+    if saved:
+        try:
+            db.commit()
+        except Exception as exc:
+            logger.warning("interface_history commit error device_id=%s: %s", device_id, exc)
+            db.rollback()
+    return saved
 
 
 def _save_arp_devices(db, src_ip: str, entries: list[dict]) -> int:
@@ -656,6 +810,24 @@ def scan_once() -> None:
             db_arp.close()
         if arp_total:
             logger.info("ARP total new/updated devices: %d", arp_total)
+
+    # Interface walk — zbiera ifTable i zapisuje zmiany do interface_history
+    if_changed = 0
+    db_if = SessionLocal()
+    try:
+        for d in devices:
+            ifaces = _enrich_interfaces(d.ip, d.snmp_community, timeout=snmp_timeout)
+            if ifaces:
+                n = _save_interface_history(db_if, d.id, ifaces)
+                if n:
+                    if_changed += n
+                    logger.info("IF   %-18s: %d interface change(s)", d.ip, n)
+    except Exception as exc:
+        logger.warning("Interface walk error: %s", exc)
+    finally:
+        db_if.close()
+    if if_changed:
+        logger.info("Interface history total: %d new entries", if_changed)
 
 
 def _wait_for_schema(max_retries: int = 12, wait_s: int = 10) -> None:

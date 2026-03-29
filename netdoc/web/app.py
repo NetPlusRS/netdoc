@@ -1415,6 +1415,101 @@ def create_app():
             ai_last_by_device=ai_last_by_device,
         )
 
+    @app.route("/devices/<int:device_id>")
+    def device_detail(device_id):
+        """Strona szczegółów urządzenia: parametry, historia pingów, zmiany pól, interfejsy, syslog."""
+        from netdoc.storage.models import (
+            DeviceFieldHistory, InterfaceHistory, Interface, ScanResult,
+            Vulnerability, TopologyLink,
+        )
+        from netdoc.storage.clickhouse import query_ping_history, query_ping_stats, query_syslog
+        db = SessionLocal()
+        try:
+            dev = db.query(Device).filter(Device.id == device_id).first()
+            if not dev:
+                flash("Urządzenie nie znalezione.", "danger")
+                return redirect(url_for("devices"))
+
+            # Interfejsy bieżące (z modelu Interface)
+            interfaces = (
+                db.query(Interface)
+                .filter(Interface.device_id == device_id)
+                .order_by(Interface.name)
+                .all()
+            )
+
+            # Ostatni wynik skanu (porty otwarte)
+            latest_scan = (
+                db.query(ScanResult)
+                .filter(ScanResult.device_id == device_id)
+                .order_by(ScanResult.scan_time.desc())
+                .first()
+            )
+
+            # Podatności (aktywne)
+            vulns = (
+                db.query(Vulnerability)
+                .filter(Vulnerability.device_id == device_id, Vulnerability.is_open == True)
+                .order_by(Vulnerability.severity, Vulnerability.title)
+                .all()
+            )
+
+            # Sąsiedzi LLDP/CDP (topologia) — gdzie src lub dst = to urządzenie
+            topo_links = (
+                db.query(TopologyLink)
+                .filter(
+                    (TopologyLink.src_device_id == device_id) |
+                    (TopologyLink.dst_device_id == device_id)
+                )
+                .order_by(TopologyLink.last_seen.desc())
+                .limit(30)
+                .all()
+            )
+
+            field_history = (
+                db.query(DeviceFieldHistory)
+                .filter(DeviceFieldHistory.device_id == device_id)
+                .order_by(DeviceFieldHistory.changed_at.desc())
+                .limit(50)
+                .all()
+            )
+            iface_history = (
+                db.query(InterfaceHistory)
+                .filter(InterfaceHistory.device_id == device_id)
+                .order_by(InterfaceHistory.changed_at.desc())
+                .limit(100)
+                .all()
+            )
+
+            ping_history = []
+            ping_stats   = {}
+            syslog_rows  = []
+            try:
+                ping_history = query_ping_history(ip=str(dev.ip), since_hours=24, step_minutes=5)
+                ping_stats   = query_ping_stats(ip=str(dev.ip), since_hours=24)
+            except Exception:
+                pass
+            try:
+                syslog_rows = query_syslog(src_ip=str(dev.ip), since_hours=48, limit=15)
+            except Exception:
+                pass
+
+            return render_template(
+                "device_detail.html",
+                dev=dev,
+                interfaces=interfaces,
+                latest_scan=latest_scan,
+                vulns=vulns,
+                topo_links=topo_links,
+                field_history=field_history,
+                iface_history=iface_history,
+                ping_history=ping_history,
+                ping_stats=ping_stats,
+                syslog_rows=syslog_rows,
+            )
+        finally:
+            db.close()
+
     @app.route("/devices/<int:device_id>/reclassify", methods=["POST"])
     def device_reclassify(device_id):
         data, err = _api("post", f"/api/devices/{device_id}/reclassify")

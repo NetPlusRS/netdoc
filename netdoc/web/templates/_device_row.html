@@ -45,7 +45,9 @@
                  title="Address type unknown — click ⋮ → Set IP type"></i>
             {% endif %}
           </td>
-          <td>{{ d.hostname or "—" }}</td>
+          <td>
+            <a href="/devices/{{ d.id }}" class="text-decoration-none text-body">{{ d.hostname or "—" }}</a>
+          </td>
           <td>
             {%- set _dt = d.device_type.value if d.device_type else "unknown" -%}
             {%- set _dt_icon = {
@@ -441,6 +443,12 @@
                 <i class="bi bi-three-dots-vertical"></i>
               </button>
               <ul class="dropdown-menu dropdown-menu-end">
+                <li>
+                  <a class="dropdown-item" href="/devices/{{ d.id }}">
+                    <i class="bi bi-clock-history me-2 text-primary"></i>History / Details
+                  </a>
+                </li>
+                <li><hr class="dropdown-divider"></li>
                 <li>
                   <form method="post" action="/devices/{{ d.id }}/reclassify">
                     <button class="dropdown-item" type="submit">

@@ -135,6 +135,98 @@ def set_syslog_retention_days(days: int) -> None:
     logger.info("Syslog TTL zmieniony na %d dni", days)
 
 
+def insert_ping_batch(rows: list[tuple]) -> None:
+    """Wstawia batch wyników pingów do device_ping.
+
+    rows: lista krotek (ts: datetime, ip: str, rtt_ms: float, is_up: int)
+    Wywołuj co cykl ping-workera (nie per każdy ping — batch!).
+    """
+    if not rows:
+        return
+    try:
+        _get_client().insert(
+            "netdoc_logs.device_ping",
+            rows,
+            column_names=["ts", "ip", "rtt_ms", "is_up"],
+        )
+    except Exception as exc:
+        logger.warning("insert_ping_batch failed (%d rows): %s", len(rows), exc)
+
+
+def query_ping_history(
+    ip: str | None = None,
+    device_id: int | None = None,
+    since_hours: int = 24,
+    step_minutes: int = 5,
+) -> list[dict]:
+    """Zwraca zagregowaną historię pingów (avg RTT, % dostępności) per okno czasowe.
+
+    step_minutes: granularność agregacji (domyślnie 5 min)
+    Zwraca listę słowników: {bucket, avg_rtt_ms, uptime_pct, total}
+    """
+    where = ["ts >= now() - INTERVAL {since_hours:UInt32} HOUR"]
+    params: dict = {"since_hours": since_hours, "step": step_minutes * 60}
+    if ip:
+        where.append("ip = {ip:String}")
+        params["ip"] = ip
+    elif device_id is not None:
+        where.append("device_id = {device_id:UInt32}")
+        params["device_id"] = device_id
+
+    sql = (
+        "SELECT"
+        "  toStartOfInterval(ts, toIntervalSecond({step:UInt32})) AS bucket,"
+        "  round(avgIf(rtt_ms, is_up = 1), 2)                     AS avg_rtt_ms,"
+        "  round(100.0 * countIf(is_up = 1) / count(), 1)         AS uptime_pct,"
+        "  count()                                                  AS total"
+        " FROM netdoc_logs.device_ping"
+        " WHERE " + " AND ".join(where) +
+        " GROUP BY bucket ORDER BY bucket"
+    )
+    try:
+        result = _get_client().query(sql, parameters=params)
+        cols = result.column_names
+        return [dict(zip(cols, row)) for row in result.result_rows]
+    except Exception as exc:
+        logger.warning("query_ping_history failed: %s", exc)
+        return []
+
+
+def query_ping_stats(
+    ip: str | None = None,
+    device_id: int | None = None,
+    since_hours: int = 24,
+) -> dict:
+    """Zwraca statystyki pingów: avg/min/max RTT, uptime%, liczba pomiarów."""
+    where = ["ts >= now() - INTERVAL {since_hours:UInt32} HOUR"]
+    params: dict = {"since_hours": since_hours}
+    if ip:
+        where.append("ip = {ip:String}")
+        params["ip"] = ip
+    elif device_id is not None:
+        where.append("device_id = {device_id:UInt32}")
+        params["device_id"] = device_id
+
+    sql = (
+        "SELECT"
+        "  round(avgIf(rtt_ms, is_up=1), 2)    AS avg_rtt_ms,"
+        "  round(minIf(rtt_ms, is_up=1), 2)    AS min_rtt_ms,"
+        "  round(maxIf(rtt_ms, is_up=1), 2)    AS max_rtt_ms,"
+        "  round(100.0*countIf(is_up=1)/count(),1) AS uptime_pct,"
+        "  count()                              AS total"
+        " FROM netdoc_logs.device_ping"
+        " WHERE " + " AND ".join(where)
+    )
+    try:
+        result = _get_client().query(sql, parameters=params)
+        if result.result_rows:
+            cols = result.column_names
+            return dict(zip(cols, result.result_rows[0]))
+    except Exception as exc:
+        logger.warning("query_ping_stats failed: %s", exc)
+    return {"avg_rtt_ms": None, "min_rtt_ms": None, "max_rtt_ms": None, "uptime_pct": None, "total": 0}
+
+
 def count_syslog_by_severity(device_id: int, since_hours: int = 24) -> dict[int, int]:
     """Zlicza logi per severity dla jednego urządzenia (do badge'ów w UI)."""
     sql = (

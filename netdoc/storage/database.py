@@ -112,6 +112,28 @@ def _migrate_columns() -> None:
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS sys_contact VARCHAR(255)",
         # SNMP sysUpTime — dedykowana kolumna, nie zapisujemy do asset_notes (2026-03-29)
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS snmp_uptime VARCHAR(64)",
+        # Historia zmian pól urządzenia (2026-03-29)
+        """CREATE TABLE IF NOT EXISTS device_field_history (
+            id         SERIAL PRIMARY KEY,
+            device_id  INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+            field_name VARCHAR(50) NOT NULL,
+            old_value  TEXT,
+            new_value  TEXT,
+            changed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            source     VARCHAR(20) NOT NULL DEFAULT 'snmp'
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_dfh_device_changed ON device_field_history (device_id, changed_at)",
+        # Historia zmian interfejsów (2026-03-29)
+        """CREATE TABLE IF NOT EXISTS interface_history (
+            id             SERIAL PRIMARY KEY,
+            device_id      INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+            interface_name VARCHAR(100) NOT NULL,
+            event_type     VARCHAR(20) NOT NULL,
+            old_speed      INTEGER,
+            new_speed      INTEGER,
+            changed_at     TIMESTAMP NOT NULL DEFAULT NOW()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_ifh_device_changed ON interface_history (device_id, changed_at)",
         # Ping worker — czas ostatniego udanego pingu (2026-03-24)
         # Oddzielony od last_seen (ktory jest odswiezany przez discovery/ARP),
         # pozwala na prawidlowe oznaczanie DOWN nawet gdy discovery falszywie odswierza last_seen.
