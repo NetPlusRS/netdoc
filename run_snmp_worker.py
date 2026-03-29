@@ -377,9 +377,9 @@ def _poll_device(device_id: int, ip: str, community: str,
         uptime   = _snmp_get(ip, community, OID_SYSUPTIME,   timeout=snmp_timeout)
         contact  = _snmp_get(ip, community, OID_SYSCONTACT,  timeout=snmp_timeout)
 
-        # Zmiana detekcja: porównaj bieżące wartości z nowym odczytem SNMP.
-        # Historia logowana gdy pole już było ustawione (old != None) i SNMP zwraca inną wartość.
-        # Samo update'owanie pola "tylko gdy puste" — zachowane dla compat z manualną edycją.
+        # Change detection + update: SNMP is authoritative over nmap fingerprinting.
+        # Always update fields with SNMP values so nmap guesses don't persist.
+        # History logged only when the value actually changes (old != new).
         _new_vals = {
             "hostname":    sysname,
             "os_version":  sysdescr[:120] if sysdescr else None,
@@ -399,11 +399,8 @@ def _poll_device(device_id: int, ip: str, community: str,
                     source="snmp",
                 ))
                 logger.info("Field change %s [%s]: %r → %r", ip, _field, _old, _new)
-
-        if sysname  and not device.hostname:   device.hostname   = sysname
-        if sysdescr and not device.os_version: device.os_version = sysdescr[:120]
-        if sysloc   and not device.location:   device.location   = sysloc
-        if contact and contact.strip() and not device.sys_contact: device.sys_contact = contact.strip()[:255]
+            # Always write SNMP value (overrides nmap OS fingerprint)
+            setattr(device, _field, _new)
 
         # sysUpTime — zapisuj do dedykowanej kolumny; wyczyść stary tag z asset_notes
         if uptime is not None:

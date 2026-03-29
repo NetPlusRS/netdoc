@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ dev.hostname or dev.ip }} — Szczegóły{% endblock %}
+{% block title %}{{ dev.hostname or dev.ip }} — Device Detail{% endblock %}
 
 {% block head %}
 <style>
@@ -21,7 +21,7 @@
 
   {# ── Header ─────────────────────────────────────────────────────────── #}
   <div class="d-flex align-items-center gap-2 mb-4 flex-wrap">
-    <a href="{{ url_for('devices') }}" class="btn btn-sm btn-outline-secondary">← Urządzenia</a>
+    <a href="{{ url_for('devices') }}" class="btn btn-sm btn-outline-secondary">← Devices</a>
     <h4 class="mb-0">
       {{ dev.hostname or dev.ip }}
       {% if dev.hostname and dev.ip %}<small class="text-muted fw-normal"> ({{ dev.ip }})</small>{% endif %}
@@ -36,23 +36,23 @@
     <span class="badge" style="background:{{ dev.flag_color }}">&#9873;</span>
     {% endif %}
     {% if dev.is_trusted %}
-    <span class="badge bg-info text-dark">&#10003; Zaufane</span>
+    <span class="badge bg-info text-dark">&#10003; Trusted</span>
     {% endif %}
     {% if dev.is_monitored %}
-    <span class="badge bg-warning text-dark">&#128065; Monitorowane</span>
+    <span class="badge bg-warning text-dark">&#128065; Monitored</span>
     {% endif %}
   </div>
 
   <div class="row g-3">
 
     {# ══════════════════════════════════════════════════════════════════════
-       KOLUMNA LEWA — parametry urządzenia
+       LEFT COLUMN — device parameters
     ══════════════════════════════════════════════════════════════════════ #}
     <div class="col-12 col-xl-4">
 
-      {# ── Sieć ─────────────────────────────────────────────────────────── #}
+      {# ── Network ─────────────────────────────────────────────────────────── #}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">Sieć</div>
+        <div class="card-header fw-semibold py-2">Network</div>
         <div class="card-body p-0">
           <table class="table table-sm mb-0 param-table">
             <tr><td>IP</td><td><code>{{ dev.ip }}</code>
@@ -63,41 +63,41 @@
             <tr><td>MAC</td><td>
               {% if dev.mac %}<code>{{ dev.mac }}</code>{% else %}<span class="text-muted">—</span>{% endif %}
             </td></tr>
-            <tr><td>Producent (OUI)</td><td>
+            <tr><td>Vendor (OUI)</td><td>
               {{ dev.vendor or '<span class="text-muted">—</span>' | safe }}
             </td></tr>
           </table>
         </div>
       </div>
 
-      {# ── Tożsamość ─────────────────────────────────────────────────────── #}
+      {# ── Identity ─────────────────────────────────────────────────────── #}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">Tożsamość</div>
+        <div class="card-header fw-semibold py-2">Identity</div>
         <div class="card-body p-0">
           <table class="table table-sm mb-0 param-table">
             <tr><td>Hostname</td><td>{{ dev.hostname or '<span class="text-muted">—</span>' | safe }}</td></tr>
             <tr><td>Model</td><td>{{ dev.model or '<span class="text-muted">—</span>' | safe }}</td></tr>
-            <tr><td>Typ urządzenia</td><td>{{ dev.device_type.value if dev.device_type else '—' }}</td></tr>
-            <tr><td>OS / Opis SNMP</td><td>
+            <tr><td>Device type</td><td>{{ dev.device_type.value if dev.device_type else '—' }}</td></tr>
+            <tr><td>OS / SNMP sysDescr</td><td>
               {% if dev.os_version %}
               <span title="{{ dev.os_version }}">{{ dev.os_version[:80] }}{% if dev.os_version|length > 80 %}…{% endif %}</span>
               {% else %}<span class="text-muted">—</span>{% endif %}
             </td></tr>
-            <tr><td>Numer seryjny</td><td>{{ dev.serial_number or '<span class="text-muted">—</span>' | safe }}</td></tr>
+            <tr><td>Serial number</td><td>{{ dev.serial_number or '<span class="text-muted">—</span>' | safe }}</td></tr>
           </table>
         </div>
       </div>
 
-      {# ── Lokalizacja / Kontakt ──────────────────────────────────────────── #}
+      {# ── Location / Contact ──────────────────────────────────────────── #}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">Lokalizacja / Kontakt</div>
+        <div class="card-header fw-semibold py-2">Location / Contact</div>
         <div class="card-body p-0">
           <table class="table table-sm mb-0 param-table">
-            <tr><td>Lokalizacja</td><td>{{ dev.location or '<span class="text-muted">—</span>' | safe }}</td></tr>
-            <tr><td>Site / Oddział</td><td>{{ dev.site_id or '<span class="text-muted">—</span>' | safe }}</td></tr>
-            <tr><td>Dział</td><td>{{ dev.owner_dept or '<span class="text-muted">—</span>' | safe }}</td></tr>
+            <tr><td>Location</td><td>{{ dev.location or '<span class="text-muted">—</span>' | safe }}</td></tr>
+            <tr><td>Site</td><td>{{ dev.site_id or '<span class="text-muted">—</span>' | safe }}</td></tr>
+            <tr><td>Department</td><td>{{ dev.owner_dept or '<span class="text-muted">—</span>' | safe }}</td></tr>
             <tr><td>sysContact</td><td>{{ dev.sys_contact or '<span class="text-muted">—</span>' | safe }}</td></tr>
-            <tr><td>Osoba odpow.</td><td>{{ dev.responsible_person or '<span class="text-muted">—</span>' | safe }}</td></tr>
+            <tr><td>Responsible</td><td>{{ dev.responsible_person or '<span class="text-muted">—</span>' | safe }}</td></tr>
           </table>
         </div>
       </div>
@@ -113,7 +113,7 @@
               {% else %}<span class="text-muted">—</span>{% endif %}
             </td></tr>
             <tr><td>Uptime</td><td>{{ dev.snmp_uptime or '<span class="text-muted">—</span>' | safe }}</td></tr>
-            <tr><td>Ostatni SNMP OK</td><td>
+            <tr><td>Last SNMP OK</td><td>
               {% if dev.snmp_ok_at %}{{ dev.snmp_ok_at.strftime('%Y-%m-%d %H:%M') }}
               {% else %}<span class="text-muted">—</span>{% endif %}
             </td></tr>
@@ -129,7 +129,7 @@
           <table class="table table-sm mb-0 param-table">
             {% if broadcast_info.total_pkts %}
             <tr>
-              <td>Pakiety (sesja)</td>
+              <td>Packets (session)</td>
               <td class="fw-bold">{{ broadcast_info.total_pkts }}
                 {% if broadcast_info.total_bytes %}
                 <span class="text-muted fw-normal">/ {{ broadcast_info.total_bytes }} B</span>
@@ -138,11 +138,11 @@
             </tr>
             {% endif %}
             {% if broadcast_info.top_proto %}
-            <tr><td>Dominujący protokół</td><td><span class="badge bg-primary">{{ broadcast_info.top_proto }}</span></td></tr>
+            <tr><td>Top protocol</td><td><span class="badge bg-primary">{{ broadcast_info.top_proto }}</span></td></tr>
             {% endif %}
             {% if broadcast_info.protocols %}
             <tr>
-              <td>Protokoły</td>
+              <td>Protocols</td>
               <td>
                 {% for proto, stats in broadcast_info.protocols.items() %}
                 <div class="d-flex justify-content-between small">
@@ -155,7 +155,7 @@
             {% endif %}
             {% if broadcast_info.svc %}
             <tr>
-              <td>Usługi (svc)</td>
+              <td>Services</td>
               <td>
                 {% for svc in broadcast_info.svc.split(',') %}
                 <span class="badge bg-info text-dark me-1">{{ svc }}</span>
@@ -179,34 +179,34 @@
       </div>
       {% endif %}
 
-      {# ── Status / Widoczność ────────────────────────────────────────────── #}
+      {# ── Status ────────────────────────────────────────────────────────── #}
       <div class="card mb-3">
         <div class="card-header fw-semibold py-2">Status</div>
         <div class="card-body p-0">
           <table class="table table-sm mb-0 param-table">
-            <tr><td>Pierwszy raz widziany</td><td>
+            <tr><td>First seen</td><td>
               {% if dev.first_seen %}{{ dev.first_seen.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}
             </td></tr>
-            <tr><td>Ostatnio widziany</td><td>
+            <tr><td>Last seen</td><td>
               {% if dev.last_seen %}{{ dev.last_seen.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}
             </td></tr>
-            <tr><td>Ostatni ping OK</td><td>
+            <tr><td>Last ping OK</td><td>
               {% if dev.last_ping_ok_at %}{{ dev.last_ping_ok_at.strftime('%Y-%m-%d %H:%M') }}
               {% else %}<span class="text-muted">—</span>{% endif %}
             </td></tr>
-            <tr><td>Ostatni kredencjał OK</td><td>
+            <tr><td>Last credential OK</td><td>
               {% if dev.last_credential_ok_at %}{{ dev.last_credential_ok_at.strftime('%Y-%m-%d %H:%M') }}
               {% else %}<span class="text-muted">—</span>{% endif %}
             </td></tr>
-            <tr><td>Zaufane</td><td>
-              {% if dev.is_trusted %}<span class="text-success">Tak</span>
+            <tr><td>Trusted</td><td>
+              {% if dev.is_trusted %}<span class="text-success">Yes</span>
                 {% if dev.trust_category %}<span class="text-muted"> ({{ dev.trust_category }})</span>{% endif %}
                 {% if dev.trust_note %}<br><small class="text-muted">{{ dev.trust_note }}</small>{% endif %}
-              {% else %}<span class="text-muted">Nie</span>{% endif %}
+              {% else %}<span class="text-muted">No</span>{% endif %}
             </td></tr>
             {% if dev.is_monitored %}
-            <tr><td>Monitorowane</td><td>
-              <span class="text-warning">Tak</span>
+            <tr><td>Monitored</td><td>
+              <span class="text-warning">Yes</span>
               {% if dev.monitor_note %}<br><small class="text-muted">{{ dev.monitor_note }}</small>{% endif %}
             </td></tr>
             {% endif %}
@@ -214,15 +214,15 @@
         </div>
       </div>
 
-      {# ── Inwentarz (asset) ─────────────────────────────────────────────── #}
+      {# ── Inventory ─────────────────────────────────────────────────────── #}
       {% if dev.asset_tag or dev.purchase_date or dev.purchase_vendor %}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">Inwentarz</div>
+        <div class="card-header fw-semibold py-2">Inventory</div>
         <div class="card-body p-0">
           <table class="table table-sm mb-0 param-table">
-            {% if dev.asset_tag %}<tr><td>Tag środka trwałego</td><td>{{ dev.asset_tag }}</td></tr>{% endif %}
-            {% if dev.purchase_vendor %}<tr><td>Dostawca</td><td>{{ dev.purchase_vendor }}</td></tr>{% endif %}
-            {% if dev.purchase_date %}<tr><td>Data zakupu</td><td>{{ dev.purchase_date.strftime('%Y-%m-%d') }}</td></tr>{% endif %}
+            {% if dev.asset_tag %}<tr><td>Asset tag</td><td>{{ dev.asset_tag }}</td></tr>{% endif %}
+            {% if dev.purchase_vendor %}<tr><td>Supplier</td><td>{{ dev.purchase_vendor }}</td></tr>{% endif %}
+            {% if dev.purchase_date %}<tr><td>Purchase date</td><td>{{ dev.purchase_date.strftime('%Y-%m-%d') }}</td></tr>{% endif %}
           </table>
         </div>
       </div>
@@ -230,17 +230,17 @@
 
       {% if dev.asset_notes %}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">Notatki</div>
+        <div class="card-header fw-semibold py-2">Notes</div>
         <div class="card-body">
           <pre class="mb-0 small" style="white-space:pre-wrap">{{ dev.asset_notes }}</pre>
         </div>
       </div>
       {% endif %}
 
-    </div>{# /col lewa #}
+    </div>{# /col left #}
 
     {# ══════════════════════════════════════════════════════════════════════
-       KOLUMNA PRAWA — statystyki, historia, syslog
+       RIGHT COLUMN — stats, history, syslog
     ══════════════════════════════════════════════════════════════════════ #}
     <div class="col-12 col-xl-8">
 
@@ -248,50 +248,50 @@
       <div class="row g-3 mb-3">
         <div class="col-12 col-lg-4">
           <div class="card h-100">
-            <div class="card-header fw-semibold py-2">Ping (ostatnie 24h)</div>
+            <div class="card-header fw-semibold py-2">Ping (last 24h)</div>
             <div class="card-body p-0">
               {% if ping_stats and ping_stats.total %}
               <table class="table table-sm mb-0 param-table">
-                <tr><td>Dostępność</td><td class="fw-bold">{{ ping_stats.uptime_pct }}%</td></tr>
-                <tr><td>RTT śr.</td><td>{{ ping_stats.avg_rtt_ms }} ms</td></tr>
+                <tr><td>Availability</td><td class="fw-bold">{{ ping_stats.uptime_pct }}%</td></tr>
+                <tr><td>RTT avg</td><td>{{ ping_stats.avg_rtt_ms }} ms</td></tr>
                 <tr><td>RTT min</td><td>{{ ping_stats.min_rtt_ms }} ms</td></tr>
                 <tr><td>RTT max</td><td>{{ ping_stats.max_rtt_ms }} ms</td></tr>
-                <tr><td>Pomiarów</td><td>{{ ping_stats.total }}</td></tr>
+                <tr><td>Samples</td><td>{{ ping_stats.total }}</td></tr>
               </table>
               {% else %}
-              <p class="text-muted small p-3 mb-0">Brak danych ping (ClickHouse niedostępny lub brak pomiarów).</p>
+              <p class="text-muted small p-3 mb-0">No ping data (ClickHouse unavailable or no measurements).</p>
               {% endif %}
             </div>
           </div>
         </div>
         <div class="col-12 col-lg-8">
           <div class="card h-100">
-            <div class="card-header fw-semibold py-2">Historia RTT (24h, co 5 min)</div>
+            <div class="card-header fw-semibold py-2">RTT history (24h, 5 min buckets)</div>
             <div class="card-body p-2">
               {% if ping_history %}
               <canvas id="rttChart"></canvas>
               {% else %}
-              <p class="text-muted small p-2 mb-0">Brak danych historii RTT.</p>
+              <p class="text-muted small p-2 mb-0">No RTT history data.</p>
               {% endif %}
             </div>
           </div>
         </div>
       </div>
 
-      {# ── Interfejsy bieżące ──────────────────────────────────────────── #}
+      {# ── Interfaces ──────────────────────────────────────────────────── #}
       {% if interfaces %}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">Interfejsy <span class="badge bg-secondary">{{ interfaces|length }}</span></div>
+        <div class="card-header fw-semibold py-2">Interfaces <span class="badge bg-secondary">{{ interfaces|length }}</span></div>
         <div class="card-body p-0">
           <table class="table table-sm table-hover mb-0">
             <thead class="table-light">
               <tr>
-                <th>Nazwa</th>
+                <th>Name</th>
                 <th>Status</th>
-                <th>Prędkość</th>
+                <th>Speed</th>
                 <th>MAC</th>
                 <th>IP</th>
-                <th>Opis</th>
+                <th>Description</th>
               </tr>
             </thead>
             <tbody>
@@ -322,17 +322,17 @@
       </div>
       {% endif %}
 
-      {# ── Otwarte porty / ostatni skan ─────────────────────────────────── #}
+      {# ── Open ports ───────────────────────────────────────────────────── #}
       {% if latest_scan and latest_scan.open_ports %}
       <div class="card mb-3">
         <div class="card-header fw-semibold py-2">
-          Otwarte porty <span class="badge bg-secondary">{{ latest_scan.open_ports | length }}</span>
-          <small class="text-muted fw-normal ms-2">skan {{ latest_scan.scan_time.strftime('%Y-%m-%d %H:%M') }}</small>
+          Open ports <span class="badge bg-secondary">{{ latest_scan.open_ports | length }}</span>
+          <small class="text-muted fw-normal ms-2">scan {{ latest_scan.scan_time.strftime('%Y-%m-%d %H:%M') }}</small>
         </div>
         <div class="card-body p-0">
           <table class="table table-sm mb-0">
             <thead class="table-light">
-              <tr><th>Port</th><th>Usługa</th><th>Produkt / Banner</th></tr>
+              <tr><th>Port</th><th>Service</th><th>Product / Banner</th></tr>
             </thead>
             <tbody>
               {% for port_num, info in latest_scan.open_ports.items() | sort %}
@@ -358,16 +358,16 @@
       </div>
       {% endif %}
 
-      {# ── Podatności ────────────────────────────────────────────────────── #}
+      {# ── Vulnerabilities ──────────────────────────────────────────────── #}
       {% if vulns %}
       <div class="card mb-3">
         <div class="card-header fw-semibold py-2">
-          Podatności aktywne <span class="badge bg-danger">{{ vulns|length }}</span>
+          Active vulnerabilities <span class="badge bg-danger">{{ vulns|length }}</span>
         </div>
         <div class="card-body p-0">
           <table class="table table-sm mb-0">
             <thead class="table-light">
-              <tr><th>Severity</th><th>Tytuł</th><th>Port</th><th>Wykryto</th></tr>
+              <tr><th>Severity</th><th>Title</th><th>Port</th><th>Detected</th></tr>
             </thead>
             <tbody>
               {% for v in vulns %}
@@ -384,14 +384,14 @@
       </div>
       {% endif %}
 
-      {# ── Sąsiedzi LLDP/CDP ─────────────────────────────────────────────── #}
+      {# ── Topology neighbors (LLDP/CDP) ────────────────────────────────── #}
       {% if topo_links %}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">Sąsiedzi topologii (LLDP/CDP)</div>
+        <div class="card-header fw-semibold py-2">Topology neighbors (LLDP/CDP)</div>
         <div class="card-body p-0">
           <table class="table table-sm table-hover mb-0">
             <thead class="table-light">
-              <tr><th>Protokół</th><th>Sąsiad</th><th>Port lokalny</th><th>Port zdalny</th><th>Ostatnio</th></tr>
+              <tr><th>Protocol</th><th>Neighbor</th><th>Local port</th><th>Remote port</th><th>Last seen</th></tr>
             </thead>
             <tbody>
               {% for link in topo_links %}
@@ -417,12 +417,12 @@
       </div>
       {% endif %}
 
-      {# ── Historia zmian pól ──────────────────────────────────────────── #}
+      {# ── Field change history ─────────────────────────────────────────── #}
       <div class="card mb-3">
         <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center collapsible-header"
              data-bs-toggle="collapse" data-bs-target="#collapseFieldHistory"
              aria-expanded="true" aria-controls="collapseFieldHistory">
-          <span>Historia zmian pól (SNMP)
+          <span>Field change history (SNMP)
             {% if field_history %}<span class="badge bg-secondary ms-1">{{ field_history | length }}</span>{% endif %}
           </span>
           <i class="bi bi-chevron-up collapse-icon"></i>
@@ -432,7 +432,7 @@
             {% if field_history %}
             <table class="table table-sm table-hover mb-0">
               <thead class="table-light">
-                <tr><th>Czas</th><th>Pole</th><th>Stara wartość</th><th>Nowa wartość</th></tr>
+                <tr><th>Time</th><th>Field</th><th>Old value</th><th>New value</th></tr>
               </thead>
               <tbody>
                 {% for h in field_history %}
@@ -446,18 +446,18 @@
               </tbody>
             </table>
             {% else %}
-            <p class="text-muted small p-3 mb-0">Brak zapisanych zmian pól.</p>
+            <p class="text-muted small p-3 mb-0">No field changes recorded.</p>
             {% endif %}
           </div>
         </div>
       </div>
 
-      {# ── Historia interfejsów ────────────────────────────────────────── #}
+      {# ── Interface history ────────────────────────────────────────────── #}
       <div class="card mb-3">
         <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center collapsible-header"
              data-bs-toggle="collapse" data-bs-target="#collapseIfaceHistory"
              aria-expanded="true" aria-controls="collapseIfaceHistory">
-          <span>Historia interfejsów (SNMP walk)
+          <span>Interface history (SNMP walk)
             {% if iface_history %}<span class="badge bg-secondary ms-1">{{ iface_history | length }}</span>{% endif %}
           </span>
           <i class="bi bi-chevron-up collapse-icon"></i>
@@ -467,7 +467,7 @@
             {% if iface_history %}
             <table class="table table-sm table-hover mb-0">
               <thead class="table-light">
-                <tr><th>Czas</th><th>Interfejs</th><th>Zdarzenie</th><th>Prędkość</th></tr>
+                <tr><th>Time</th><th>Interface</th><th>Event</th><th>Speed</th></tr>
               </thead>
               <tbody>
                 {% for h in iface_history %}
@@ -478,7 +478,7 @@
                     {% if h.event_type == 'up' %}<span class="badge bg-success">UP</span>
                     {% elif h.event_type == 'down' %}<span class="badge bg-danger">DOWN</span>
                     {% elif h.event_type == 'speed_change' %}<span class="badge bg-warning text-dark">speed change</span>
-                    {% elif h.event_type == 'discovered' %}<span class="badge bg-secondary">odkryty</span>
+                    {% elif h.event_type == 'discovered' %}<span class="badge bg-secondary">discovered</span>
                     {% else %}<span class="badge bg-secondary">{{ h.event_type }}</span>{% endif %}
                   </td>
                   <td class="small">
@@ -494,22 +494,22 @@
               </tbody>
             </table>
             {% else %}
-            <p class="text-muted small p-3 mb-0">Brak historii interfejsów (wymaga SNMP walk).</p>
+            <p class="text-muted small p-3 mb-0">No interface history (requires SNMP walk).</p>
             {% endif %}
           </div>
         </div>
       </div>
 
-    </div>{# /col prawa #}
+    </div>{# /col right #}
   </div>{# /row #}
 
-  {# ── Ostatnie logi syslog — pełna szerokość ─────────────────────────── #}
+  {# ── Syslog — full width ──────────────────────────────────────────────── #}
   <div class="card mb-3">
     <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center">
-      <span>Ostatnie logi syslog (48h)
+      <span>Recent syslog (48h)
         {% if syslog_rows %}<span class="badge bg-secondary ms-1">{{ syslog_rows | length }}</span>{% endif %}
       </span>
-      <a href="{{ url_for('syslog') }}?src_ip={{ dev.ip }}" class="btn btn-sm btn-outline-secondary">Pełny syslog →</a>
+      <a href="{{ url_for('syslog') }}?src_ip={{ dev.ip }}" class="btn btn-sm btn-outline-secondary">Full syslog →</a>
     </div>
     <div class="card-body p-0">
       {% if syslog_rows %}
@@ -517,10 +517,10 @@
         <table class="table table-sm table-hover mb-0">
           <thead class="table-light">
             <tr>
-              <th class="text-nowrap">Czas</th>
+              <th class="text-nowrap">Time</th>
               <th>Sev</th>
               <th>Program</th>
-              <th>Wiadomość</th>
+              <th>Message</th>
             </tr>
           </thead>
           <tbody>
@@ -549,7 +549,7 @@
         </table>
       </div>
       {% else %}
-      <p class="text-muted small p-3 mb-0">Brak logów syslog dla tego urządzenia w ostatnich 48h.</p>
+      <p class="text-muted small p-3 mb-0">No syslog entries for this device in the last 48h.</p>
       {% endif %}
     </div>
   </div>
@@ -579,7 +579,7 @@
           order: 2,
         },
         {
-          label: 'Dostępność (%)',
+          label: 'Availability (%)',
           data: upPct,
           type: 'line',
           borderColor: 'rgba(25,135,84,0.9)',
