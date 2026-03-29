@@ -1778,8 +1778,9 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
           }
 
           // Inicjalizuj popovers — BUG-GUI7: sanitize:false wymagane dla data-* atrybutów
+          // Trigger czytamy z data-bs-trigger atrybutu (nie hardcode) — link w MAC musi zachować hover-only
           newRow.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
-            new bootstrap.Popover(el, { trigger: 'hover focus', html: true, sanitize: false });
+            new bootstrap.Popover(el, { trigger: el.dataset.bsTrigger || 'hover focus', html: true, sanitize: false });
           });
           // Konwertuj UTC timestamps na czas lokalny przegladarki
           if (window._convertUtcTs) window._convertUtcTs(newRow);
