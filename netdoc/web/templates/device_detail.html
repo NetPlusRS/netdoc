@@ -265,18 +265,34 @@
       {% if latest_scan and latest_scan.open_ports %}
       <div class="card mb-3">
         <div class="card-header fw-semibold py-2">
-          Otwarte porty
+          Otwarte porty <span class="badge bg-secondary">{{ latest_scan.open_ports | length }}</span>
           <small class="text-muted fw-normal ms-2">skan {{ latest_scan.scan_time.strftime('%Y-%m-%d %H:%M') }}</small>
         </div>
-        <div class="card-body">
-          <div class="d-flex flex-wrap gap-1">
-            {% for port in latest_scan.open_ports %}
-            <span class="badge bg-light text-dark border font-monospace">
-              {{ port.port }}/{{ port.proto or 'tcp' }}
-              {% if port.service %}<span class="text-muted"> {{ port.service }}</span>{% endif %}
-            </span>
-            {% endfor %}
-          </div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0">
+            <thead class="table-light">
+              <tr><th>Port</th><th>Usługa</th><th>Produkt / Banner</th></tr>
+            </thead>
+            <tbody>
+              {% for port_num, info in latest_scan.open_ports.items() | sort %}
+              {% set svc = info.service or '' %}
+              {% set prod = info.product or '' %}
+              {% set ver = info.version or '' %}
+              <tr>
+                <td class="font-monospace fw-bold">{{ port_num }}/tcp</td>
+                <td>
+                  {% if svc %}
+                  <span class="badge bg-light text-dark border">{{ svc }}</span>
+                  {% else %}—{% endif %}
+                </td>
+                <td class="small text-muted">
+                  {{ prod }}{% if prod and ver %} {% endif %}{% if ver %}<em>{{ ver }}</em>{% endif %}
+                  {% if not prod and not ver %}—{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
       </div>
       {% endif %}
