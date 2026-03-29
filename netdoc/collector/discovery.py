@@ -1223,8 +1223,8 @@ FULL_SCAN_WORKERS = 4
 FULL_SCAN_BATCH_SIZE = 6  # hostow per worker
 
 
-_NMAP_FULL_ARGS_FAST = "-p 1-65535 --min-rate 2000 --max-retries 1 -T4"
-_NMAP_FULL_ARGS_SAFE = "-p 1-65535 --min-rate 500  --max-retries 1 -T3"
+_NMAP_FULL_ARGS_FAST = "-p 1-65535 --min-rate 2000 --max-retries 1 -T4 --host-timeout 5m"
+_NMAP_FULL_ARGS_SAFE = "-p 1-65535 --min-rate 500  --max-retries 1 -T3 --host-timeout 10m"
 
 
 def _full_scan_one_group(hosts: list, port_batches: list, batch_pause_s: float = 3.0,
@@ -1317,23 +1317,32 @@ def _full_scan_one_group(hosts: list, port_batches: list, batch_pause_s: float =
         version_ports = all_ports - _PRINTER_PORTS_SKIP_VERSION
         port_str = ",".join(str(p) for p in sorted(version_ports)) if version_ports else ""
         nm2 = nmap.PortScanner(nmap_search_path=_NMAP_SEARCH_PATH)
+        scan_ok = False
         if port_str:
             try:
                 nm2.scan(hosts=" ".join(hosts_with_ports.keys()),
                          arguments=f"-p {port_str} -sV --min-rate 500")
+                scan_ok = True
             except Exception as exc:
-                logger.warning("Full scan version detection blad: %s", exc)
-        for host in nm2.all_hosts():
-            host_data: dict = {"open_ports": {}}
-            if "tcp" in nm2[host]:
-                for port, info in nm2[host]["tcp"].items():
-                    if info["state"] == "open":
-                        host_data["open_ports"][port] = {
-                            "service": info.get("name", ""),
-                            "version": info.get("version", ""),
-                            "product": info.get("product", ""),
-                        }
-            results[host] = host_data
+                logger.warning("Full scan version detection blad: %s — zachowuję porty z fazy 1", exc)
+        if scan_ok:
+            for host in nm2.all_hosts():
+                host_data: dict = {"open_ports": {}}
+                if "tcp" in nm2[host]:
+                    for port, info in nm2[host]["tcp"].items():
+                        if info["state"] == "open":
+                            host_data["open_ports"][port] = {
+                                "service": info.get("name", ""),
+                                "version": info.get("version", ""),
+                                "product": info.get("product", ""),
+                            }
+                results[host] = host_data
+        else:
+            # Fallback: zachowaj porty z fazy 1 (bez wersji) — nie kasuj danych przy błędzie -sV
+            for host, ports in hosts_with_ports.items():
+                results[host] = {"open_ports": {
+                    str(p): {"service": "", "version": "", "product": ""} for p in ports
+                }}
     return results
 
 
@@ -1369,19 +1378,30 @@ def _full_scan_batch(batch_hosts, _retry: bool = False):
         version_ports = all_ports - _PRINTER_PORTS_SKIP_VERSION
         port_str = ",".join(str(p) for p in sorted(version_ports)) if version_ports else ""
         nm2 = nmap.PortScanner(nmap_search_path=_NMAP_SEARCH_PATH)
+        scan_ok = False
         if port_str:
-            nm2.scan(hosts=" ".join(hosts_with_ports), arguments=f"-p {port_str} -sV --min-rate 500")
-        for host in nm2.all_hosts():
-            host_data = {"open_ports": {}}
-            if "tcp" in nm2[host]:
-                for port, info in nm2[host]["tcp"].items():
-                    if info["state"] == "open":
-                        host_data["open_ports"][port] = {
-                            "service": info.get("name", ""),
-                            "version": info.get("version", ""),
-                            "product": info.get("product", ""),
-                        }
-            results[host] = host_data
+            try:
+                nm2.scan(hosts=" ".join(hosts_with_ports), arguments=f"-p {port_str} -sV --min-rate 500")
+                scan_ok = True
+            except Exception as exc:
+                logger.warning("Full scan batch -sV blad: %s — zachowuję porty z fazy 1", exc)
+        if scan_ok:
+            for host in nm2.all_hosts():
+                host_data = {"open_ports": {}}
+                if "tcp" in nm2[host]:
+                    for port, info in nm2[host]["tcp"].items():
+                        if info["state"] == "open":
+                            host_data["open_ports"][port] = {
+                                "service": info.get("name", ""),
+                                "version": info.get("version", ""),
+                                "product": info.get("product", ""),
+                            }
+                results[host] = host_data
+        else:
+            for host, ports in hosts_with_ports.items():
+                results[host] = {"open_ports": {
+                    str(p): {"service": "", "version": "", "product": ""} for p in ports
+                }}
     return results
 
 
@@ -1509,32 +1529,43 @@ def _persist_scan_batch(db, batch_result: dict) -> int:
     for device in db.query(Device).filter(Device.ip.in_(batch_ips)).all():
         host_info = batch_result.get(device.ip)
         if host_info is None:
+            # Host byl offline/timeout w trakcie skanu — zachowaj stare dane, zaloguj
+            logger.debug("Full scan: %s nie w wynikach nmap (offline/timeout) — stare porty zachowane", device.ip)
             continue
         open_ports = host_info.get("open_ports", {})
-        # Usuń stare wyniki nmap_full przed zapisaniem nowego — dane mają być aktualne
-        # synchronize_session="fetch" — SQLAlchemy pobiera IDs i czyści identity map
-        db.query(ScanResult).filter(
-            ScanResult.device_id == device.id,
-            ScanResult.scan_type == "nmap_full",
-        ).delete(synchronize_session="fetch")
-        db.add(ScanResult(
-            device_id=device.id,
-            scan_type="nmap_full",
-            open_ports={str(p): info for p, info in open_ports.items()},
-        ))
-        if open_ports:
-            _ports_int = {int(p) for p in open_ports.keys()}
-            _ports_detail = {int(p): v for p, v in open_ports.items() if isinstance(v, dict)}
-            new_type = _guess_device_type(
-                _ports_int, device.os_version, device.vendor, device.mac,
-                hostname=device.hostname, open_ports_detail=_ports_detail,
-            )
-            if new_type != DeviceType.unknown and new_type != device.device_type:
-                logger.info("Reklasyfikacja po full scan: %s %s -> %s",
-                            device.ip, device.device_type.value, new_type.value)
-                device.device_type = new_type
-        saved += 1
-    db.commit()
+        try:
+            # Usuń stare wyniki nmap_full przed zapisaniem nowego — dane mają być aktualne
+            # synchronize_session="fetch" — SQLAlchemy pobiera IDs i czyści identity map
+            db.query(ScanResult).filter(
+                ScanResult.device_id == device.id,
+                ScanResult.scan_type == "nmap_full",
+            ).delete(synchronize_session="fetch")
+            db.add(ScanResult(
+                device_id=device.id,
+                scan_type="nmap_full",
+                open_ports={str(p): info for p, info in open_ports.items()},
+            ))
+            if open_ports:
+                _ports_int = {int(p) for p in open_ports.keys()}
+                _ports_detail = {int(p): v for p, v in open_ports.items() if isinstance(v, dict)}
+                new_type = _guess_device_type(
+                    _ports_int, device.os_version, device.vendor, device.mac,
+                    hostname=device.hostname, open_ports_detail=_ports_detail,
+                )
+                if new_type != DeviceType.unknown and new_type != device.device_type:
+                    logger.info("Reklasyfikacja po full scan: %s %s -> %s",
+                                device.ip, device.device_type.value, new_type.value)
+                    device.device_type = new_type
+            db.flush()  # wykryj blad per-device przed commitem calego batcha
+            saved += 1
+        except Exception as exc:
+            logger.warning("_persist_scan_batch: blad dla %s: %s — pomijam ten host", device.ip, exc)
+            db.rollback()
+    try:
+        db.commit()
+    except Exception as exc:
+        logger.error("_persist_scan_batch: commit nieudany: %s — rollback", exc)
+        db.rollback()
     return saved
 
 
@@ -1560,9 +1591,16 @@ def run_full_scan(db, ips=None, progress_callback=None):
 
     def _on_batch(done, total, batch_ips, batch_result=None):
         if batch_result:
-            count = _persist_scan_batch(db, batch_result)
-            saved_total[0] += count
-            logger.info("Checkpoint %d/%d: zapisano %d urzadzen", done, total, count)
+            try:
+                count = _persist_scan_batch(db, batch_result)
+                saved_total[0] += count
+                logger.info("Checkpoint %d/%d: zapisano %d urzadzen", done, total, count)
+            except Exception as exc:
+                logger.error("_on_batch: blad zapisu checkpointu %d/%d: %s — pomijam batch", done, total, exc)
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
         if progress_callback:
             try:
                 progress_callback(done=done, total=total, batch_ips=batch_ips)
