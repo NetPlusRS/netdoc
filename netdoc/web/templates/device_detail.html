@@ -121,6 +121,64 @@
         </div>
       </div>
 
+      {# ── Broadcast Discovery ───────────────────────────────────────────── #}
+      {% if broadcast_info %}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2"><i class="bi bi-broadcast me-1"></i>Broadcast Discovery</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0 param-table">
+            {% if broadcast_info.total_pkts %}
+            <tr>
+              <td>Pakiety (sesja)</td>
+              <td class="fw-bold">{{ broadcast_info.total_pkts }}
+                {% if broadcast_info.total_bytes %}
+                <span class="text-muted fw-normal">/ {{ broadcast_info.total_bytes }} B</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endif %}
+            {% if broadcast_info.top_proto %}
+            <tr><td>Dominujący protokół</td><td><span class="badge bg-primary">{{ broadcast_info.top_proto }}</span></td></tr>
+            {% endif %}
+            {% if broadcast_info.protocols %}
+            <tr>
+              <td>Protokoły</td>
+              <td>
+                {% for proto, stats in broadcast_info.protocols.items() %}
+                <div class="d-flex justify-content-between small">
+                  <span class="badge bg-secondary me-1">{{ proto }}</span>
+                  <span class="text-muted">{{ stats.pkts }} pkt / {{ stats.bytes }} B</span>
+                </div>
+                {% endfor %}
+              </td>
+            </tr>
+            {% endif %}
+            {% if broadcast_info.svc %}
+            <tr>
+              <td>Usługi (svc)</td>
+              <td>
+                {% for svc in broadcast_info.svc.split(',') %}
+                <span class="badge bg-info text-dark me-1">{{ svc }}</span>
+                {% endfor %}
+              </td>
+            </tr>
+            {% endif %}
+            {% if broadcast_info.serial %}
+            <tr><td>S/N (broadcast)</td><td><code>{{ broadcast_info.serial }}</code></td></tr>
+            {% endif %}
+            {% if broadcast_info.upnp %}
+            <tr>
+              <td>UPnP server</td>
+              <td class="small text-muted" title="{{ broadcast_info.upnp }}">
+                {{ broadcast_info.upnp[:60] }}{% if broadcast_info.upnp|length > 60 %}…{% endif %}
+              </td>
+            </tr>
+            {% endif %}
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
       {# ── Status / Widoczność ────────────────────────────────────────────── #}
       <div class="card mb-3">
         <div class="card-header fw-semibold py-2">Status</div>

@@ -1494,6 +1494,34 @@ def create_app():
             except Exception:
                 pass
 
+            # Broadcast stats — from broadcast_stats.json (per-IP packet counters)
+            # plus optional [broadcast ...] tag in asset_notes (svc/serial/upnp)
+            import re as _re
+            broadcast_info = {}
+            _stats_file = pathlib.Path(__file__).parent.parent.parent / "logs" / "broadcast_stats.json"
+            try:
+                import json as _json2
+                _bdata = _json2.loads(_stats_file.read_text(encoding="utf-8"))
+                for _row in _bdata.get("rows", []):
+                    if _row.get("ip") == str(dev.ip):
+                        broadcast_info.update({
+                            "total_pkts":  _row.get("total_pkts", 0),
+                            "total_bytes": _row.get("total_bytes", 0),
+                            "top_proto":   _row.get("top_proto", ""),
+                            "protocols":   _row.get("protocols", {}),
+                        })
+                        break
+            except Exception:
+                pass
+            # Enrich with asset_notes tag if present
+            if dev.asset_notes:
+                _bm = _re.search(r'\[broadcast ([^\]]+)\]', dev.asset_notes)
+                if _bm:
+                    for _part in _bm.group(1).split():
+                        if '=' in _part:
+                            _k, _v = _part.split('=', 1)
+                            broadcast_info[_k] = _v
+
             return render_template(
                 "device_detail.html",
                 dev=dev,
@@ -1506,6 +1534,7 @@ def create_app():
                 ping_history=ping_history,
                 ping_stats=ping_stats,
                 syslog_rows=syslog_rows,
+                broadcast_info=broadcast_info,
             )
         finally:
             db.close()
