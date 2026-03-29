@@ -73,8 +73,8 @@
             </td>
             <td class="small">{{ d.responsible_person or "—" }}</td>
             <td class="small text-muted" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                title="{{ d.asset_notes or '' }}">
-              {{ d.asset_notes or "—" }}
+                title="{{ row.clean_notes }}">
+              {{ row.clean_notes or "—" }}
             </td>
           </tr>
           {% else %}

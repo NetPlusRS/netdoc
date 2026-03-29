@@ -1751,13 +1751,15 @@ def create_app():
         import re as _re
         inv_rows = []
         for d in devs:
-            # Wyciągnij uptime z asset_notes tag [uptime ...]
-            uptime_str = None
-            if d.asset_notes:
+            # Uptime z dedykowanej kolumny; fallback: stary tag z asset_notes (migracja)
+            uptime_str = d.snmp_uptime
+            if not uptime_str and d.asset_notes:
                 m = _re.search(r'\[uptime ([^\]]+)\]', d.asset_notes)
                 if m:
                     uptime_str = m.group(1)
-            inv_rows.append({"device": d, "uptime": uptime_str})
+            # Notatki bez tagu [uptime ...] — tag mógł pozostać w starych rekordach
+            clean_notes = _re.sub(r'\[uptime [^\]]*\]\n?', '', d.asset_notes or '').strip() or None
+            inv_rows.append({"device": d, "uptime": uptime_str, "clean_notes": clean_notes})
 
         if request.args.get("format") == "csv":
             import csv, io

@@ -382,10 +382,12 @@ def _poll_device(device_id: int, ip: str, community: str,
         if sysloc   and not device.location:   device.location   = sysloc
         if contact and contact.strip() and not device.sys_contact: device.sys_contact = contact.strip()[:255]
 
-        # sysUpTime — zawsze aktualizuj jako tag w asset_notes
+        # sysUpTime — zapisuj do dedykowanej kolumny; wyczyść stary tag z asset_notes
         if uptime is not None:
-            uptime_str = _timeticks_to_str(uptime)
-            device.asset_notes = _update_asset_notes_tag(device.asset_notes, "uptime", uptime_str)
+            device.snmp_uptime = _timeticks_to_str(uptime)
+            if device.asset_notes:
+                import re as _re
+                device.asset_notes = _re.sub(r'\[uptime [^\]]*\]\n?', '', device.asset_notes).strip() or None
 
         # Serial number (Entity MIB) — uzupelnij raz jesli puste
         if not device.serial_number:

@@ -110,6 +110,8 @@ def _migrate_columns() -> None:
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS snmp_ok_at TIMESTAMP",
         # SNMP sysContact — osoba kontaktowa (2026-03-24)
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS sys_contact VARCHAR(255)",
+        # SNMP sysUpTime — dedykowana kolumna, nie zapisujemy do asset_notes (2026-03-29)
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS snmp_uptime VARCHAR(64)",
         # Ping worker — czas ostatniego udanego pingu (2026-03-24)
         # Oddzielony od last_seen (ktory jest odswiezany przez discovery/ARP),
         # pozwala na prawidlowe oznaczanie DOWN nawet gdy discovery falszywie odswierza last_seen.
