@@ -374,13 +374,14 @@ services:
     <<: *log-limit
     # Port layout:
     #   UDP 514  — handled by run_syslog_relay.py on the Windows HOST.
-    #              The relay preserves real sender IPs (bypasses Docker NAT)
-    #              and forwards to port 5140 with real IP in HOSTNAME field.
-    #   TCP 514  — direct TCP syslog (src_ip = 172.18.0.1 due to Docker NAT,
-    #              kept as fallback for devices that use TCP).
+    #   TCP 514  — handled by run_syslog_relay.py on the Windows HOST.
+    #              Both preserve real sender IPs (bypass Docker NAT) and
+    #              forward to port 5140 with real IP in HOSTNAME field.
     #   UDP 5140 — relay input from Windows host (localhost only).
+    #
+    # NOTE: TCP 514 is NOT mapped here — the host relay binds it directly.
+    #       If you remove the relay, add "514:514/tcp" back here.
     ports:
-      - "514:514/tcp"
       - "127.0.0.1:5140:5140/udp"
     environment:
       TZ: "${TZ:-UTC}"

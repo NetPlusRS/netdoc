@@ -6,9 +6,9 @@ so rsyslog inside Docker never sees the real device IP.  Every syslog entry
 in ClickHouse has src_ip = 172.18.0.1 — device filtering in the UI is broken.
 
 Solution: This relay runs on the Windows HOST (not in Docker), binds to UDP 514
-before Docker sees it, reads the real sender IP from the socket, replaces the
-HOSTNAME field in the syslog message with that IP, then forwards the relayed
-message to Docker rsyslog on UDP localhost:5140.
+and TCP 514 before Docker sees them, reads the real sender IP from the socket,
+replaces the HOSTNAME field in the syslog message with that IP, then forwards
+the relayed message to Docker rsyslog on UDP localhost:5140.
 
 rsyslog uses a separate ruleset for port 5140 that maps hostname → src_ip,
 so ClickHouse receives the correct device IP in the src_ip column.
@@ -21,7 +21,7 @@ Result:
 
 Port layout:
   HOST UDP 514   → this relay (takes priority over Docker UDP 514 mapping)
-  DOCKER TCP 514 → rsyslog directly (TCP syslog — src_ip stays as NAT IP)
+  HOST TCP 514   → this relay (takes priority over Docker TCP 514 mapping)
   DOCKER UDP 5140 (localhost only) → rsyslog relay input ← this relay forwards here
 
 Usage:
@@ -49,7 +49,7 @@ PID_FILE = BASE_DIR / "syslog_relay.pid"
 # ── Config ─────────────────────────────────────────────────────────────────────
 
 LISTEN_HOST  = "0.0.0.0"
-LISTEN_PORT  = 514           # receive syslog from network devices (UDP)
+LISTEN_PORT  = 514           # receive syslog from network devices (UDP + TCP)
 FORWARD_HOST = "127.0.0.1"
 FORWARD_PORT = 5140          # relay → Docker rsyslog internal port (UDP)
 BUFFER_SIZE  = 65535
@@ -145,9 +145,19 @@ def _inc(key: str) -> None:
 _fwd = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 
+def _forward(msg: bytes, real_ip: str) -> None:
+    """Forward a single re-crafted message to Docker rsyslog."""
+    try:
+        _fwd.sendto(msg, (FORWARD_HOST, FORWARD_PORT))
+        _inc('f')
+    except OSError as exc:
+        logger.warning("forward error from %s: %s", real_ip, exc)
+        _inc('e')
+
+
 # ── UDP handler ────────────────────────────────────────────────────────────────
 
-class _Handler(socketserver.BaseRequestHandler):
+class _UDPHandler(socketserver.BaseRequestHandler):
     def handle(self) -> None:
         data, _sock = self.request
         real_ip = self.client_address[0]
@@ -155,16 +165,53 @@ class _Handler(socketserver.BaseRequestHandler):
         if msg is None:
             _inc('d')
             return
-        try:
-            _fwd.sendto(msg, (FORWARD_HOST, FORWARD_PORT))
-            _inc('f')
-        except OSError as exc:
-            logger.warning("forward error from %s: %s", real_ip, exc)
-            _inc('e')
+        _forward(msg, real_ip)
 
 
 class _ReuseUDPServer(socketserver.ThreadingUDPServer):
     allow_reuse_address = True
+
+
+# ── TCP handler ────────────────────────────────────────────────────────────────
+# Syslog over TCP uses octet-counting framing (RFC 6587) or newline-delimited.
+# We support both:
+#   Octet-counting:  "<length> <syslog-msg>"  e.g. "83 <34>1 2026-..."
+#   Non-transparent: messages separated by newline (most common in practice)
+
+class _TCPHandler(socketserver.BaseRequestHandler):
+    def handle(self) -> None:
+        real_ip = self.client_address[0]
+        buf = b''
+        try:
+            while True:
+                chunk = self.request.recv(BUFFER_SIZE)
+                if not chunk:
+                    break
+                buf += chunk
+                # Process all complete newline-delimited messages in buffer
+                while b'\n' in buf:
+                    line, buf = buf.split(b'\n', 1)
+                    line = line.rstrip(b'\r')
+                    if not line:
+                        continue
+                    # Octet-counting framing: "<digits> <rest>"
+                    # Strip the length prefix if present
+                    decoded = line.decode('utf-8', errors='replace')
+                    space_pos = decoded.find(' ')
+                    if space_pos > 0 and decoded[:space_pos].isdigit():
+                        line = decoded[space_pos + 1:].encode('utf-8', errors='replace')
+                    msg = make_relay_msg(line, real_ip)
+                    if msg is None:
+                        _inc('d')
+                    else:
+                        _forward(msg, real_ip)
+        except OSError:
+            pass  # connection reset / timeout — normal for syslog TCP
+
+
+class _ReuseTCPServer(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
 
 
 # ── Logging ────────────────────────────────────────────────────────────────────
@@ -216,14 +263,14 @@ def main() -> None:
 
     logger.info("NetDoc Syslog Relay starting")
     logger.info("  listen  : UDP %s:%d  (network devices)", LISTEN_HOST, LISTEN_PORT)
+    logger.info("  listen  : TCP %s:%d  (network devices)", LISTEN_HOST, LISTEN_PORT)
     logger.info("  forward : UDP %s:%d  (Docker rsyslog relay input)", FORWARD_HOST, FORWARD_PORT)
 
     threading.Thread(target=_stats_loop, daemon=True).start()
 
     try:
-        srv = _ReuseUDPServer((LISTEN_HOST, LISTEN_PORT), _Handler)
-        logger.info("Relay ready — real source IPs will be preserved in ClickHouse.")
-        srv.serve_forever()
+        udp_srv = _ReuseUDPServer((LISTEN_HOST, LISTEN_PORT), _UDPHandler)
+        tcp_srv = _ReuseTCPServer((LISTEN_HOST, LISTEN_PORT), _TCPHandler)
     except PermissionError:
         logger.error(
             "Cannot bind to port %d — run as Administrator "
@@ -231,9 +278,19 @@ def main() -> None:
             LISTEN_PORT,
         )
         sys.exit(1)
+
+    # Run TCP server in background thread, UDP in main thread
+    tcp_thread = threading.Thread(target=tcp_srv.serve_forever, daemon=True)
+    tcp_thread.start()
+    logger.info("Relay ready — UDP + TCP — real source IPs will be preserved in ClickHouse.")
+
+    try:
+        udp_srv.serve_forever()
     except KeyboardInterrupt:
         logger.info("Relay stopped by user.")
     finally:
+        udp_srv.shutdown()
+        tcp_srv.shutdown()
         _remove_pid()
 
 

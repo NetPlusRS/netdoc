@@ -56,7 +56,7 @@ netdoc/                  # główny pakiet Python
 
 run_scanner.py           # skaner HOST (Windows) — Task Scheduler, co 5 min
 run_broadcast_worker.py  # HOST: nasłuchuje broadcast/multicast — Task Scheduler, ciągły
-run_syslog_relay.py      # HOST: proxy syslog UDP 514→5140, zachowuje prawdziwe IP — Task Scheduler, ciągły
+run_syslog_relay.py      # HOST: proxy syslog UDP+TCP 514→5140, zachowuje prawdziwe IP — Task Scheduler, ciągły
 run_ping_worker.py       # Docker: ping monitoring co 18s
 run_snmp_worker.py       # Docker: SNMP enrichment co 5min
 run_cred_worker.py       # Docker: credential testing, cykl ~15min
