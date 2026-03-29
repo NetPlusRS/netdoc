@@ -372,13 +372,16 @@ services:
     container_name: netdoc-rsyslog
     restart: unless-stopped
     <<: *log-limit
-    # Note: network_mode: host preserves the real source IP of syslog senders
-    # but does not work on Windows/Docker Desktop (WSL2 limitation).
-    # Using bridge networking with explicit port bindings instead —
-    # src_ip will show the Docker NAT address (172.18.0.1) on Windows.
+    # Port layout:
+    #   UDP 514  — handled by run_syslog_relay.py on the Windows HOST.
+    #              The relay preserves real sender IPs (bypasses Docker NAT)
+    #              and forwards to port 5140 with real IP in HOSTNAME field.
+    #   TCP 514  — direct TCP syslog (src_ip = 172.18.0.1 due to Docker NAT,
+    #              kept as fallback for devices that use TCP).
+    #   UDP 5140 — relay input from Windows host (localhost only).
     ports:
-      - "514:514/udp"
       - "514:514/tcp"
+      - "127.0.0.1:5140:5140/udp"
     environment:
       TZ: "${TZ:-UTC}"
     volumes:

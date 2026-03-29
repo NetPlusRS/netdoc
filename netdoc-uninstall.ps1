@@ -222,7 +222,7 @@ if ($dockerAvailable) {
     }
 }
 
-$schedulerTaskNames = @("NetDocScanner", "NetDoc Watchdog")
+$schedulerTaskNames = @("NetDocScanner", "NetDoc Watchdog", "NetDocBroadcast", "NetDocSyslogRelay")
 $existingTasks = @(
     $schedulerTaskNames | Where-Object {
         $null -ne (Get-ScheduledTask -TaskName $_ -ErrorAction SilentlyContinue)
@@ -231,6 +231,7 @@ $existingTasks = @(
 
 $pidFile  = Join-Path $ProjectDir "scanner.pid"
 $hasPid   = Test-Path $pidFile
+$pidFiles = @("scanner.pid", "broadcast.pid", "syslog_relay.pid")
 $envFile  = Join-Path $ProjectDir ".env"
 $hasEnv   = Test-Path $envFile
 $oldLogs  = @(
@@ -576,13 +577,19 @@ if ($mode -eq "stop") {
 
     # ── Scanner PID file ──────────────────────────────────────────────────────
 
-    if ($hasPid) {
-        Write-Step "Removing runtime files..."
-        Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
-        if (-not (Test-Path $pidFile)) {
-            Write-OK "Removed: scanner.pid"
-        } else {
-            Write-Warn "Could not remove scanner.pid  -  file may be locked by a process"
+    $anyPid = $pidFiles | Where-Object { Test-Path (Join-Path $ProjectDir $_) }
+    if ($anyPid) {
+        Write-Step "Removing runtime PID files..."
+        foreach ($pf in $pidFiles) {
+            $fullPid = Join-Path $ProjectDir $pf
+            if (Test-Path $fullPid) {
+                Remove-Item $fullPid -Force -ErrorAction SilentlyContinue
+                if (-not (Test-Path $fullPid)) {
+                    Write-OK "Removed: $pf"
+                } else {
+                    Write-Warn "Could not remove $pf  -  file may be locked by a running process"
+                }
+            }
         }
     }
 

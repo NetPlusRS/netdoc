@@ -368,6 +368,50 @@ if (-not (Test-Path $BroadcastPid)) {
     Write-Log "Broadcast worker start requested." "WARN"
 }
 
+# ── Syslog Relay — continuous listener, monitoring via syslog_relay.pid ───────
+$RelayPid  = Join-Path $ProjectDir "syslog_relay.pid"
+$RelayTask = "NetDocSyslogRelay"
+
+if (Test-Path $RelayPid) {
+    $pidContent = Get-Content $RelayPid -ErrorAction SilentlyContinue
+    $pidValue   = [int]($pidContent -as [int])
+    if ($pidValue -gt 0) {
+        $proc = Get-Process -Id $pidValue -ErrorAction SilentlyContinue
+        if ($null -eq $proc) {
+            Write-Log "Stale syslog_relay.pid (PID=$pidValue is dead) — removing." "WARN"
+            Remove-Item $RelayPid -Force -ErrorAction SilentlyContinue
+        } else {
+            if (-not $Quiet) {
+                Write-Log "Syslog Relay running (PID=$pidValue) — OK"
+            }
+        }
+    } else {
+        Write-Log "Invalid syslog_relay.pid — removing." "WARN"
+        Remove-Item $RelayPid -Force -ErrorAction SilentlyContinue
+    }
+}
+
+if (-not (Test-Path $RelayPid)) {
+    $relayTask = Get-ScheduledTask -TaskName $RelayTask -ErrorAction SilentlyContinue
+    if ($null -eq $relayTask) {
+        Write-Log "Syslog Relay task '$RelayTask' not found — registering..." "WARN"
+        $relayInstall = Join-Path $ProjectDir "install_syslog_relay.ps1"
+        if (Test-Path $relayInstall) {
+            $installOut = & powershell -ExecutionPolicy Bypass -NonInteractive -File $relayInstall 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Log "Syslog Relay: registered successfully." "INFO"
+            } else {
+                Write-Log "ERROR: failed to register '$RelayTask': $($installOut | Select-Object -First 2 | Out-String)" "ERROR"
+            }
+        } else {
+            Write-Log "ERROR: $relayInstall not found — cannot register Syslog Relay!" "ERROR"
+        }
+    }
+    Write-Log "Syslog Relay not running — starting task '$RelayTask'..." "WARN"
+    Start-ScheduledTask -TaskName $RelayTask -ErrorAction SilentlyContinue
+    Write-Log "Syslog Relay start requested." "WARN"
+}
+
 # ── Lab environment — monitoring based on lab_monitoring_enabled setting ───────
 $LabComposeFile = Join-Path $ProjectDir "docker-compose.lab.yml"
 

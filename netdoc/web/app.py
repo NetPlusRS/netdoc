@@ -1099,8 +1099,11 @@ def create_app():
             new_device_ids = []
             changed_device_ids = []
             for d in devs:
-                # None = nigdy nie widziane → JS potraktuje jak uncertain (minsAgo >= uncertainMin)
-                mins_ago = int((_now - d.last_seen).total_seconds() / 60) if d.last_seen else None
+                # Uzywamy last_ping_ok_at do obliczenia mins_ago — last_seen moze byc falszywie
+                # odswiezone przez discovery/ARP dla offline urzadzen (BUG-L-STATUS-03).
+                # Fallback na last_seen jesli urzadzenie nie bylo jeszcze pingowane (migracja).
+                _ping_ts = d.last_ping_ok_at or d.last_seen
+                mins_ago = int((_now - _ping_ts).total_seconds() / 60) if _ping_ts else None
                 items.append({
                     "id":        d.id,
                     "is_active": d.is_active,
@@ -1572,28 +1575,21 @@ def create_app():
 
     @app.route("/devices/<int:device_id>/inventory", methods=["POST"])
     def device_inventory(device_id):
-        """Zapisuje pola inwentarzowe urzadzenia (środki trwałe)."""
-        # Normalizacja ceny: zamień przecinek na kropkę, usuń spacje
-        raw_price = (request.form.get("purchase_price") or "").strip().replace(" ", "").replace(",", ".")
+        """Zapisuje pola inwentarzowe urzadzenia."""
         payload = {
             "serial_number":      request.form.get("serial_number") or None,
             "asset_tag":          request.form.get("asset_tag") or None,
-            "purchase_date":      request.form.get("purchase_date") or None,
-            "purchase_price":     raw_price or None,
-            "purchase_currency":  request.form.get("purchase_currency") or None,
-            "purchase_vendor":    request.form.get("purchase_vendor") or None,
-            "invoice_number":     request.form.get("invoice_number") or None,
-            "warranty_end":       request.form.get("warranty_end") or None,
-            "support_end":        request.form.get("support_end") or None,
+            "location":           request.form.get("location") or None,
+            "sys_contact":        request.form.get("sys_contact") or None,
             "responsible_person": request.form.get("responsible_person") or None,
             "asset_notes":        request.form.get("asset_notes") or None,
         }
         payload = {k: v for k, v in payload.items() if v is not None}
         _, err = _api("patch", f"/api/devices/{device_id}", json=payload)
         if err:
-            flash(f"Blad zapisu inwentarza: {err}", "danger")
+            flash(f"Blad zapisu: {err}", "danger")
         else:
-            flash("Dane inwentarzowe zaktualizowane.", "success")
+            flash("Dane urządzenia zaktualizowane.", "success")
         return redirect(url_for("devices"))
 
     # ── screenshot HTTP preview — storage w PostgreSQL ────────────────────────
@@ -1752,42 +1748,36 @@ def create_app():
         finally:
             db.close()
 
-        today = _date.today()
+        import re as _re
         inv_rows = []
         for d in devs:
-            eos_status = None
-            if d.support_end:
-                days = (d.support_end - today).days
-                eos_status = "expired" if days < 0 else ("soon" if days <= 90 else "ok")
-            warranty_status = None
-            if d.warranty_end:
-                days = (d.warranty_end.date() - today).days
-                warranty_status = "expired" if days < 0 else ("soon" if days <= 90 else "ok")
-            inv_rows.append({"device": d, "eos_status": eos_status, "warranty_status": warranty_status})
+            # Wyciągnij uptime z asset_notes tag [uptime ...]
+            uptime_str = None
+            if d.asset_notes:
+                m = _re.search(r'\[uptime ([^\]]+)\]', d.asset_notes)
+                if m:
+                    uptime_str = m.group(1)
+            inv_rows.append({"device": d, "uptime": uptime_str})
 
         if request.args.get("format") == "csv":
             import csv, io
             buf = io.StringIO()
             w = csv.writer(buf)
             w.writerow([
-                "IP", "Hostname", "Typ", "Vendor", "Model",
-                "Numer seryjny", "Asset tag", "Data zakupu", "Cena", "Waluta",
-                "Dostawca", "Faktura", "Koniec gwarancji", "Koniec wsparcia producenta",
-                "Osoba odpowiedzialna", "Notatki",
+                "IP", "Hostname", "Typ", "Vendor", "Model", "OS / Firmware",
+                "Numer seryjny", "Asset tag", "Lokalizacja", "SNMP contact",
+                "Ostatni poll SNMP", "Uptime", "Osoba odpowiedzialna", "Notatki",
             ])
             for row in inv_rows:
                 d = row["device"]
                 w.writerow([
                     d.ip, d.hostname or "",
                     d.device_type.value if d.device_type else "",
-                    d.vendor or "", d.model or "",
+                    d.vendor or "", d.model or "", d.os_version or "",
                     d.serial_number or "", d.asset_tag or "",
-                    d.purchase_date.isoformat() if d.purchase_date else "",
-                    str(d.purchase_price) if d.purchase_price else "",
-                    d.purchase_currency or "",
-                    d.purchase_vendor or "", d.invoice_number or "",
-                    d.warranty_end.date().isoformat() if d.warranty_end else "",
-                    d.support_end.isoformat() if d.support_end else "",
+                    d.location or "", d.sys_contact or "",
+                    d.snmp_ok_at.strftime("%Y-%m-%d %H:%M") if d.snmp_ok_at else "",
+                    row["uptime"] or "",
                     d.responsible_person or "", d.asset_notes or "",
                 ])
             return Response(
@@ -1796,7 +1786,7 @@ def create_app():
                 headers={"Content-Disposition": "attachment; filename=inventory.csv"},
             )
 
-        return render_template("inventory.html", inv_rows=inv_rows, today=today)
+        return render_template("inventory.html", inv_rows=inv_rows)
 
     # ── networks (bezposrednio przez SQLAlchemy — brak endpointu API) ──────────
     def _count_devices_in_cidr(db, cidr: str) -> int:
@@ -3174,11 +3164,73 @@ def create_app():
             devices_list = db.query(Device).filter(Device.is_active.is_(True)).order_by(Device.ip).all()
         finally:
             db.close()
-        return render_template("syslog.html", devices=devices_list)
+        retention_days = 30
+        if PRO_ENABLED:
+            try:
+                from netdoc.storage.clickhouse import get_syslog_retention_days
+                retention_days = get_syslog_retention_days()
+            except Exception:
+                pass
+        return render_template("syslog.html", devices=devices_list,
+                               PRO_ENABLED=PRO_ENABLED,
+                               syslog_retention_days=retention_days)
+
+    @app.route("/api/syslog/retention", methods=["POST"])
+    def syslog_set_retention():
+        """PRO: zmienia TTL retencji syslog w ClickHouse."""
+        if not PRO_ENABLED:
+            return {"error": "PRO feature"}, 403
+        try:
+            days = int(request.json.get("days", 30))
+            from netdoc.storage.clickhouse import set_syslog_retention_days
+            set_syslog_retention_days(days)
+            return {"ok": True, "days": max(7, min(365, days))}
+        except Exception as exc:
+            return {"error": str(exc)}, 500
 
     @app.route("/api/syslog")
     def syslog_proxy():
-        """Proxy do FastAPI — zwraca logi syslog z ClickHouse (GET)."""
+        """Proxy do FastAPI — zwraca logi syslog z ClickHouse (GET).
+        PRO: obsługuje search, offset, rozszerzone limity i zakres czasu.
+        """
+        if PRO_ENABLED:
+            try:
+                from netdoc.storage.clickhouse import query_syslog as _qs
+                args = request.args
+
+                # Resolve device IP for syslog filtering by device_id.
+                # The syslog relay preserves real src IPs — filter ClickHouse by src_ip.
+                syslog_src_ip = args.get("src_ip") or None
+                raw_device_id = args.get("device_id")
+                if raw_device_id and not syslog_src_ip:
+                    try:
+                        from netdoc.storage.database import SessionLocal as _SL
+                        from netdoc.storage.models import Device as _Dev
+                        _db = _SL()
+                        try:
+                            _dev = _db.query(_Dev).filter(_Dev.id == int(raw_device_id)).first()
+                            if _dev and _dev.ip:
+                                syslog_src_ip = str(_dev.ip)
+                        finally:
+                            _db.close()
+                    except Exception:
+                        pass
+
+                rows = _qs(
+                    src_ip       = syslog_src_ip,
+                    severity_max = int(args["severity"]) if args.get("severity") else None,
+                    program      = args.get("program") or None,
+                    search       = args.get("search") or None,
+                    since_hours  = int(args.get("hours", 24)),
+                    limit        = int(args.get("limit", 200)),
+                    offset       = int(args.get("offset", 0)),
+                    pro          = True,
+                )
+                return jsonify({"logs": [
+                    {**r, "timestamp": str(r["timestamp"])} for r in rows
+                ], "count": len(rows)})
+            except Exception as exc:
+                return jsonify({"error": str(exc), "logs": [], "count": 0}), 503
         try:
             resp = requests.get(f"{API_URL}/api/syslog", params=request.args.to_dict(), timeout=15)
             return resp.content, resp.status_code, {"Content-Type": "application/json"}

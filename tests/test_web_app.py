@@ -9,13 +9,17 @@ def _mock_dev(id=1, ip="192.168.1.1", is_active=True):
     d.hostname = None; d.last_credential_ok_at = None
     d.mac = None; d.vendor = None; d.model = None
     d.os_version = None; d.first_seen = None; d.last_seen = None
+    d.last_ping_ok_at = None; d.ip_type = "unknown"
     from netdoc.storage.models import DeviceType
     d.device_type = DeviceType.unknown
+    # SNMP
+    d.snmp_community = None; d.snmp_ok_at = None
     # Inwentaryzacja
-    d.serial_number = None; d.asset_tag = None; d.purchase_date = None
-    d.purchase_price = None; d.purchase_currency = None; d.purchase_vendor = None
-    d.invoice_number = None; d.warranty_end = None; d.support_end = None
-    d.responsible_person = None; d.asset_notes = None
+    d.serial_number = None; d.asset_tag = None; d.location = None
+    d.sys_contact = None; d.responsible_person = None; d.asset_notes = None
+    d.purchase_date = None; d.purchase_price = None; d.purchase_currency = None
+    d.purchase_vendor = None; d.invoice_number = None
+    d.warranty_end = None; d.support_end = None
     # Flagi / monitoring / trust
     d.is_trusted = False; d.is_monitored = False; d.flag_color = None
     return d
@@ -1091,6 +1095,7 @@ def test_devices_up_badge_has_popover():
     import datetime
     dev = _mock_dev(1, ip="10.0.0.10", is_active=True)
     dev.last_seen = datetime.datetime.utcnow() - datetime.timedelta(minutes=1)
+    dev.last_ping_ok_at = datetime.datetime.utcnow() - datetime.timedelta(minutes=1)
 
     app, ctx, req = _make_devices_client(devices=[dev])
     with ctx, req as mr:
@@ -1328,10 +1333,11 @@ def test_devices_popover_last_scan_date_shown():
 # ── Stan UNCERTAIN (amber badge) ──────────────────────────────────────────────
 
 def test_devices_uncertain_badge_shown_when_last_seen_stale():
-    """Gdy is_active=True ale last_seen > uncertain_min minut temu — badge UNCERTAIN (?)."""
+    """Gdy is_active=True ale last_ping_ok_at > uncertain_min minut temu — badge UNCERTAIN (?)."""
     from datetime import datetime, timedelta
     dev = _mock_dev(1, ip="10.1.0.1", is_active=True)
-    dev.last_seen = datetime.utcnow() - timedelta(minutes=20)  # 20 min temu
+    dev.last_seen = datetime.utcnow() - timedelta(minutes=20)        # 20 min temu
+    dev.last_ping_ok_at = datetime.utcnow() - timedelta(minutes=20)  # ping tez dawno
 
     app, ctx, req = _make_devices_client(devices=[dev])
     with ctx, req as mr:
@@ -3872,15 +3878,15 @@ class TestInventoryPageStructure:
     def test_heading(self):
         assert "Inventory" in self.html
 
-    # Kluczowe kolumny tabeli (15 kolumn)
+    # Kluczowe kolumny tabeli
     def test_col_ip(self):                     assert "IP" in self.html
     def test_col_hostname(self):               assert "Hostname" in self.html
     def test_col_serial(self):                 assert "S/N" in self.html
     def test_col_asset_tag(self):              assert "Asset tag" in self.html
-    def test_col_warranty(self):               assert "Warranty" in self.html
-    def test_col_support(self):                assert "Support" in self.html
     def test_col_vendor_model(self):           assert "Vendor" in self.html or "Model" in self.html
-    def test_col_responsible(self):            assert "Responsible" in self.html
+    def test_col_responsible(self):            assert "Odpowiedzialny" in self.html
+    def test_col_snmp_contact(self):           assert "Kontakt" in self.html
+    def test_col_uptime(self):                 assert "Uptime" in self.html
 
     # Eksport CSV
     def test_export_csv_link(self):

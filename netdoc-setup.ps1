@@ -532,9 +532,14 @@ if (-not $dockerInstalled) {
 # ── Wait for Docker daemon ─────────────────────────────────────────────────────
 
 Write-Step "Waiting for Docker daemon to become ready..."
+Write-Host ""
+Write-Host "  IMPORTANT:" -ForegroundColor Yellow
+Write-Host "  If a Docker Desktop window appeared on screen — click Accept on the EULA." -ForegroundColor Yellow
+Write-Host "  Docker will not start until you accept the license agreement." -ForegroundColor Yellow
+Write-Host ""
 
 $dockerReady = $false
-$maxWait     = 120   # seconds
+$maxWait     = 300   # seconds  (first launch: EULA wizard + engine startup can take 3-5 min)
 $waited      = 0
 $dotCount    = 0
 
@@ -772,19 +777,66 @@ Write-Host ""
 # Note: do NOT use "2>&1 | Out-Host" because PowerShell converts stderr of native commands
 # to ErrorRecord and Start-Transcript records them as errors (NativeCommandError).
 # Docker compose writes its own output — Transcript captures it anyway.
-docker compose up -d --build
+$composeOk      = $false
+$composeTries   = 0
+$composeMaxTries = 3
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Fail "docker compose up failed."
+while (-not $composeOk -and $composeTries -lt $composeMaxTries) {
+    $composeTries++
+    if ($composeTries -gt 1) {
+        Write-Warn "Retrying docker compose up (attempt $composeTries / $composeMaxTries)..."
+        Write-Info "Waiting 30 seconds before retry  -  check Docker Desktop settings in the meantime."
+        Write-Info "  Docker Desktop -> Settings -> Advanced ->"
+        Write-Info "  'Allow the default Docker socket to be used (requires password)'"
+        Start-Sleep -Seconds 30
+    }
+    docker compose up -d --build
+    if ($LASTEXITCODE -eq 0) { $composeOk = $true }
+}
+
+if (-not $composeOk) {
+    Write-Fail "docker compose up failed after $composeMaxTries attempts."
     Write-Info "Check the messages above. Common causes:"
-    Write-Info "  - Port 80/8000 already in use by another application"
-    Write-Info "  - Insufficient RAM (Docker requires at least 4 GB)"
-    Write-Info "  - Docker Desktop is not running"
     Write-Info "  - Missing Docker socket permission: Settings -> Advanced ->"
-    Write-Info "    'Allow the default Docker socket to be used'"
+    Write-Info "    'Allow the default Docker socket to be used (requires password)'"
+    Write-Info "  - Port 80 or 8000 already in use by another application"
+    Write-Info "    Check: netstat -ano | findstr ':80 '"
+    Write-Info "  - Insufficient RAM (Docker requires at least 4 GB free)"
+    Write-Info "  - Docker Desktop is not running or still starting"
     Write-Info "  - Image build error  -  check internet access (pip, apt)"
+    Write-Info "After fixing the issue run: docker compose up -d --build"
     Show-Pause "Press Enter to close..."
     exit 1
+}
+
+# ── Windows Firewall — syslog port 514 ────────────────────────────────────────
+
+Write-Step "Configuring Windows Firewall for syslog (port 514)..."
+Write-Info "  Required so network devices can send logs to NetDoc (rsyslog/vector containers)."
+
+foreach ($proto in @("UDP", "TCP")) {
+    $ruleName = "NetDoc Syslog $proto"
+    $existing = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        try {
+            New-NetFirewallRule `
+                -DisplayName $ruleName `
+                -Direction Inbound `
+                -Protocol $proto `
+                -LocalPort 514 `
+                -Action Allow `
+                -Profile Any `
+                -Description "NetDoc: allow syslog from network devices ($proto/514)" `
+                -ErrorAction Stop | Out-Null
+            Write-OK "Firewall rule added: $ruleName (Inbound $proto 514)"
+        } catch {
+            Write-Warn "Could not add $ruleName : $_"
+            Write-Info "  Add manually (run as Administrator):"
+            Write-Info "  New-NetFirewallRule -DisplayName '$ruleName' -Direction Inbound -Protocol $proto -LocalPort 514 -Action Allow"
+        }
+    } else {
+        Write-OK "Firewall rule already exists: $ruleName"
+    }
 }
 
 # ── Check container status ────────────────────────────────────────────────────
@@ -1007,6 +1059,20 @@ if (Test-Path $watchdogScript) {
     }
 } else {
     Write-Warn "install_watchdog.ps1 not found  -  skipping watchdog registration."
+}
+
+$relayScript = Join-Path $ProjectDir "install_syslog_relay.ps1"
+if (Test-Path $relayScript) {
+    & powershell.exe -NonInteractive -ExecutionPolicy Bypass -File $relayScript 2>&1 | Out-Host
+    if ($LASTEXITCODE -eq 0) {
+        Write-OK "Task 'NetDocSyslogRelay' registered in Task Scheduler."
+        Start-ScheduledTask -TaskName "NetDocSyslogRelay" -ErrorAction SilentlyContinue
+        Write-OK "Syslog Relay started  -  real device IPs will be preserved in ClickHouse."
+    } else {
+        Write-Warn "Failed to register 'NetDocSyslogRelay'  -  run manually: install_syslog_relay.ps1"
+    }
+} else {
+    Write-Warn "install_syslog_relay.ps1 not found  -  skipping relay registration."
 }
 
 

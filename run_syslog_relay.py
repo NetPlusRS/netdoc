@@ -1,0 +1,241 @@
+#!/usr/bin/env python3
+"""run_syslog_relay.py — NetDoc Syslog Relay (host-side)
+
+Problem: Docker Desktop on Windows NATs all incoming connections to 172.18.0.1,
+so rsyslog inside Docker never sees the real device IP.  Every syslog entry
+in ClickHouse has src_ip = 172.18.0.1 — device filtering in the UI is broken.
+
+Solution: This relay runs on the Windows HOST (not in Docker), binds to UDP 514
+before Docker sees it, reads the real sender IP from the socket, replaces the
+HOSTNAME field in the syslog message with that IP, then forwards the relayed
+message to Docker rsyslog on UDP localhost:5140.
+
+rsyslog uses a separate ruleset for port 5140 that maps hostname → src_ip,
+so ClickHouse receives the correct device IP in the src_ip column.
+
+Result:
+  src_ip   = 192.168.5.1   (real device IP, device filter works)
+  hostname = 192.168.5.1   (same — set by relay protocol)
+  program  = original program name
+  message  = original message body
+
+Port layout:
+  HOST UDP 514   → this relay (takes priority over Docker UDP 514 mapping)
+  DOCKER TCP 514 → rsyslog directly (TCP syslog — src_ip stays as NAT IP)
+  DOCKER UDP 5140 (localhost only) → rsyslog relay input ← this relay forwards here
+
+Usage:
+  python run_syslog_relay.py          # persistent listener
+  Task Scheduler: registered by netdoc-setup.ps1 or install_syslog_relay.ps1
+"""
+
+import datetime
+import logging
+import os
+import re
+import socket
+import socketserver
+import sys
+import threading
+import time
+from pathlib import Path
+
+# ── Paths ──────────────────────────────────────────────────────────────────────
+
+BASE_DIR = Path(__file__).parent
+LOG_FILE = BASE_DIR / "logs" / "syslog_relay.log"
+PID_FILE = BASE_DIR / "syslog_relay.pid"
+
+# ── Config ─────────────────────────────────────────────────────────────────────
+
+LISTEN_HOST  = "0.0.0.0"
+LISTEN_PORT  = 514           # receive syslog from network devices (UDP)
+FORWARD_HOST = "127.0.0.1"
+FORWARD_PORT = 5140          # relay → Docker rsyslog internal port (UDP)
+BUFFER_SIZE  = 65535
+LOG_INTERVAL = 300           # log stats every 5 min
+
+# ── Syslog message re-crafting ─────────────────────────────────────────────────
+#
+# The relay replaces the HOSTNAME field in the syslog header with the real
+# sender IP address.  Everything else (PRI, timestamp, program, message) is
+# kept verbatim.
+
+# RFC 5424:  <PRI>1 TIMESTAMP HOSTNAME rest…
+_RFC5424 = re.compile(r'^<(\d{1,3})>1 (\S+) \S+ (.+)$', re.DOTALL)
+
+# RFC 3164:  <PRI>Mmm [d]d hh:mm:ss HOSTNAME rest…
+_RFC3164 = re.compile(
+    r'^<(\d{1,3})>([A-Za-z]{3}\s{1,2}\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+\S+ (.+)$',
+    re.DOTALL,
+)
+
+# Garbage filter: raw HTTP/RTSP/SIP/nmap traffic misdirected to port 514.
+# These arrive when scanners probe port 514 with non-syslog protocols and
+# rsyslog/relay parses the method verb as the HOSTNAME field.
+_GARBAGE = re.compile(
+    r'^(GET|POST|PUT|DELETE|HEAD|OPTIONS|CONNECT|TRACE|'
+    r'REGISTER|INVITE|NOTIFY|SUBSCRIBE|REFER|MESSAGE|UPDATE|PRACK|INFO|PUBLISH|'
+    r'DIST[0-9])',
+    re.IGNORECASE,
+)
+
+
+def _rfc3164_now() -> str:
+    return datetime.datetime.utcnow().strftime('%b %d %H:%M:%S')
+
+
+def make_relay_msg(raw: bytes, real_ip: str) -> bytes | None:
+    """Re-craft syslog message with real source IP as HOSTNAME field.
+
+    Returns None for garbage (HTTP/RTSP/nmap) — message is silently dropped.
+    """
+    text = raw.decode('utf-8', errors='replace').rstrip('\r\n\x00')
+    if not text:
+        return None
+
+    # RFC 5424
+    m = _RFC5424.match(text)
+    if m:
+        pri, ts, rest = m.groups()
+        first = rest.split(None, 1)[0] if rest else ''
+        if _GARBAGE.match(first):
+            return None
+        return f'<{pri}>1 {ts} {real_ip} {rest}\n'.encode('utf-8', errors='replace')
+
+    # RFC 3164
+    m = _RFC3164.match(text)
+    if m:
+        pri, ts, rest = m.groups()
+        first = rest.split(None, 1)[0] if rest else ''
+        if _GARBAGE.match(first):
+            return None
+        return f'<{pri}>{ts} {real_ip} {rest}\n'.encode('utf-8', errors='replace')
+
+    # Unknown format — check first word for garbage
+    first = text.split(None, 1)[0]
+    if _GARBAGE.match(first):
+        return None
+
+    # Wrap as minimal RFC 3164
+    return f'<14>{_rfc3164_now()} {real_ip} {text}\n'.encode('utf-8', errors='replace')
+
+
+# ── Stats ──────────────────────────────────────────────────────────────────────
+
+_lock        = threading.Lock()
+_forwarded   = 0
+_dropped     = 0
+_errors      = 0
+
+
+def _inc(key: str) -> None:
+    global _forwarded, _dropped, _errors
+    with _lock:
+        if key == 'f':
+            _forwarded += 1
+        elif key == 'd':
+            _dropped += 1
+        else:
+            _errors += 1
+
+
+# ── Forward socket (UDP, shared across handler threads) ───────────────────────
+
+_fwd = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+
+# ── UDP handler ────────────────────────────────────────────────────────────────
+
+class _Handler(socketserver.BaseRequestHandler):
+    def handle(self) -> None:
+        data, _sock = self.request
+        real_ip = self.client_address[0]
+        msg = make_relay_msg(data, real_ip)
+        if msg is None:
+            _inc('d')
+            return
+        try:
+            _fwd.sendto(msg, (FORWARD_HOST, FORWARD_PORT))
+            _inc('f')
+        except OSError as exc:
+            logger.warning("forward error from %s: %s", real_ip, exc)
+            _inc('e')
+
+
+class _ReuseUDPServer(socketserver.ThreadingUDPServer):
+    allow_reuse_address = True
+
+
+# ── Logging ────────────────────────────────────────────────────────────────────
+
+def _setup_logging() -> None:
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    fmt = '%(asctime)s [%(levelname)s] %(message)s'
+    logging.basicConfig(
+        level=logging.INFO,
+        format=fmt,
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler(str(LOG_FILE), encoding='utf-8'),
+        ],
+    )
+
+
+logger = logging.getLogger(__name__)
+
+
+# ── PID file ───────────────────────────────────────────────────────────────────
+
+def _write_pid() -> None:
+    PID_FILE.write_text(str(os.getpid()))
+
+
+def _remove_pid() -> None:
+    try:
+        PID_FILE.unlink()
+    except FileNotFoundError:
+        pass
+
+
+# ── Stats thread ───────────────────────────────────────────────────────────────
+
+def _stats_loop() -> None:
+    while True:
+        time.sleep(LOG_INTERVAL)
+        with _lock:
+            f, d, e = _forwarded, _dropped, _errors
+        logger.info("stats: forwarded=%d dropped=%d errors=%d", f, d, e)
+
+
+# ── Main ───────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    _setup_logging()
+    _write_pid()
+
+    logger.info("NetDoc Syslog Relay starting")
+    logger.info("  listen  : UDP %s:%d  (network devices)", LISTEN_HOST, LISTEN_PORT)
+    logger.info("  forward : UDP %s:%d  (Docker rsyslog relay input)", FORWARD_HOST, FORWARD_PORT)
+
+    threading.Thread(target=_stats_loop, daemon=True).start()
+
+    try:
+        srv = _ReuseUDPServer((LISTEN_HOST, LISTEN_PORT), _Handler)
+        logger.info("Relay ready — real source IPs will be preserved in ClickHouse.")
+        srv.serve_forever()
+    except PermissionError:
+        logger.error(
+            "Cannot bind to port %d — run as Administrator "
+            "(required for ports < 1024 on Windows).",
+            LISTEN_PORT,
+        )
+        sys.exit(1)
+    except KeyboardInterrupt:
+        logger.info("Relay stopped by user.")
+    finally:
+        _remove_pid()
+
+
+if __name__ == '__main__':
+    main()

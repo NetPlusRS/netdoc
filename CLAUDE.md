@@ -55,6 +55,8 @@ netdoc/                  # główny pakiet Python
   web/                   # Flask admin panel + templates
 
 run_scanner.py           # skaner HOST (Windows) — Task Scheduler, co 5 min
+run_broadcast_worker.py  # HOST: nasłuchuje broadcast/multicast — Task Scheduler, ciągły
+run_syslog_relay.py      # HOST: proxy syslog UDP 514→5140, zachowuje prawdziwe IP — Task Scheduler, ciągły
 run_ping_worker.py       # Docker: ping monitoring co 18s
 run_snmp_worker.py       # Docker: SNMP enrichment co 5min
 run_cred_worker.py       # Docker: credential testing, cykl ~15min
@@ -115,6 +117,8 @@ Agenci to specjalizowane asystenty uruchamiane przez Claude Code. Każdy ma wła
 | `@bug-worker` | Worker nie działa / daje złe wyniki | Crashe w pętli, memory leaks, złe interwały, API errors |
 | `@bug-tests` | Po nowej funkcji / przed commitem | Brakujące testy, złe mockowanie, puste asercje |
 | `@bug-performance` | Aplikacja zwalnia przy wielu urządzeniach | N+1 w pętlach, sleep w złym miejscu, blocking timeouts |
+| `@bug-api` | Po dodaniu nowego pola/endpointu | Niespójności SQLAlchemy↔Pydantic, brak migracji, błędny Flask proxy |
+| `@bug-clickhouse` | Syslog nie wyświetla / retencja nie działa | TTL, typy parametrów, limity Pro/Free, schema tabeli |
 
 ### Jak uruchomić agenta
 

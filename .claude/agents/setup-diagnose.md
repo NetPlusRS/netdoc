@@ -1,6 +1,6 @@
 ---
 name: setup-diagnose
-description: Diagnozuje problemy ze świeżą instalacją NetDoc — sprawdza .env, Docker kontenery, dostępność API i bazy danych, zależności Python, logi błędów. Uruchom gdy aplikacja nie startuje, workery crashują lub coś nie działa po git clone.
+description: Diagnozuje problemy ze świeżą instalacją NetDoc — sprawdza .env, Docker kontenery, dostępność API i bazy danych, zależności Python, logi błędów, PATH/WSL2/firewall na świeżym Windows. Uruchom gdy aplikacja nie startuje, workery crashują lub coś nie działa po git clone / po instalatorze netdoc-setup.ps1.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 ---
@@ -177,6 +177,73 @@ Sprawdź lock file:
 ls -la scanner.pid 2>/dev/null && cat scanner.pid 2>/dev/null
 ```
 Jeśli plik istnieje ale procesu nie ma → stary lock, usuń plik.
+
+### Krok 9 — Świeża instalacja Windows (uruchom jeśli to nowy system)
+
+Ten krok dotyczy systemów gdzie NetDoc był właśnie instalowany przez `netdoc-setup.ps1`.
+
+**9a. PATH — czy narzędzia są dostępne:**
+```bash
+python --version 2>/dev/null || echo "BRAK Python w PATH"
+git --version 2>/dev/null || echo "BRAK git w PATH"
+nmap --version 2>/dev/null || echo "BRAK nmap w PATH"
+docker --version 2>/dev/null || echo "BRAK docker w PATH"
+```
+Jeśli brak pomimo instalacji → PATH nie został odświeżony. Otwórz nowe okno PowerShell.
+Alternatywne ścieżki: Python: `C:\Users\[user]\AppData\Local\Programs\Python\Python312\python.exe`
+Nmap: `C:\Program Files (x86)\Nmap\nmap.exe`
+
+**9b. WSL2 status:**
+```bash
+wsl --status 2>/dev/null || echo "WSL nie zainstalowane"
+wsl -l -v 2>/dev/null || echo "Brak dystrybucji WSL"
+```
+Jeśli WSL2 nie jest aktywne → Docker Desktop nie uruchomi się → WYMAGANY RESTART systemu.
+Po restarcie uruchom ponownie `netdoc-setup.ps1`.
+
+**9c. Docker Desktop — socket permission:**
+```bash
+docker info 2>/dev/null | grep -i "socket\|context\|server" | head -5
+```
+Jeśli błąd `Cannot connect to Docker daemon` — Docker Desktop nie działa lub brak socket permission.
+Wymagane ustawienie: Docker Desktop → Settings → Advanced → "Allow the default Docker socket to be used (requires password)".
+
+**9d. Windows Firewall — syslog port 514:**
+```bash
+netsh advfirewall firewall show rule name="NetDoc Syslog" 2>/dev/null || echo "BRAK reguły firewall dla sysloga"
+```
+Jeśli brak reguły — urządzenia sieciowe nie mogą wysyłać syslog do NetDoc.
+Poprawka (uruchom jako Administrator):
+```powershell
+New-NetFirewallRule -DisplayName "NetDoc Syslog UDP" -Direction Inbound -Protocol UDP -LocalPort 514 -Action Allow
+New-NetFirewallRule -DisplayName "NetDoc Syslog TCP" -Direction Inbound -Protocol TCP -LocalPort 514 -Action Allow
+```
+
+**9e. Watchdog — konto SYSTEM vs OneDrive:**
+```bash
+schtasks /query /tn "NetDoc Watchdog" /fo LIST 2>/dev/null | grep -i "run as\|user"
+```
+Jeśli wynik zawiera `SYSTEM` a projekt jest w `C:\Users\[user]\OneDrive\...` → watchdog nie ma dostępu.
+Zarejestruj ponownie watchdog jako bieżący użytkownik (`install_watchdog.ps1` wymaga modyfikacji).
+
+**9f. Task Scheduler — status zadań:**
+```bash
+schtasks /query /tn "NetDocScanner" /fo LIST 2>/dev/null | grep -E "Status|Next Run|Last Run|Last Result"
+schtasks /query /tn "NetDoc Watchdog" /fo LIST 2>/dev/null | grep -E "Status|Next Run|Last Run|Last Result"
+```
+`Last Result: 0` = sukces. Inne kody → błąd uruchamiania.
+Typowe problemy:
+- `0x1` → Python nie znaleziony (zła ścieżka w install_autostart.ps1)
+- `0x41301` → zadanie jeszcze działa
+- `0x41303` → zadanie nie jest zaplanowane (brak triggera)
+
+**9g. Impacket — czy zainstalowany (Defender może blokować):**
+```bash
+python -c "import impacket; print('impacket OK')" 2>/dev/null || echo "BRAK impacket — cred-worker ograniczony"
+```
+Jeśli brak → Defender mógł zablokować instalację lub quarantinować plik.
+Sprawdź: Windows Security → Protection History → Threats quarantined.
+Poprawka: uruchom `netdoc-setup.ps1` jako Administrator (automatycznie doda exclusions i retry).
 
 ## Format raportu
 

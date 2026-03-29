@@ -27,6 +27,22 @@
   <h5 class="mb-0"><i class="bi bi-journal-code me-2"></i>Syslog</h5>
   <div class="d-flex align-items-center gap-2">
     <span class="badge bg-secondary" id="syslogStatus">...</span>
+    {% if PRO_ENABLED %}
+    <span class="text-muted small d-flex align-items-center gap-1">
+      <i class="bi bi-clock-history"></i>Retencja:
+      <select id="retentionSelect" class="form-select form-select-sm" style="width:auto"
+              title="Zmień czas przechowywania logów syslog">
+        {% for d in [7, 14, 30, 60, 90, 180, 365] %}
+        <option value="{{ d }}" {% if (syslog_retention_days or 30) == d %}selected{% endif %}>{{ d }} dni</option>
+        {% endfor %}
+      </select>
+    </span>
+    {% else %}
+    <span class="text-muted small" title="Logi starsze niż 30 dni są automatycznie usuwane przez ClickHouse TTL. Wersja PRO umożliwia konfigurację do 365 dni.">
+      <i class="bi bi-clock-history me-1"></i>Retencja: 30 dni
+      <a href="/pro" class="badge bg-warning text-dark text-decoration-none ms-1" style="font-size:0.65rem;vertical-align:middle">PRO: do 365 dni</a>
+    </span>
+    {% endif %}
     <div class="form-check form-switch mb-0">
       <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
       <label class="form-check-label small" for="autoRefresh">Auto 30s</label>
@@ -65,29 +81,51 @@
              title="Filtruj po nazwie procesu (np. OSPF, BGP, SYS)">
 
       {# Time range #}
-      <select class="form-select form-select-sm" id="hoursFilter" style="width:100px">
+      <select class="form-select form-select-sm" id="hoursFilter" style="width:120px" title="Zakres czasu">
         <option value="1">1 godzina</option>
         <option value="6">6 godzin</option>
         <option value="24" selected>24 godziny</option>
         <option value="72">3 doby</option>
         <option value="168">7 dni</option>
+        {% if PRO_ENABLED %}
+        <option value="360">15 dni</option>
+        <option value="720">30 dni</option>
+        <option value="2160">90 dni</option>
+        <option value="4320">180 dni</option>
+        <option value="8760">365 dni</option>
+        {% endif %}
       </select>
 
       {# Limit #}
-      <select class="form-select form-select-sm" id="limitFilter" style="width:90px">
+      <select class="form-select form-select-sm" id="limitFilter" style="width:90px" title="Liczba wyników">
         <option value="100">100</option>
         <option value="200" selected>200</option>
         <option value="500">500</option>
         <option value="1000">1000</option>
+        {% if PRO_ENABLED %}
+        <option value="2000">2000</option>
+        <option value="5000">5000</option>
+        {% endif %}
       </select>
 
-      {# Quick text search (client-side) #}
-      <input type="text" id="textFilter" class="form-control form-control-sm"
-             style="width:200px" placeholder="Search in content…" autocomplete="off">
-      <button class="btn btn-sm btn-outline-secondary" onclick="clearText()" title="Wyczyść">
-        <i class="bi bi-x"></i>
-      </button>
+      {# Text search — server-side dla Pro, client-side dla Free #}
+      <div class="input-group input-group-sm" style="width:{% if PRO_ENABLED %}240px{% else %}200px{% endif %}">
+        <input type="text" id="textFilter" class="form-control form-control-sm"
+               placeholder="{% if PRO_ENABLED %}Szukaj w logach (server)…{% else %}Search in content…{% endif %}"
+               autocomplete="off" title="{% if PRO_ENABLED %}Wyszukiwanie server-side w całym zakresie{% else %}Wyszukiwanie client-side w załadowanych danych{% endif %}">
+        {% if PRO_ENABLED %}
+        <span class="input-group-text bg-warning text-dark" style="font-size:.7rem;padding:2px 5px" title="Server-side search (Pro)">PRO</span>
+        {% endif %}
+        <button class="btn btn-outline-secondary" type="button" onclick="clearText()" title="Wyczyść"><i class="bi bi-x"></i></button>
+      </div>
       <span class="text-muted small" id="textFilterCount"></span>
+
+      {% if PRO_ENABLED %}
+      {# Eksport CSV — Pro #}
+      <button class="btn btn-sm btn-outline-success" id="exportCsvBtn" title="Eksportuj wyniki do CSV">
+        <i class="bi bi-download me-1"></i>CSV
+      </button>
+      {% endif %}
     </div>
   </div>
 </div>
@@ -113,6 +151,17 @@
     </div>
   </div>
 </div>
+{% if PRO_ENABLED %}
+<div class="d-flex justify-content-center align-items-center gap-3 mt-2">
+  <button id="paginPrev" type="button" class="btn btn-outline-secondary btn-sm" disabled>
+    <i class="bi bi-chevron-left"></i> Poprzednia
+  </button>
+  <span id="paginInfo" class="text-muted small"></span>
+  <button id="paginNext" type="button" class="btn btn-outline-secondary btn-sm" disabled>
+    Następna <i class="bi bi-chevron-right"></i>
+  </button>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -121,6 +170,8 @@ const API_URL = "";
 let allRows = [];
 let activeSev = "";
 let autoRefreshTimer = null;
+let currentOffset = 0;
+let totalCount    = 0;
 
 // ── Severity colors ────────────────────────────────────────────────────────────
 const SEV_CLASS = {
@@ -157,6 +208,11 @@ function fetchLogs() {
   if (sev)     url += `&severity=${sev}`;
   if (device)  url += `&device_id=${device}`;
   if (program) url += `&program=${encodeURIComponent(program)}`;
+  {% if PRO_ENABLED %}
+  const search = document.getElementById("textFilter").value.trim();
+  if (search)            url += `&search=${encodeURIComponent(search)}`;
+  if (currentOffset > 0) url += `&offset=${currentOffset}`;
+  {% endif %}
 
   setStatus("loading");
   fetch(url)
@@ -166,6 +222,10 @@ function fetchLogs() {
     })
     .then(data => {
       allRows = data.logs || [];
+      {% if PRO_ENABLED %}
+      totalCount = data.count ?? allRows.length;
+      updatePaginationUI();
+      {% endif %}
       applyTextFilter();
       setStatus("ok");
       checkNatBanner(allRows);
@@ -179,15 +239,21 @@ function fetchLogs() {
 
 // ── Render ────────────────────────────────────────────────────────────────────
 function applyTextFilter() {
-  const q = document.getElementById("textFilter").value.trim().toLowerCase();
   const countEl = document.getElementById("textFilterCount");
   const tbody = document.getElementById("syslogBody");
 
+  {% if PRO_ENABLED %}
+  // Pro: server already filtered by search param — render allRows as-is
+  const rows = allRows;
+  const q = "";  // unused in PRO (search is server-side), but needed for empty-rows message below
+  countEl.textContent = totalCount > allRows.length ? `${currentOffset + 1}–${currentOffset + allRows.length} / ${totalCount}` : "";
+  {% else %}
+  const q = document.getElementById("textFilter").value.trim().toLowerCase();
   const rows = q
     ? allRows.filter(r => (r.message || "").toLowerCase().includes(q) || (r.program || "").toLowerCase().includes(q))
     : allRows;
-
   countEl.textContent = q ? `${rows.length} / ${allRows.length}` : "";
+  {% endif %}
 
   if (!rows.length) {
     tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">${q ? "No results for: " + escHtml(q) : "No logs in the selected time range."}</td></tr>`;
@@ -212,7 +278,12 @@ function applyTextFilter() {
 
 function clearText() {
   document.getElementById("textFilter").value = "";
+  {% if PRO_ENABLED %}
+  currentOffset = 0;
+  fetchLogs();
+  {% else %}
   applyTextFilter();
+  {% endif %}
 }
 
 function setStatus(state) {
@@ -232,16 +303,27 @@ document.querySelectorAll("#severityFilter button").forEach(btn => {
     document.querySelectorAll("#severityFilter button").forEach(b => b.classList.remove("active"));
     this.classList.add("active");
     activeSev = this.dataset.sev;
+    {% if PRO_ENABLED %}currentOffset = 0;{% endif %}
     fetchLogs();
   });
 });
 
 ["deviceFilter", "hoursFilter", "limitFilter"].forEach(id => {
-  document.getElementById(id).addEventListener("change", fetchLogs);
+  document.getElementById(id).addEventListener("change", () => {
+    {% if PRO_ENABLED %}currentOffset = 0;{% endif %}
+    fetchLogs();
+  });
 });
 
-document.getElementById("programFilter").addEventListener("keydown", e => { if (e.key === "Enter") fetchLogs(); });
+document.getElementById("programFilter").addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    {% if PRO_ENABLED %}currentOffset = 0;{% endif %}
+    fetchLogs();
+  }
+});
+{% if not PRO_ENABLED %}
 document.getElementById("textFilter").addEventListener("input", applyTextFilter);
+{% endif %}
 
 // Auto-refresh
 const arCheck = document.getElementById("autoRefresh");
@@ -284,5 +366,86 @@ document.getElementById("syslogNatBannerClose").addEventListener("click", functi
 // Start
 fetchLogs();
 startAuto();
+
+{% if PRO_ENABLED %}
+const retentionSel = document.getElementById("retentionSelect");
+if (retentionSel) {
+  retentionSel.addEventListener("change", function() {
+    const days = parseInt(this.value, 10);
+    fetch("/api/syslog/retention", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({days})
+    })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        const badge = document.createElement("span");
+        badge.className = "badge bg-success ms-1";
+        badge.textContent = "Zapisano";
+        retentionSel.after(badge);
+        setTimeout(() => badge.remove(), 2000);
+      }
+    })
+    .catch(() => {});
+  });
+}
+
+// ── Pro: server-side search — wyzwól nowy fetch zamiast filtrowania client-side ─
+let _proSearchTimer = null;
+document.getElementById("textFilter").addEventListener("input", function() {
+  clearTimeout(_proSearchTimer);
+  _proSearchTimer = setTimeout(() => { currentOffset = 0; fetchLogs(); }, 500);
+});
+
+// ── Pro: paginacja ─────────────────────────────────────────────────────────────
+function updatePaginationUI() {
+  const limit   = parseInt(document.getElementById("limitFilter").value, 10);
+  const prevBtn = document.getElementById("paginPrev");
+  const nextBtn = document.getElementById("paginNext");
+  const info    = document.getElementById("paginInfo");
+  if (!prevBtn) return;
+  const from = totalCount === 0 ? 0 : currentOffset + 1;
+  const to   = Math.min(currentOffset + limit, totalCount);
+  info.textContent = totalCount > 0 ? `${from}–${to} / ${totalCount}` : "";
+  prevBtn.disabled = currentOffset === 0;
+  nextBtn.disabled = (currentOffset + limit) >= totalCount;
+}
+
+document.getElementById("paginPrev").addEventListener("click", function() {
+  const limit = parseInt(document.getElementById("limitFilter").value, 10);
+  currentOffset = Math.max(0, currentOffset - limit);
+  fetchLogs();
+});
+document.getElementById("paginNext").addEventListener("click", function() {
+  const limit = parseInt(document.getElementById("limitFilter").value, 10);
+  currentOffset += limit;
+  fetchLogs();
+});
+
+// ── Pro: CSV export ────────────────────────────────────────────────────────────
+document.getElementById("exportCsvBtn").addEventListener("click", function() {
+  if (!allRows.length) return;
+  const header = ["timestamp", "src_ip", "severity", "program", "message"];
+  const escape = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+  const lines  = [header.join(",")];
+  allRows.forEach(r => {
+    lines.push([
+      escape((r.timestamp || "").substring(0, 19).replace("T", " ")),
+      escape(r.src_ip || ""),
+      escape(r.severity_name || r.severity),
+      escape(r.program || ""),
+      escape(r.message || ""),
+    ].join(","));
+  });
+  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], {type: "text/csv;charset=utf-8;"});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = "syslog_" + new Date().toISOString().substring(0, 16).replace("T", "_") + ".csv";
+  a.click();
+  URL.revokeObjectURL(url);
+});
+{% endif %}
 </script>
 {% endblock %}

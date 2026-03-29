@@ -14,10 +14,15 @@ $Services = @(
     @{ Name = "netdoc-prometheus"; Port = 9090;  Label = "Prometheus" }
     @{ Name = "netdoc-loki";       Port = 3100;  Label = "Loki (logs)" }
     @{ Name = "netdoc-promtail";   Port = 0;     Label = "Promtail" }
+    @{ Name = "netdoc-clickhouse"; Port = 8123;  Label = "ClickHouse (syslog DB)" }
+    @{ Name = "netdoc-rsyslog";    Port = 514;   Label = "rsyslog (syslog receiver)" }
+    @{ Name = "netdoc-vector";     Port = 8688;  Label = "Vector (syslog pipeline)" }
     @{ Name = "netdoc-ping";       Port = 8001;  Label = "Ping Worker" }
     @{ Name = "netdoc-snmp";       Port = 8002;  Label = "SNMP Worker" }
     @{ Name = "netdoc-cred";       Port = 8003;  Label = "Cred Worker" }
     @{ Name = "netdoc-vuln";       Port = 8004;  Label = "Vuln Worker" }
+    @{ Name = "netdoc-internet";   Port = 0;     Label = "Internet Worker (internal)" }
+    @{ Name = "netdoc-community";  Port = 0;     Label = "Community Worker (internal)" }
 )
 
 $WatchdogScript = Join-Path $ProjectDir "netdoc_watchdog.ps1"
@@ -77,9 +82,21 @@ function Write-Menu {
     Write-Host ""
     $wdStatus = try { (Get-ScheduledTask -TaskName $WatchdogTask -ErrorAction Stop).State } catch { "not installed" }
     $wdColor  = if ($wdStatus -eq "Ready") { "Green" } elseif ($wdStatus -eq "not installed") { "DarkGray" } else { "Yellow" }
-    Write-Host "  [8] Watchdog auto-heal  [status: $wdStatus]" -ForegroundColor $wdColor
-    Write-Host "       Service that checks container status every 5 min and starts any missing ones." -ForegroundColor DarkGray
-    Write-Host "       Handles manual container or Docker image removal." -ForegroundColor DarkGray
+
+    $relayTask  = Get-ScheduledTask -TaskName "NetDocSyslogRelay" -ErrorAction SilentlyContinue
+    $relayPid   = Test-Path (Join-Path $ProjectDir "syslog_relay.pid")
+    $relayStatus = if ($relayTask -and $relayPid) { "Running" } elseif ($relayTask) { "Installed (stopped)" } else { "not installed" }
+    $relayColor  = if ($relayStatus -eq "Running") { "Green" } elseif ($relayStatus -eq "not installed") { "DarkGray" } else { "Yellow" }
+
+    $bcastTask   = Get-ScheduledTask -TaskName "NetDocBroadcast" -ErrorAction SilentlyContinue
+    $bcastPid    = Test-Path (Join-Path $ProjectDir "broadcast.pid")
+    $bcastStatus = if ($bcastTask -and $bcastPid) { "Running" } elseif ($bcastTask) { "Installed (stopped)" } else { "not installed" }
+    $bcastColor  = if ($bcastStatus -eq "Running") { "Green" } elseif ($bcastStatus -eq "not installed") { "DarkGray" } else { "Yellow" }
+
+    Write-Host "  [8] Watchdog / Host Services" -ForegroundColor $wdColor
+    Write-Host ("       Watchdog     [{0}]" -f $wdStatus) -ForegroundColor $wdColor
+    Write-Host ("       Syslog Relay [{0}]  — preserves real device IPs in syslog" -f $relayStatus) -ForegroundColor $relayColor
+    Write-Host ("       Broadcast    [{0}]  — multicast/broadcast discovery" -f $bcastStatus) -ForegroundColor $bcastColor
     Write-Host ""
     Write-Host "  [Q] Quit" -ForegroundColor DarkGray
     Write-Host ""
@@ -330,10 +347,13 @@ function Invoke-Watchdog {
                 Write-Host "  Registering Task Scheduler task..." -ForegroundColor Cyan
                 $action    = New-ScheduledTaskAction -Execute "powershell.exe" `
                                  -Argument "-NonInteractive -ExecutionPolicy Bypass -File `"$WatchdogScript`" -Quiet"
-                $trigger   = New-ScheduledTaskTrigger -RepetitionInterval (New-TimeSpan -Minutes 5) -Once -At (Get-Date)
+                $trigger   = New-ScheduledTaskTrigger -Once -At (Get-Date) `
+                                 -RepetitionInterval (New-TimeSpan -Minutes 5) `
+                                 -RepetitionDuration (New-TimeSpan -Days 3650)
                 $settings  = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 4) `
-                                 -MultipleInstances IgnoreNew -StartWhenAvailable
-                $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+                                 -MultipleInstances IgnoreNew -StartWhenAvailable `
+                                 -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries
+                $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
                 $t = Register-ScheduledTask -TaskName $WatchdogTask -Action $action `
                          -Trigger $trigger -Settings $settings -Principal $principal `
                          -Description "NetDoc: auto-repair Docker containers every 5 minutes." -Force

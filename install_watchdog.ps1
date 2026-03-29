@@ -19,7 +19,11 @@ $action  = New-ScheduledTaskAction `
     -Argument "-NonInteractive -ExecutionPolicy Bypass -File `"$ScriptPath`" -Quiet"
 
 # Trigger: every 5 minutes, indefinitely
-$trigger = New-ScheduledTaskTrigger -RepetitionInterval (New-TimeSpan -Minutes 5) -Once -At (Get-Date)
+$trigger = New-ScheduledTaskTrigger `
+    -Once `
+    -At (Get-Date) `
+    -RepetitionInterval (New-TimeSpan -Minutes 5) `
+    -RepetitionDuration (New-TimeSpan -Days 3650)
 
 $settings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 4) `
@@ -30,8 +34,8 @@ $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries
 
 $principal = New-ScheduledTaskPrincipal `
-    -UserId "SYSTEM" `
-    -LogonType ServiceAccount `
+    -UserId $env:USERNAME `
+    -LogonType Interactive `
     -RunLevel Highest
 
 $task = Register-ScheduledTask `
@@ -46,7 +50,7 @@ $task = Register-ScheduledTask `
 if ($task) {
     Write-Host "OK: Task '$TaskName' registered." -ForegroundColor Green
     Write-Host "    Script: $ScriptPath" -ForegroundColor DarkGray
-    Write-Host "    Interval: every 5 minutes, account: SYSTEM" -ForegroundColor DarkGray
+    Write-Host "    Interval: every 5 minutes, account: $env:USERNAME" -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "To uninstall:"  -ForegroundColor Yellow
     Write-Host "  Unregister-ScheduledTask -TaskName '$TaskName' -Confirm:`$false" -ForegroundColor Yellow
