@@ -164,9 +164,11 @@ class Device(Base):
     monitor_note  = Column(String(255), nullable=True)    # opis co jest monitorowane
     monitor_since = Column(DateTime, nullable=True)       # kiedy wlaczono monitorowanie
 
-    # Inwentaryzacja / Środki trwałe
+    # Inwentaryzacja / dane urządzenia
     serial_number      = Column(String(255),    nullable=True)
     asset_tag          = Column(String(100),    nullable=True)
+    sys_contact        = Column(String(255),    nullable=True)   # sysContact z SNMP (1.3.6.1.2.1.1.4.0)
+    # Kolumny zakupowe — zachowane w DB dla kompatybilności, nieużywane w UI od 2026-03-29
     purchase_date      = Column(Date,           nullable=True)
     purchase_price     = Column(Numeric(12, 2), nullable=True)
     purchase_currency  = Column(String(3),      nullable=True, default="PLN")

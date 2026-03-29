@@ -39,17 +39,12 @@ class DeviceOut(BaseModel):
     is_monitored: bool = False
     monitor_note: Optional[str] = None
     monitor_since: Optional[datetime] = None
-    # Inwentaryzacja
+    # Inwentaryzacja / dane urządzenia
     serial_number: Optional[str] = None
     asset_tag: Optional[str] = None
-    purchase_date: Optional[pydate] = None
-    purchase_price: Optional[Decimal] = None
-    purchase_currency: Optional[str] = None
-    purchase_vendor: Optional[str] = None
-    invoice_number: Optional[str] = None
-    support_end: Optional[pydate] = None
     responsible_person: Optional[str] = None
     asset_notes: Optional[str] = None
+    sys_contact: Optional[str] = None
     ip_type: str = "unknown"
     snmp_community: Optional[str] = None
     snmp_ok_at: Optional[datetime] = None
@@ -62,18 +57,12 @@ class DeviceUpdate(BaseModel):
     location: Optional[str] = None
     site_id: Optional[str] = None
     device_type: Optional[DeviceType] = None
-    warranty_end: Optional[pydate] = None
-    # Inwentaryzacja
+    # Inwentaryzacja / dane urządzenia
     serial_number: Optional[str] = None
     asset_tag: Optional[str] = None
-    purchase_date: Optional[pydate] = None
-    purchase_price: Optional[Decimal] = None
-    purchase_currency: Optional[str] = None
-    purchase_vendor: Optional[str] = None
-    invoice_number: Optional[str] = None
-    support_end: Optional[pydate] = None
     responsible_person: Optional[str] = None
     asset_notes: Optional[str] = None
+    sys_contact: Optional[str] = None
 
 
 class TrustUpdate(BaseModel):

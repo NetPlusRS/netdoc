@@ -241,13 +241,10 @@ def test_inventory_fields_in_output(client, db):
     data = resp.json()
     assert len(data) > 0
     d = data[0]
-    for field in ("serial_number", "asset_tag", "purchase_date",
-                  "purchase_price", "purchase_vendor",
-                  "invoice_number", "support_end", "responsible_person", "asset_notes"):
+    for field in ("serial_number", "asset_tag", "sys_contact",
+                  "responsible_person", "asset_notes"):
         assert field in d, f"Brak pola {field!r} w odpowiedzi API"
         assert d[field] is None, f"Pole {field!r} powinno byc None, jest: {d[field]!r}"
-    # purchase_currency ma domyslna wartosc PLN
-    assert "purchase_currency" in d
 
 
 def test_update_inventory_fields(client, db):
@@ -256,24 +253,19 @@ def test_update_inventory_fields(client, db):
     payload = {
         "serial_number": "SN-ABC-123",
         "asset_tag": "AT-001",
-        "purchase_date": "2023-06-15",
-        "purchase_price": "4500.00",
-        "purchase_currency": "PLN",
-        "purchase_vendor": "ABC Computers",
-        "invoice_number": "FV/2023/1234",
-        "support_end": "2028-06-15",
+        "sys_contact": "admin@firma.pl",
         "responsible_person": "Jan Kowalski",
         "asset_notes": "Switch w serwerowni A",
+        "location": "Rack 3",
     }
     resp = client.patch(f"/api/devices/{device.id}", json=payload)
     assert resp.status_code == 200
     data = resp.json()
     assert data["serial_number"] == "SN-ABC-123"
     assert data["asset_tag"] == "AT-001"
-    assert data["purchase_date"] == "2023-06-15"
-    assert data["purchase_currency"] == "PLN"
+    assert data["sys_contact"] == "admin@firma.pl"
     assert data["responsible_person"] == "Jan Kowalski"
-    assert data["support_end"] == "2028-06-15"
+    assert data["location"] == "Rack 3"
 
 
 def test_inventory_partial_update(client, db):
