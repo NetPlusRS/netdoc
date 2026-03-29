@@ -191,7 +191,7 @@
 
   // ── Auto-refresh (wylaczone na stronach ze statycznym formularzem) ───────────
   (function() {
-    const NO_REFRESH = ["/settings", "/scan", "/logs", "/chat", "/devices", "/security"].some(p => location.pathname.startsWith(p));
+    const NO_REFRESH = ["/settings", "/scan", "/logs", "/chat", "/devices", "/security", "/syslog", "/inventory"].some(p => location.pathname.startsWith(p));
     if (NO_REFRESH) return;
     const INTERVAL = 60;
     let remaining = INTERVAL, paused = false;
