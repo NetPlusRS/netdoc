@@ -1,9 +1,22 @@
 {% extends "base.html" %}
 {% block title %}Inventory{% endblock %}
 
+{% block head %}
+<style>
+  .sort-th { cursor: pointer; -webkit-user-select: none; user-select: none; white-space: nowrap; }
+  .sort-th:hover { background: #f0f4ff; }
+  .sort-th .sort-icon { font-size: .7rem; color: #adb5bd; margin-left: 3px; }
+  .sort-th.asc  .sort-icon::after { content: "▲"; color: #0d6efd; }
+  .sort-th.desc .sort-icon::after { content: "▼"; color: #0d6efd; }
+  .sort-th:not(.asc):not(.desc) .sort-icon::after { content: "⇅"; }
+  #inv-search { max-width: 280px; }
+  .filter-active { background: #e7f3ff !important; }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h5 class="mb-0"><i class="bi bi-box-seam me-2"></i>Inventory — dane urządzeń ({{ inv_rows|length }})</h5>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h5 class="mb-0"><i class="bi bi-box-seam me-2"></i>Inventory <span class="text-muted fw-normal" id="inv-count">({{ inv_rows|length }})</span></h5>
   <div class="d-flex gap-2">
     <a href="/inventory?format=csv" class="btn btn-sm btn-outline-secondary">
       <i class="bi bi-download me-1"></i>Export CSV
@@ -11,6 +24,65 @@
     <a href="/devices" class="btn btn-sm btn-outline-secondary">
       <i class="bi bi-pc-display me-1"></i>Devices
     </a>
+  </div>
+</div>
+
+{# ── Pasek filtrów ─────────────────────────────────────────────────────────── #}
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+      <div>
+        <label class="form-label form-label-sm mb-1">Szukaj</label>
+        <div class="input-group input-group-sm">
+          <span class="input-group-text"><i class="bi bi-search"></i></span>
+          <input type="text" id="inv-search" class="form-control" placeholder="IP, hostname, vendor, S/N…">
+          <button type="button" class="btn btn-outline-secondary" id="inv-search-clear" title="Wyczyść">×</button>
+        </div>
+      </div>
+      <div>
+        <label class="form-label form-label-sm mb-1">Typ</label>
+        <select id="filter-type" class="form-select form-select-sm" style="min-width:120px" aria-label="Filtruj typ urządzenia">
+          <option value="">Wszystkie</option>
+          {% set types = inv_rows | map(attribute='device') | map(attribute='device_type') | map(attribute='value') | unique | sort %}
+          {% for t in types %}
+          <option value="{{ t }}">{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label form-label-sm mb-1">Vendor</label>
+        <select id="filter-vendor" class="form-select form-select-sm" style="min-width:130px" aria-label="Filtruj vendor">
+          <option value="">Wszyscy</option>
+          {% set vendors = inv_rows | selectattr('device.vendor') | map(attribute='device.vendor') | unique | sort %}
+          {% for v in vendors %}
+          <option value="{{ v }}">{{ v }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label form-label-sm mb-1">Lokalizacja</label>
+        <select id="filter-location" class="form-select form-select-sm" style="min-width:130px" aria-label="Filtruj lokalizację">
+          <option value="">Wszystkie</option>
+          {% set locs = inv_rows | selectattr('device.location') | map(attribute='device.location') | unique | sort %}
+          {% for l in locs %}
+          <option value="{{ l }}">{{ l }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label form-label-sm mb-1">S/N</label>
+        <select id="filter-sn" class="form-select form-select-sm" style="min-width:110px" aria-label="Filtruj numer seryjny">
+          <option value="">Wszystkie</option>
+          <option value="yes">Ma S/N</option>
+          <option value="no">Brak S/N</option>
+        </select>
+      </div>
+      <div class="ms-auto d-flex align-items-end">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="inv-reset">
+          <i class="bi bi-x-circle me-1"></i>Reset filtrów
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -23,33 +95,38 @@
 <div class="card">
   <div class="card-body p-0">
     <div class="table-responsive">
-      <table class="table table-hover table-sm mb-0">
+      <table class="table table-hover table-sm mb-0" id="inv-table">
         <thead>
           <tr>
-            <th>IP</th>
-            <th>Hostname</th>
-            <th>Typ</th>
-            <th>Vendor / Model</th>
-            <th title="Wersja OS lub sysDescr z SNMP">OS / Firmware</th>
-            <th title="Numer seryjny z Entity MIB">S/N</th>
-            <th title="Wewnętrzny numer inwentarzowy">Asset tag</th>
-            <th>Lokalizacja</th>
-            <th title="sysContact z SNMP">Kontakt</th>
-            <th title="Uptime z SNMP sysUpTime">Uptime</th>
-            <th>Ostatni SNMP</th>
-            <th>Odpowiedzialny</th>
-            <th>Notatki</th>
+            <th class="sort-th" data-col="0">IP<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="1">Hostname<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="2">Typ<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="3">Vendor / Model<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="4" title="Wersja OS lub sysDescr z SNMP">OS / Firmware<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="5" title="Numer seryjny z Entity MIB">S/N<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="6" title="Wewnętrzny numer inwentarzowy">Asset tag<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="7">Lokalizacja<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="8" title="sysContact z SNMP">Kontakt<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="9" title="Uptime z SNMP sysUpTime">Uptime<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="10">Ostatni SNMP<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="11">Odpowiedzialny<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="12">Notatki<span class="sort-icon"></span></th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="inv-tbody">
           {% for row in inv_rows %}
           {% set d = row.device %}
-          <tr>
+          <tr
+            data-type="{{ d.device_type.value if d.device_type else 'unknown' }}"
+            data-vendor="{{ d.vendor or '' }}"
+            data-location="{{ d.location or '' }}"
+            data-sn="{{ 'yes' if d.serial_number else 'no' }}"
+          >
             <td class="font-monospace small">
-              <a href="/devices" class="text-decoration-none">{{ d.ip }}</a>
+              <a href="/devices/{{ d.id }}" class="text-decoration-none">{{ d.ip }}</a>
             </td>
             <td class="small font-monospace">{{ d.hostname or "—" }}</td>
-            <td>
+            <td data-sort="{{ d.device_type.value if d.device_type else 'unknown' }}">
               <span class="badge bg-secondary small">
                 {{ d.device_type.value if d.device_type else "unknown" }}
               </span>
@@ -66,19 +143,17 @@
             <td class="small">{{ d.location or "—" }}</td>
             <td class="small">{{ d.sys_contact or "—" }}</td>
             <td class="small text-muted font-monospace">{{ row.uptime or "—" }}</td>
-            <td class="small text-muted text-nowrap">
-              {% if d.snmp_ok_at %}
-                {{ d.snmp_ok_at.strftime("%Y-%m-%d %H:%M") }}
-              {% else %}—{% endif %}
+            <td class="small text-muted text-nowrap" data-sort="{{ d.snmp_ok_at.strftime('%Y%m%d%H%M') if d.snmp_ok_at else '' }}">
+              {% if d.snmp_ok_at %}{{ d.snmp_ok_at.strftime("%Y-%m-%d %H:%M") }}{% else %}—{% endif %}
             </td>
             <td class="small">{{ d.responsible_person or "—" }}</td>
             <td class="small text-muted" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                title="{{ row.clean_notes }}">
+                title="{{ row.clean_notes or '' }}">
               {{ row.clean_notes or "—" }}
             </td>
           </tr>
           {% else %}
-          <tr>
+          <tr id="inv-empty-row">
             <td colspan="13" class="text-center text-muted py-4">
               Brak danych. Dane SNMP uzupełniane automatycznie. Edytuj ręcznie przez
               <a href="/devices">Devices → Actions → Inventory / SNMP</a>.
@@ -91,13 +166,122 @@
   </div>
 </div>
 
-<div class="mt-3 d-flex gap-2 align-items-center">
-  <a href="/inventory?format=csv" class="btn btn-sm btn-outline-secondary">
-    <i class="bi bi-file-earmark-spreadsheet me-1"></i>Download CSV
-  </a>
-  <span class="text-muted small">
-    CSV zawiera: IP, hostname, typ, vendor, model, OS/firmware, S/N, asset tag,
-    lokalizacja, kontakt, ostatni poll SNMP, uptime, osoba odpowiedzialna, notatki.
-  </span>
+<div class="mt-2 d-flex gap-2 align-items-center justify-content-between flex-wrap">
+  <span class="text-muted small" id="inv-status"></span>
+  <div class="d-flex gap-2">
+    <a href="/inventory?format=csv" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-file-earmark-spreadsheet me-1"></i>Download CSV
+    </a>
+    <span class="text-muted small d-flex align-items-center">
+      CSV zawiera: IP, hostname, typ, vendor, model, OS/firmware, S/N, asset tag,
+      lokalizacja, kontakt, ostatni poll SNMP, uptime, osoba odpowiedzialna, notatki.
+    </span>
+  </div>
 </div>
+
+<script>
+(function () {
+  const tbody   = document.getElementById('inv-tbody');
+  const search  = document.getElementById('inv-search');
+  const clrBtn  = document.getElementById('inv-search-clear');
+  const reset   = document.getElementById('inv-reset');
+  const count   = document.getElementById('inv-count');
+  const status  = document.getElementById('inv-status');
+  const fType   = document.getElementById('filter-type');
+  const fVendor = document.getElementById('filter-vendor');
+  const fLoc    = document.getElementById('filter-location');
+  const fSn     = document.getElementById('filter-sn');
+
+  const allRows = Array.from(tbody.querySelectorAll('tr[data-type]'));
+  let sortCol = -1, sortAsc = true;
+
+  function cellText(row, col) {
+    const td = row.cells[col];
+    if (!td) return '';
+    return (td.dataset.sort !== undefined ? td.dataset.sort : td.textContent).trim().toLowerCase();
+  }
+
+  function applyAll() {
+    const q       = search.value.toLowerCase().trim();
+    const type    = fType.value;
+    const vendor  = fVendor.value;
+    const loc     = fLoc.value;
+    const sn      = fSn.value;
+
+    let visible = 0;
+    allRows.forEach(row => {
+      const rowText = row.textContent.toLowerCase();
+      const show =
+        (!q      || rowText.includes(q)) &&
+        (!type   || row.dataset.type === type) &&
+        (!vendor || row.dataset.vendor === vendor) &&
+        (!loc    || row.dataset.location === loc) &&
+        (!sn     || row.dataset.sn === sn);
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+
+    count.textContent = visible === allRows.length
+      ? `(${allRows.length})`
+      : `(${visible} / ${allRows.length})`;
+    status.textContent = visible === 0 ? 'Brak wyników dla podanych filtrów.' : '';
+
+    // highlight active filters
+    [fType, fVendor, fLoc, fSn].forEach(el => {
+      el.classList.toggle('filter-active', el.value !== '');
+    });
+  }
+
+  function sortBy(col) {
+    if (sortCol === col) {
+      sortAsc = !sortAsc;
+    } else {
+      sortCol = col;
+      sortAsc = true;
+    }
+    document.querySelectorAll('.sort-th').forEach(th => {
+      th.classList.remove('asc', 'desc');
+      if (parseInt(th.dataset.col) === col) {
+        th.classList.add(sortAsc ? 'asc' : 'desc');
+      }
+    });
+
+    const sorted = [...allRows].sort((a, b) => {
+      const av = cellText(a, col), bv = cellText(b, col);
+      // numeric sort for IP and port-like columns
+      const numA = parseFloat(av), numB = parseFloat(bv);
+      let cmp = (!isNaN(numA) && !isNaN(numB))
+        ? numA - numB
+        : av.localeCompare(bv, 'pl', { numeric: true });
+      return sortAsc ? cmp : -cmp;
+    });
+    sorted.forEach(r => tbody.appendChild(r));
+  }
+
+  // Events
+  search.addEventListener('input', applyAll);
+  clrBtn.addEventListener('click', () => { search.value = ''; applyAll(); });
+  fType.addEventListener('change', applyAll);
+  fVendor.addEventListener('change', applyAll);
+  fLoc.addEventListener('change', applyAll);
+  fSn.addEventListener('change', applyAll);
+
+  document.querySelectorAll('.sort-th').forEach(th => {
+    th.addEventListener('click', () => {
+      sortBy(parseInt(th.dataset.col));
+      applyAll();
+    });
+  });
+
+  reset.addEventListener('click', () => {
+    search.value = '';
+    fType.value = ''; fVendor.value = ''; fLoc.value = ''; fSn.value = '';
+    document.querySelectorAll('.sort-th').forEach(t => t.classList.remove('asc','desc'));
+    sortCol = -1;
+    allRows.forEach(r => { r.style.display = ''; });
+    count.textContent = `(${allRows.length})`;
+    status.textContent = '';
+  });
+})();
+</script>
 {% endblock %}
