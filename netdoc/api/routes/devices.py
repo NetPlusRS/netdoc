@@ -30,7 +30,6 @@ class DeviceOut(BaseModel):
     is_active: bool
     first_seen: datetime
     last_seen: datetime
-    warranty_end: Optional[datetime] = None
     is_trusted: bool = False
     trust_note: Optional[str] = None
     trust_category: Optional[str] = None

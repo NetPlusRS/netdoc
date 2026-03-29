@@ -17,9 +17,7 @@ def _mock_dev(id=1, ip="192.168.1.1", is_active=True):
     # Inwentaryzacja
     d.serial_number = None; d.asset_tag = None; d.location = None
     d.sys_contact = None; d.responsible_person = None; d.asset_notes = None
-    d.purchase_date = None; d.purchase_price = None; d.purchase_currency = None
-    d.purchase_vendor = None; d.invoice_number = None
-    d.warranty_end = None; d.support_end = None
+    d.purchase_date = None; d.purchase_vendor = None
     # Flagi / monitoring / trust
     d.is_trusted = False; d.is_monitored = False; d.flag_color = None
     return d

@@ -134,7 +134,6 @@ class Device(Base):
     site_id = Column(String(100), nullable=True)
     location = Column(String(255), nullable=True)
     owner_dept = Column(String(255), nullable=True)
-    warranty_end = Column(DateTime, nullable=True)
     first_seen = Column(DateTime, default=datetime.utcnow)
     last_seen = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_ping_ok_at = Column(DateTime, nullable=True)  # ustawiany TYLKO przez ping worker gdy alive=True
@@ -171,11 +170,7 @@ class Device(Base):
     snmp_uptime        = Column(String(64),     nullable=True)   # sysUpTime z SNMP (czytelny string, np. "10d 5h 23m")
     # Kolumny zakupowe — zachowane w DB dla kompatybilności, nieużywane w UI od 2026-03-29
     purchase_date      = Column(Date,           nullable=True)
-    purchase_price     = Column(Numeric(12, 2), nullable=True)
-    purchase_currency  = Column(String(3),      nullable=True, default="PLN")
     purchase_vendor    = Column(String(255),    nullable=True)
-    invoice_number     = Column(String(100),    nullable=True)
-    support_end        = Column(Date,           nullable=True)
     responsible_person = Column(String(255),    nullable=True)
     asset_notes        = Column(Text,           nullable=True)
 

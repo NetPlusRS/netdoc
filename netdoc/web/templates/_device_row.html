@@ -91,7 +91,6 @@
               {% if d.serial_number %}{% set _ = _inv_lines.append('<b>S/N:</b> ' ~ d.serial_number) %}{% endif %}
               {% if d.asset_tag %}{% set _ = _inv_lines.append('<b>Asset tag:</b> ' ~ d.asset_tag) %}{% endif %}
               {% if d.responsible_person %}{% set _ = _inv_lines.append('<b>Owner:</b> ' ~ d.responsible_person) %}{% endif %}
-              {% if d.support_end %}{% set _ = _inv_lines.append('<b>Support until:</b> ' ~ d.support_end.isoformat()) %}{% endif %}
               {% if d.asset_notes %}{% set _ = _inv_lines.append('<b>Notes:</b> ' ~ d.asset_notes[:60] ~ ('…' if d.asset_notes|length > 60 else '')) %}{% endif %}
               <span data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-html="true"
                 data-bs-title="<i class='bi bi-box-seam me-1'></i>Inventory"
@@ -384,28 +383,6 @@
             {% if d.is_monitored %}
             <i class="bi bi-bell-fill text-info me-1"
                title="Monitored{% if d.monitor_note %}: {{ d.monitor_note }}{% endif %}"></i>
-            {% endif %}
-            {# Badge konca wsparcia producenta (EoS) lub gwarancji #}
-            {% if inventory_enabled %}
-            {% set _today_d = now.date() %}
-            {% if d.support_end %}
-              {% set _eos_days = (d.support_end - _today_d).days %}
-              {% if _eos_days < 0 %}
-                <span class="badge bg-danger" style="font-size:.65rem"
-                      title="Vendor support expired {{ d.support_end.isoformat() }}">EoS</span>
-              {% elif _eos_days <= 90 %}
-                <span class="badge bg-warning text-dark" style="font-size:.65rem"
-                      title="Vendor support expires in {{ _eos_days }} days">EoS</span>
-              {% endif %}
-            {% elif d.warranty_end %}
-              {% set _war_days = (d.warranty_end.date() - _today_d).days %}
-              {% if _war_days < 0 %}
-                <span class="badge bg-danger" style="font-size:.65rem"
-                      title="Warranty expired {{ d.warranty_end.date().isoformat() }}">GWR</span>
-              {% elif _war_days <= 90 %}
-                <span class="badge bg-warning text-dark" style="font-size:.65rem"
-                      title="Warranty expires in {{ _war_days }} days">GWR</span>
-              {% endif %}
             {% endif %}
             {% endif %}
             {# Badge oceny AI #}

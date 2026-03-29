@@ -94,11 +94,7 @@ def _migrate_columns() -> None:
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS serial_number VARCHAR(255)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS asset_tag VARCHAR(100)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS purchase_date DATE",
-        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS purchase_price NUMERIC(12,2)",
-        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS purchase_currency VARCHAR(3) DEFAULT 'PLN'",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS purchase_vendor VARCHAR(255)",
-        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(100)",
-        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS support_end DATE",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS responsible_person VARCHAR(255)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS asset_notes TEXT",
         # Typ adresacji IP (2026-03-09)

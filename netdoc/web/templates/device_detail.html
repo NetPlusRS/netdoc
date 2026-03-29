@@ -154,7 +154,7 @@
       </div>
 
       {# ── Inwentarz (asset) ─────────────────────────────────────────────── #}
-      {% if dev.asset_tag or dev.purchase_date or dev.warranty_end or dev.support_end or dev.invoice_number or dev.purchase_vendor %}
+      {% if dev.asset_tag or dev.purchase_date or dev.purchase_vendor %}
       <div class="card mb-3">
         <div class="card-header fw-semibold py-2">Inwentarz</div>
         <div class="card-body p-0">
@@ -162,10 +162,6 @@
             {% if dev.asset_tag %}<tr><td>Tag środka trwałego</td><td>{{ dev.asset_tag }}</td></tr>{% endif %}
             {% if dev.purchase_vendor %}<tr><td>Dostawca</td><td>{{ dev.purchase_vendor }}</td></tr>{% endif %}
             {% if dev.purchase_date %}<tr><td>Data zakupu</td><td>{{ dev.purchase_date.strftime('%Y-%m-%d') }}</td></tr>{% endif %}
-            {% if dev.purchase_price %}<tr><td>Cena</td><td>{{ dev.purchase_price }} {{ dev.purchase_currency or 'PLN' }}</td></tr>{% endif %}
-            {% if dev.invoice_number %}<tr><td>Nr faktury</td><td>{{ dev.invoice_number }}</td></tr>{% endif %}
-            {% if dev.warranty_end %}<tr><td>Koniec gwarancji</td><td>{{ dev.warranty_end.strftime('%Y-%m-%d') }}</td></tr>{% endif %}
-            {% if dev.support_end %}<tr><td>Koniec wsparcia</td><td>{{ dev.support_end.strftime('%Y-%m-%d') }}</td></tr>{% endif %}
           </table>
         </div>
       </div>
