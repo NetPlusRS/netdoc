@@ -420,7 +420,12 @@
             <tbody>
               {% for row in syslog_rows %}
               <tr class="{% if row.severity <= 3 %}table-danger{% elif row.severity == 4 %}table-warning{% endif %}">
-                <td class="text-muted small text-nowrap">{{ row.timestamp[:16] if row.timestamp else '—' }}</td>
+                <td class="text-muted small text-nowrap">
+                  {% if row.timestamp %}
+                    {% if row.timestamp is string %}{{ row.timestamp[:16] }}
+                    {% else %}{{ row.timestamp.strftime('%Y-%m-%d %H:%M') }}{% endif %}
+                  {% else %}—{% endif %}
+                </td>
                 <td class="small">
                   {% set sev_names = ['EMERG','ALERT','CRIT','ERR','WARN','NOTICE','INFO','DEBUG'] %}
                   {{ sev_names[row.severity] if row.severity is not none and row.severity < 8 else row.severity }}
