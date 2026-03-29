@@ -100,9 +100,10 @@
           <td>
             {# ── Buduj tresc popovera statusu ── #}
             {% set _fs = d.first_seen.strftime('%Y-%m-%d') if d.first_seen else '?' %}
-            {% set _ls = d.last_seen.strftime('%Y-%m-%d %H:%M') if d.last_seen else '?' %}
-            {% set _ld = stats.last_down.strftime('%Y-%m-%d %H:%M') if stats.last_down else 'none' %}
-            {% set _lu = stats.last_up.strftime('%Y-%m-%d %H:%M') if stats.last_up else 'none' %}
+            {% set _ls = '<span class="utc-ts" data-utc="' ~ d.last_seen.strftime('%Y-%m-%dT%H:%M:%S') ~ 'Z">' ~ d.last_seen.strftime('%Y-%m-%d %H:%M') ~ '</span>' if d.last_seen else '?' %}
+            {% set _lp = '<span class="utc-ts" data-utc="' ~ d.last_ping_ok_at.strftime('%Y-%m-%dT%H:%M:%S') ~ 'Z">' ~ d.last_ping_ok_at.strftime('%Y-%m-%d %H:%M') ~ '</span>' if d.last_ping_ok_at else '—' %}
+            {% set _ld = '<span class="utc-ts" data-utc="' ~ stats.last_down.strftime('%Y-%m-%dT%H:%M:%S') ~ 'Z">' ~ stats.last_down.strftime('%Y-%m-%d %H:%M') ~ '</span>' if stats.last_down else 'none' %}
+            {% set _lu = '<span class="utc-ts" data-utc="' ~ stats.last_up.strftime('%Y-%m-%dT%H:%M:%S') ~ 'Z">' ~ stats.last_up.strftime('%Y-%m-%d %H:%M') ~ '</span>' if stats.last_up else 'none' %}
             {% set _d7  = stats.down_7d  or 0 %}
             {% set _d30 = stats.down_30d or 0 %}
             {% set _up  = stats.uptime_pct %}
@@ -142,6 +143,7 @@
             {% endif %}
             {% set _pop_content =
               _down_row ~
+              '<b>Last ping OK:</b> ' ~ _lp ~ '<br>' ~
               '<b>Last contact:</b> ' ~ _ls ~ '<br>' ~
               '<b>Last DOWN:</b> ' ~ _ld ~ '<br>' ~
               '<b>Last UP:</b> ' ~ _lu ~ '<br>' ~
@@ -158,8 +160,11 @@
               _os_row ~
               _vsrc_row
             %}
-            {# Oblicz minuty od ostatniego kontaktu — brak last_seen = nigdy nie widziane = uncertain #}
-            {% set _mins_ago = ((now - d.last_seen).total_seconds() / 60)|int if d.last_seen and now else uncertain_min %}
+            {# Oblicz minuty od ostatniego PINGU — jesli brak last_ping_ok_at (nigdy nie pingowane lub
+               urzadzenie starsze niz migracja), fallback na last_seen. Uzywamy last_ping_ok_at bo
+               last_seen moze byc falszywie odswiezone przez ARP/discovery dla offline urzadzen. #}
+            {% set _ping_ts = d.last_ping_ok_at if d.last_ping_ok_at else none %}
+            {% set _mins_ago = ((now - _ping_ts).total_seconds() / 60)|int if _ping_ts and now else uncertain_min %}
             {% if d.is_active and _mins_ago >= uncertain_min %}
               {# AMBER: aktywny w bazie, ale ostatni kontakt dawno — status niepewny #}
               <span class="badge badge-uncertain status-badge" style="cursor:pointer"
@@ -305,7 +310,7 @@
             {% endif %}
           </td>
 
-          <td class="small text-muted">{{ d.last_seen.strftime("%Y-%m-%d %H:%M") if d.last_seen else "—" }}</td>
+          <td class="small text-muted">{% if d.last_seen %}<span class="utc-ts" data-utc="{{ d.last_seen.strftime('%Y-%m-%dT%H:%M:%S') }}Z">{{ d.last_seen.strftime("%Y-%m-%d %H:%M") }}</span>{% else %}—{% endif %}</td>
 
           {# ── Kolumna: liczba otwartych portów ──────────────────────────── #}
           <td class="text-center">
@@ -492,18 +497,19 @@
                 <li>
                   <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#inventoryModal"
                     data-device-id="{{ d.id }}" data-device-ip="{{ d.ip }}"
+                    data-hostname="{{ d.hostname or '' }}"
+                    data-vendor="{{ d.vendor or '' }}"
+                    data-model="{{ d.model or '' }}"
+                    data-os-version="{{ d.os_version or '' }}"
+                    data-location="{{ d.location or '' }}"
+                    data-snmp-ok-at="{{ d.snmp_ok_at.strftime('%Y-%m-%d %H:%M') if d.snmp_ok_at else '' }}"
+                    data-snmp-community="{{ '*' * (d.snmp_community|length) if d.snmp_community else '' }}"
                     data-serial="{{ d.serial_number or '' }}"
                     data-asset="{{ d.asset_tag or '' }}"
-                    data-purchase-date="{{ d.purchase_date.isoformat() if d.purchase_date else '' }}"
-                    data-purchase-price="{{ d.purchase_price or '' }}"
-                    data-purchase-currency="{{ d.purchase_currency or 'PLN' }}"
-                    data-purchase-vendor="{{ d.purchase_vendor or '' }}"
-                    data-invoice="{{ d.invoice_number or '' }}"
-                    data-warranty-end="{{ d.warranty_end.date().isoformat() if d.warranty_end else '' }}"
-                    data-support-end="{{ d.support_end.isoformat() if d.support_end else '' }}"
+                    data-sys-contact="{{ d.sys_contact or '' }}"
                     data-responsible="{{ d.responsible_person or '' }}"
                     data-notes="{{ d.asset_notes or '' }}">
-                    <i class="bi bi-box-seam me-2 text-secondary"></i>Inventory / Assets
+                    <i class="bi bi-box-seam me-2 text-secondary"></i>Inventory / SNMP
                   </button>
                 </li>
                 {% endif %}

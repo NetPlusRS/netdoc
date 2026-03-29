@@ -634,81 +634,87 @@
 </div>
 
 {% if inventory_enabled %}
-{# ── Modal: Inwentarz / Środki trwałe ──────────────────────────────────────── #}
+{# ── Modal: Inventory / dane urządzenia ────────────────────────────────────── #}
 <div class="modal fade" id="inventoryModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-box-seam me-2"></i>Inventory / Fixed Assets</h5>
+      <div class="modal-header py-2">
+        <h5 class="modal-title"><i class="bi bi-box-seam me-2"></i>Inventory / Device Info</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <form id="inventoryForm" method="post">
         <div class="modal-body">
           <p class="text-muted small mb-3" id="inventoryDeviceLabel"></p>
+
+          {# ── Dane SNMP (read-only) ── #}
+          <div class="card mb-3 border-0 bg-body-secondary">
+            <div class="card-body py-2 px-3">
+              <div class="d-flex align-items-center gap-2 mb-2">
+                <i class="bi bi-diagram-3 text-primary"></i>
+                <span class="fw-semibold small">Dane SNMP <span class="text-muted fw-normal">(auto-uzupełniane)</span></span>
+                <span class="ms-auto badge bg-secondary small" id="invSnmpBadge"></span>
+              </div>
+              <div class="row g-1 small">
+                <div class="col-md-4">
+                  <span class="text-muted">Vendor:</span> <span id="invSnmpVendor" class="fw-medium">—</span>
+                </div>
+                <div class="col-md-4">
+                  <span class="text-muted">Model:</span> <span id="invSnmpModel" class="fw-medium">—</span>
+                </div>
+                <div class="col-md-4">
+                  <span class="text-muted">Hostname:</span> <span id="invSnmpHostname" class="fw-medium font-monospace">—</span>
+                </div>
+                <div class="col-12">
+                  <span class="text-muted">OS / Firmware:</span> <span id="invSnmpOs" class="fw-medium font-monospace">—</span>
+                </div>
+                <div class="col-md-6">
+                  <span class="text-muted">Lokalizacja (SNMP):</span> <span id="invSnmpLocation" class="fw-medium">—</span>
+                </div>
+                <div class="col-md-6">
+                  <span class="text-muted">Ostatni poll:</span> <span id="invSnmpOkAt" class="fw-medium">—</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {# ── Pola edytowalne ── #}
           <div class="row g-2">
             <div class="col-md-6">
-              <label class="form-label small">Serial number</label>
+              <label class="form-label small">Numer seryjny <span class="text-muted">(S/N)</span></label>
               <input type="text" name="serial_number" id="invSerial" class="form-control form-control-sm"
-                     placeholder="e.g. FCZ2244ABCD">
+                     placeholder="np. FCZ2244ABCD — uzupełniany z SNMP Entity MIB">
             </div>
             <div class="col-md-6">
               <label class="form-label small">Asset tag</label>
               <input type="text" name="asset_tag" id="invAsset" class="form-control form-control-sm"
-                     placeholder="e.g. INV/2026/001">
-            </div>
-            <div class="col-md-4">
-              <label class="form-label small">Purchase date</label>
-              <input type="date" name="purchase_date" id="invPurchaseDate" class="form-control form-control-sm">
-            </div>
-            <div class="col-md-4">
-              <label class="form-label small">Purchase price (net)</label>
-              <input type="number" step="0.01" name="purchase_price" id="invPrice" class="form-control form-control-sm"
-                     placeholder="0.00">
-            </div>
-            <div class="col-md-4">
-              <label class="form-label small">Currency</label>
-              <select name="purchase_currency" id="invCurrency" class="form-select form-select-sm">
-                {% for cur in ["PLN","EUR","USD","GBP","CHF"] %}
-                <option value="{{ cur }}">{{ cur }}</option>
-                {% endfor %}
-              </select>
+                     placeholder="np. INV/2026/001">
             </div>
             <div class="col-md-6">
-              <label class="form-label small">Vendor (seller)</label>
-              <input type="text" name="purchase_vendor" id="invVendor" class="form-control form-control-sm"
-                     placeholder="e.g. ABC Electronics Ltd.">
+              <label class="form-label small">Lokalizacja <span class="text-muted">(nadpisuje SNMP)</span></label>
+              <input type="text" name="location" id="invLocation" class="form-control form-control-sm"
+                     placeholder="np. Serwerownia / Rack 3">
             </div>
             <div class="col-md-6">
-              <label class="form-label small">Invoice / order number</label>
-              <input type="text" name="invoice_number" id="invInvoice" class="form-control form-control-sm"
-                     placeholder="e.g. INV/2026/1234">
+              <label class="form-label small">Kontakt <span class="text-muted">(sysContact — nadpisuje SNMP)</span></label>
+              <input type="text" name="sys_contact" id="invSysContact" class="form-control form-control-sm"
+                     placeholder="np. admin@firma.pl / Jan Kowalski">
             </div>
-            <div class="col-md-4">
-              <label class="form-label small">Warranty end</label>
-              <input type="date" name="warranty_end" id="invWarrantyEnd" class="form-control form-control-sm">
-              <div class="form-text">Date from invoice / warranty card</div>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label small">End of Support (EoS)</label>
-              <input type="date" name="support_end" id="invSupportEnd" class="form-control form-control-sm">
-              <div class="form-text">When the manufacturer ends updates</div>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label small">Responsible person</label>
+            <div class="col-md-6">
+              <label class="form-label small">Osoba odpowiedzialna</label>
               <input type="text" name="responsible_person" id="invResponsible" class="form-control form-control-sm"
-                     placeholder="e.g. John Smith / IT">
+                     placeholder="np. Jan Kowalski / IT">
             </div>
             <div class="col-12">
-              <label class="form-label small">Notes (project, company, location, history...)</label>
+              <label class="form-label small">Notatki</label>
               <textarea name="asset_notes" id="invNotes" class="form-control form-control-sm" rows="2"
-                        placeholder="e.g. Rack 3 cabinet 2, HVAC project, company XYZ"></textarea>
+                        placeholder="np. Rack 3 szafa 2, projekt HVAC, firma XYZ"></textarea>
             </div>
           </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Anuluj</button>
           <button type="submit" class="btn btn-primary btn-sm">
-            <i class="bi bi-save me-1"></i>Save inventory
+            <i class="bi bi-save me-1"></i>Zapisz
           </button>
         </div>
       </form>
@@ -903,6 +909,9 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
         const secs  = (Date.now() - since.getTime()) / 1000;
         tip.textContent = _fmtDuration(secs);
       }
+      // Konwertuj UTC timestamps w popoverze na czas lokalny przegladarki
+      const popBody = document.querySelector('.popover.show .popover-body');
+      if (popBody && window._convertUtcTs) window._convertUtcTs(popBody);
     }, 0);
   });
 });
@@ -1070,20 +1079,33 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
     document.getElementById("inventoryForm").action =
       "/devices/" + btn.dataset.deviceId + "/inventory";
     document.getElementById("inventoryDeviceLabel").textContent =
-      "Device: " + btn.dataset.deviceIp;
-    document.getElementById("invSerial").value        = btn.dataset.serial || "";
-    document.getElementById("invAsset").value         = btn.dataset.asset || "";
-    document.getElementById("invPurchaseDate").value  = btn.dataset.purchaseDate || "";
-    document.getElementById("invPrice").value         = btn.dataset.purchasePrice || "";
-    const cur = document.getElementById("invCurrency");
-    const wantCur = btn.dataset.purchaseCurrency || "PLN";
-    for (let opt of cur.options) { opt.selected = (opt.value === wantCur); }
-    document.getElementById("invVendor").value        = btn.dataset.purchaseVendor || "";
-    document.getElementById("invInvoice").value       = btn.dataset.invoice || "";
-    document.getElementById("invWarrantyEnd").value   = btn.dataset.warrantyEnd || "";
-    document.getElementById("invSupportEnd").value    = btn.dataset.supportEnd || "";
-    document.getElementById("invResponsible").value   = btn.dataset.responsible || "";
-    document.getElementById("invNotes").value         = btn.dataset.notes || "";
+      btn.dataset.deviceIp + (btn.dataset.hostname ? "  —  " + btn.dataset.hostname : "");
+
+    // SNMP read-only sekcja
+    document.getElementById("invSnmpVendor").textContent   = btn.dataset.vendor   || "—";
+    document.getElementById("invSnmpModel").textContent    = btn.dataset.model    || "—";
+    document.getElementById("invSnmpHostname").textContent = btn.dataset.hostname || "—";
+    document.getElementById("invSnmpOs").textContent       = btn.dataset.osVersion || "—";
+    document.getElementById("invSnmpLocation").textContent = btn.dataset.location  || "—";
+    document.getElementById("invSnmpOkAt").textContent     = btn.dataset.snmpOkAt  || "—";
+    const badge = document.getElementById("invSnmpBadge");
+    if (btn.dataset.snmpCommunity) {
+      badge.textContent = "SNMP " + btn.dataset.snmpCommunity;
+      badge.className = "ms-auto badge bg-success small";
+    } else {
+      badge.textContent = "brak SNMP";
+      badge.className = "ms-auto badge bg-secondary small";
+    }
+
+    // Pola edytowalne
+    document.getElementById("invSerial").value      = btn.dataset.serial      || "";
+    document.getElementById("invAsset").value       = btn.dataset.asset       || "";
+    document.getElementById("invLocation").value    = btn.dataset.location    || "";
+    document.getElementById("invSysContact").value  = btn.dataset.sysContact  || "";
+    document.getElementById("invResponsible").value = btn.dataset.responsible || "";
+    // Notatki: pokaż bez tagu [uptime ...] — to dane auto-SNMP
+    const notes = btn.dataset.notes || "";
+    document.getElementById("invNotes").value = notes.replace(/\[uptime[^\]]*\]\n?/g, "").trim();
   });
 })();
 {% endif %}
@@ -1759,6 +1781,8 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
           newRow.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
             new bootstrap.Popover(el, { trigger: 'hover focus', html: true, sanitize: false });
           });
+          // Konwertuj UTC timestamps na czas lokalny przegladarki
+          if (window._convertUtcTs) window._convertUtcTs(newRow);
         });
 
         // Odswież filtry tylko gdy cos sie rzeczywiscie zmienilo
@@ -1892,6 +1916,24 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
     localStorage.setItem(LS_KEY_SEC, v);
     scheduleRefresh(v);
   });
+})();
+
+// Konwertuj UTC timestamps w tabeli na czas lokalny przegladarki
+(function() {
+  function _convertUtcTs(root) {
+    (root || document).querySelectorAll('.utc-ts[data-utc]').forEach(el => {
+      const d = new Date(el.dataset.utc);
+      if (!isNaN(d)) {
+        const pad = n => String(n).padStart(2, '0');
+        el.textContent = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
+                       + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+        delete el.dataset.utc;  // nie przeliczaj ponownie
+      }
+    });
+  }
+  _convertUtcTs();
+  // Eksportuj dla live-refresh (nowe wiersze dodawane dynamicznie)
+  window._convertUtcTs = _convertUtcTs;
 })();
 </script>
 {% endblock %}
