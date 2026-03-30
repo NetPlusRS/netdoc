@@ -648,68 +648,111 @@ def _enrich_arp(ip: str, community: str, timeout: int = 2) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Interface walk — zbiera ifDescr, ifOperStatus, ifSpeed z ifTable
+# Interface walk — zbiera ifDescr, ifOperStatus, ifAdminStatus, ifSpeed z ifTable
+# oraz ifAlias i ifHighSpeed z ifXTable
 # ---------------------------------------------------------------------------
-_IF_TABLE_OID    = "1.3.6.1.2.1.2.2.1"   # ifEntry
-_IF_DESCR_ID     = 2   # ifDescr
-_IF_OPERSTATUS_ID= 8   # ifOperStatus: 1=up, 2=down, 3=testing, ...
-_IF_SPEED_ID     = 5   # ifSpeed (bps)
+_IF_TABLE_OID     = "1.3.6.1.2.1.2.2.1"    # ifEntry (IF-MIB)
+_IF_DESCR_ID      = 2    # ifDescr
+_IF_ADMINSTATUS_ID= 7    # ifAdminStatus: 1=up, 2=down, 3=testing
+_IF_OPERSTATUS_ID = 8    # ifOperStatus:  1=up, 2=down, 3=testing, ...
+_IF_SPEED_ID      = 5    # ifSpeed (bps, max 4Gbps — powyżej trzeba ifHighSpeed)
+_IFX_TABLE_OID    = "1.3.6.1.2.1.31.1.1.1" # ifXEntry (IF-MIB extensions)
+_IFX_HIGHSPEED_ID = 15   # ifHighSpeed (Mbps)
+_IFX_ALIAS_ID     = 18   # ifAlias (human description, np. "Uplink serwer")
+
+
+def _decode_str(raw_val) -> str:
+    if isinstance(raw_val, (bytes, bytearray)):
+        return raw_val.decode("utf-8", errors="replace").strip()
+    return str(raw_val).strip()
 
 
 def _enrich_interfaces(ip: str, community: str, timeout: int = 2) -> list[dict]:
-    """Czyta ifTable przez SNMP walk — zwraca listę {name, oper_status, speed_bps}.
+    """Czyta ifTable + ifXTable przez SNMP walk.
 
-    Ignoruje loopback (lo) i interfejsy bez nazwy.
+    Zwraca listę dict z kluczami:
+      if_index, name, alias, admin_status, oper_status, speed_mbps
+    Ignoruje loopback i interfejsy wirtualne (lo, sit0, ip6tnl0...).
     """
     from netdoc.collector.snmp_walk import snmp_walk
 
+    _SKIP_NAMES = {"lo", "loopback", "sit0", "ip6tnl0", "ip6_vti0", "ip_vti0",
+                   "erspan0", "ifb0", "ifb1", "ovs-system"}
+
     ifaces: dict[str, dict] = {}  # klucz: ifIndex (str)
-    try:
-        for oid_str, raw_val, _tag in snmp_walk(
-            ip, _IF_TABLE_OID, community=community, timeout=timeout, max_iter=1000
-        ):
-            suffix = oid_str[len(_IF_TABLE_OID):].lstrip(".")
-            parts = suffix.split(".", 1)
-            if len(parts) < 2:
-                continue
-            try:
-                field_id = int(parts[0])
-                if_index = parts[1]
-            except ValueError:
-                continue
-            entry = ifaces.setdefault(if_index, {"index": if_index})
-            if field_id == _IF_DESCR_ID:
+
+    def _walk_table(base_oid: str) -> None:
+        try:
+            for oid_str, raw_val, _tag in snmp_walk(
+                ip, base_oid, community=community, timeout=timeout, max_iter=2000
+            ):
+                suffix = oid_str[len(base_oid):].lstrip(".")
+                parts = suffix.split(".", 1)
+                if len(parts) < 2:
+                    continue
                 try:
-                    entry["name"] = (
-                        raw_val.decode("utf-8", errors="replace")
-                        if isinstance(raw_val, (bytes, bytearray))
-                        else str(raw_val)
-                    ).strip()
-                except Exception:
-                    pass
-            elif field_id == _IF_OPERSTATUS_ID:
-                try:
-                    entry["oper_status"] = int(raw_val)
-                except (TypeError, ValueError):
-                    pass
-            elif field_id == _IF_SPEED_ID:
-                try:
-                    entry["speed_bps"] = int(raw_val)
-                except (TypeError, ValueError):
-                    pass
-    except Exception as exc:
-        logger.debug("IF walk %s: %s", ip, exc)
-        return []
+                    field_id = int(parts[0])
+                    if_index = parts[1]
+                except ValueError:
+                    continue
+                entry = ifaces.setdefault(if_index, {"if_index": if_index})
+
+                if base_oid == _IF_TABLE_OID:
+                    if field_id == _IF_DESCR_ID:
+                        entry["name"] = _decode_str(raw_val)
+                    elif field_id == _IF_ADMINSTATUS_ID:
+                        try:
+                            v = int.from_bytes(raw_val, "big") if isinstance(raw_val, (bytes, bytearray)) else int(raw_val)
+                            entry["admin_status"] = v == 1
+                        except (TypeError, ValueError):
+                            pass
+                    elif field_id == _IF_OPERSTATUS_ID:
+                        try:
+                            v = int.from_bytes(raw_val, "big") if isinstance(raw_val, (bytes, bytearray)) else int(raw_val)
+                            entry["oper_status"] = v == 1
+                        except (TypeError, ValueError):
+                            pass
+                    elif field_id == _IF_SPEED_ID:
+                        try:
+                            v = int.from_bytes(raw_val, "big") if isinstance(raw_val, (bytes, bytearray)) else int(raw_val)
+                            # ifSpeed w bps — konwertuj do Mbps (0 = nieznane, max 4Gbps)
+                            entry["speed_mbps_low"] = v // 1_000_000 if v else 0
+                        except (TypeError, ValueError):
+                            pass
+                else:  # ifXTable
+                    if field_id == _IFX_HIGHSPEED_ID:
+                        try:
+                            v = int.from_bytes(raw_val, "big") if isinstance(raw_val, (bytes, bytearray)) else int(raw_val)
+                            entry["speed_mbps"] = v
+                        except (TypeError, ValueError):
+                            pass
+                    elif field_id == _IFX_ALIAS_ID:
+                        alias = _decode_str(raw_val)
+                        if alias:
+                            entry["alias"] = alias
+        except Exception as exc:
+            logger.debug("IF walk %s %s: %s", ip, base_oid, exc)
+
+    _walk_table(_IF_TABLE_OID)
+    _walk_table(_IFX_TABLE_OID)
 
     result = []
     for v in ifaces.values():
         name = v.get("name", "")
-        if not name or name.lower() in ("lo", "loopback"):
+        if not name or name.lower() in _SKIP_NAMES:
             continue
+        # Preferuj ifHighSpeed (obsługuje >4Gbps, 10G/40G/100G)
+        # Fallback do ifSpeed/1e6 gdy brak lub zero
+        spd = v.get("speed_mbps") or v.get("speed_mbps_low") or None
+        if spd == 0:
+            spd = None
         result.append({
-            "name":        name,
-            "oper_status": v.get("oper_status"),
-            "speed_bps":   v.get("speed_bps"),
+            "if_index":     int(v["if_index"]) if v["if_index"].isdigit() else None,
+            "name":         name,
+            "alias":        v.get("alias"),
+            "admin_status": v.get("admin_status"),
+            "oper_status":  v.get("oper_status"),
+            "speed_mbps":   spd,
         })
     return result
 
@@ -849,6 +892,65 @@ def _save_sensors(db, device_id: int, sensors: list[dict]) -> int:
         return len(rows)
     except Exception as exc:
         logger.warning("sensor save error device_id=%s: %s", device_id, exc)
+        db.rollback()
+        return 0
+
+
+def _save_interfaces(db, device_id: int, ifaces: list[dict]) -> int:
+    """Upsertuje bieżący stan interfejsów do tabeli interfaces (ON CONFLICT DO UPDATE).
+
+    Klucz unikatowości: (device_id, if_index).
+    Interfejsy nieobecne w nowym pollu są usuwane (stale cleanup).
+    Zwraca liczbę wierszy zapisanych/zaktualizowanych.
+    """
+    if not ifaces:
+        return 0
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from netdoc.storage.models import Interface
+
+    now = datetime.utcnow()
+    rows = []
+    for iface in ifaces:
+        if_index = iface.get("if_index")
+        if if_index is None:
+            continue  # bez if_index nie możemy upsertować (brak klucza UNIQUE)
+        rows.append({
+            "device_id":    device_id,
+            "if_index":     if_index,
+            "name":         iface.get("name", ""),
+            "alias":        iface.get("alias"),
+            "admin_status": iface.get("admin_status"),
+            "oper_status":  iface.get("oper_status"),
+            "speed":        iface.get("speed_mbps"),
+            "polled_at":    now,
+        })
+    if not rows:
+        return 0
+    try:
+        stmt = pg_insert(Interface.__table__).values(rows)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_iface_dev_ifindex",
+            set_={
+                "name":         stmt.excluded.name,
+                "alias":        stmt.excluded.alias,
+                "admin_status": stmt.excluded.admin_status,
+                "oper_status":  stmt.excluded.oper_status,
+                "speed":        stmt.excluded.speed,
+                "polled_at":    stmt.excluded.polled_at,
+            },
+        )
+        db.execute(stmt)
+        # Usuń interfejsy nieobecne w bieżącym pollu (zniknęły z urządzenia)
+        current_indices = [r["if_index"] for r in rows]
+        db.query(Interface).filter(
+            Interface.device_id == device_id,
+            Interface.if_index.isnot(None),
+            Interface.if_index.notin_(current_indices),
+        ).delete(synchronize_session=False)
+        db.commit()
+        return len(rows)
+    except Exception as exc:
+        logger.warning("interface save error device_id=%s: %s", device_id, exc)
         db.rollback()
         return 0
 
@@ -993,21 +1095,37 @@ def scan_once() -> None:
         if arp_total:
             logger.info("ARP total new/updated devices: %d", arp_total)
 
-    # Interface walk — zbiera ifTable i zapisuje zmiany do interface_history
+    # Interface walk — zbiera ifTable+ifXTable, upsertuje stan i zapisuje zdarzenia
     if_changed = 0
+    if_saved   = 0
     db_if = SessionLocal()
     try:
         for d in devices:
             ifaces = _enrich_interfaces(d.ip, d.snmp_community, timeout=snmp_timeout)
             if ifaces:
-                n = _save_interface_history(db_if, d.id, ifaces)
-                if n:
-                    if_changed += n
-                    logger.info("IF   %-18s: %d interface change(s)", d.ip, n)
+                # Bieżący stan interfejsów (upsert do interfaces)
+                n_saved = _save_interfaces(db_if, d.id, ifaces)
+                if_saved += n_saved
+                logger.info("IF   %-18s: %d port(s)", d.ip, len(ifaces))
+                # Historia zmian (up/down/speed_change)
+                # Przekazujemy w starym formacie: {name, oper_status(int), speed_bps}
+                old_fmt = [
+                    {
+                        "name":        i["name"],
+                        "oper_status": 1 if i.get("oper_status") else 2,
+                        "speed_bps":   (i.get("speed_mbps") or 0) * 1_000_000,
+                    }
+                    for i in ifaces
+                ]
+                n_hist = _save_interface_history(db_if, d.id, old_fmt)
+                if n_hist:
+                    if_changed += n_hist
     except Exception as exc:
         logger.warning("Interface walk error: %s", exc)
     finally:
         db_if.close()
+    if if_saved:
+        logger.info("Interface upserts total: %d", if_saved)
     if if_changed:
         logger.info("Interface history total: %d new entries", if_changed)
 

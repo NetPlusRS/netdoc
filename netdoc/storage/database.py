@@ -147,6 +147,21 @@ def _migrate_columns() -> None:
         # Oddzielony od last_seen (ktory jest odswiezany przez discovery/ARP),
         # pozwala na prawidlowe oznaczanie DOWN nawet gdy discovery falszywie odswierza last_seen.
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_ping_ok_at TIMESTAMP",
+        # Interfejsy SNMP — bieżący stan portów (2026-03-30)
+        "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS if_index INTEGER",
+        "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS alias VARCHAR(255)",
+        "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS polled_at TIMESTAMP",
+        # Zmień speed z INTEGER (Mbps) na INTEGER (bez zmiany — już jest Mbps)
+        # Dodaj UNIQUE constraint (device_id, if_index) gdy if_index NOT NULL
+        """DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'uq_iface_dev_ifindex'
+          ) THEN
+            ALTER TABLE interfaces
+              ADD CONSTRAINT uq_iface_dev_ifindex UNIQUE (device_id, if_index);
+          END IF;
+        END $$""",
+        "CREATE INDEX IF NOT EXISTS ix_iface_device_id ON interfaces (device_id)",
         # Usun stary constraint (za wazki — blokuje wiele hasel dla jednego usera)
         """
         DO $$ BEGIN

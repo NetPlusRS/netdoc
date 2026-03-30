@@ -322,40 +322,59 @@
 
       {# ── Interfaces ──────────────────────────────────────────────────── #}
       {% if interfaces %}
+      {% set up_count   = interfaces | selectattr('oper_status', 'equalto', true)  | list | length %}
+      {% set down_count = interfaces | selectattr('oper_status', 'equalto', false) | list | length %}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">Interfaces <span class="badge bg-secondary">{{ interfaces|length }}</span></div>
+        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-ethernet me-1"></i>Interfaces
+            <span class="badge bg-secondary ms-1">{{ interfaces|length }}</span>
+            {% if up_count %}<span class="badge bg-success ms-1">{{ up_count }} up</span>{% endif %}
+            {% if down_count %}<span class="badge bg-danger ms-1">{{ down_count }} down</span>{% endif %}
+          </span>
+          {% if dev.snmp_ok_at %}<small class="text-muted fw-normal">SNMP {{ dev.snmp_ok_at.strftime('%H:%M') }}</small>{% endif %}
+        </div>
         <div class="card-body p-0">
-          <table class="table table-sm table-hover mb-0">
+          <table class="table table-sm table-hover mb-0" style="font-size:.85rem">
             <thead class="table-light">
               <tr>
+                <th style="width:2rem">#</th>
                 <th>Name</th>
+                <th>Alias</th>
                 <th>Status</th>
                 <th>Speed</th>
                 <th>MAC</th>
                 <th>IP</th>
-                <th>Description</th>
               </tr>
             </thead>
             <tbody>
-              {% for iface in interfaces %}
-              <tr>
-                <td><code class="small">{{ iface.name }}</code></td>
+              {% for iface in interfaces | sort(attribute='if_index') %}
+              <tr class="{% if iface.oper_status == false and iface.admin_status != false %}table-warning{% endif %}">
+                <td class="text-muted">{{ iface.if_index or '' }}</td>
+                <td><code>{{ iface.name }}</code></td>
+                <td class="text-muted">{{ iface.alias or '' }}</td>
                 <td>
-                  {% if iface.oper_status %}
+                  {% if iface.oper_status == true %}
                     <span class="badge bg-success">UP</span>
-                  {% elif iface.oper_status is not none and not iface.oper_status %}
+                  {% elif iface.oper_status == false %}
                     <span class="badge bg-danger">DOWN</span>
                   {% else %}
                     <span class="text-muted">—</span>
                   {% endif %}
-                  {% if not iface.admin_status %}
-                    <span class="badge bg-secondary ms-1">adm off</span>
+                  {% if iface.admin_status == false %}
+                    <span class="badge bg-secondary ms-1" title="administratively disabled">adm off</span>
                   {% endif %}
                 </td>
-                <td class="small">{{ (iface.speed|string + ' Mbps') if iface.speed else '—' }}</td>
-                <td class="small"><code>{{ iface.mac or '—' }}</code></td>
-                <td class="small"><code>{{ iface.ip or '—' }}</code></td>
-                <td class="small text-muted">{{ iface.description or '' }}</td>
+                <td>
+                  {% if iface.speed %}
+                    {% if iface.speed >= 1000 %}
+                      <span class="fw-semibold">{{ (iface.speed // 1000) }}G</span>
+                    {% else %}
+                      {{ iface.speed }}M
+                    {% endif %}
+                  {% else %}—{% endif %}
+                </td>
+                <td><code class="text-muted">{{ iface.mac or '' }}</code></td>
+                <td><code class="text-muted">{{ iface.ip or '' }}</code></td>
               </tr>
               {% endfor %}
             </tbody>

@@ -186,17 +186,24 @@ class Device(Base):
 
 class Interface(Base):
     __tablename__ = "interfaces"
+    __table_args__ = (
+        UniqueConstraint("device_id", "if_index", name="uq_iface_dev_ifindex"),
+        Index("ix_iface_device_id", "device_id"),
+    )
 
-    id = Column(Integer, primary_key=True, index=True)
-    device_id = Column(Integer, ForeignKey("devices.id"), nullable=False)
-    name = Column(String(100), nullable=False)
-    mac = Column(String(17), nullable=True)
-    ip = Column(String(45), nullable=True)
-    speed = Column(Integer, nullable=True)  # Mbps
-    duplex = Column(String(20), nullable=True)
-    admin_status = Column(Boolean, default=True)
-    oper_status = Column(Boolean, default=False)
-    description = Column(String(255), nullable=True)
+    id           = Column(Integer, primary_key=True)
+    device_id    = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    if_index     = Column(Integer,     nullable=True)   # ifIndex (SNMP)
+    name         = Column(String(100), nullable=False)  # ifDescr
+    alias        = Column(String(255), nullable=True)   # ifAlias (human label)
+    mac          = Column(String(17),  nullable=True)
+    ip           = Column(String(45),  nullable=True)
+    speed        = Column(Integer,     nullable=True)   # Mbps (ifHighSpeed lub ifSpeed/1e6)
+    duplex       = Column(String(20),  nullable=True)
+    admin_status = Column(Boolean,     nullable=True)   # True=up, False=down (ifAdminStatus)
+    oper_status  = Column(Boolean,     nullable=True)   # True=up, False=down (ifOperStatus)
+    description  = Column(String(255), nullable=True)   # dodatkowy opis (np. z CDP/LLDP)
+    polled_at    = Column(DateTime,    nullable=True)   # ostatni SNMP poll
 
     device = relationship("Device", back_populates="interfaces")
     src_links = relationship("TopologyLink", foreign_keys="TopologyLink.src_interface_id", back_populates="src_interface")
