@@ -162,6 +162,19 @@ def _migrate_columns() -> None:
           END IF;
         END $$""",
         "CREATE INDEX IF NOT EXISTS ix_iface_device_id ON interfaces (device_id)",
+        # Device passports — eksport do sprzedaży (2026-03-30)
+        """CREATE TABLE IF NOT EXISTS device_passports (
+            id            SERIAL PRIMARY KEY,
+            token         VARCHAR(12) NOT NULL UNIQUE,
+            device_id     INTEGER REFERENCES devices(id) ON DELETE SET NULL,
+            device_ip     VARCHAR(45),
+            device_type   VARCHAR(50),
+            generated_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+            html_filename VARCHAR(100),
+            data_snapshot JSONB
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_passport_device_id ON device_passports (device_id)",
+        "CREATE INDEX IF NOT EXISTS ix_passport_token ON device_passports (token)",
         # Usun stary constraint (za wazki — blokuje wiele hasel dla jednego usera)
         """
         DO $$ BEGIN

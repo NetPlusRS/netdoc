@@ -154,11 +154,13 @@ services:
         required: false   # dziala bez .env — uzyj do nadpisania domyslnych wartosci                       # ANTHROPIC_API_KEY pobierany z .env
     volumes:
       - ./netdoc:/app/netdoc:ro
+      - ./netdoc_pro:/app/netdoc_pro:ro
       - ./docker-compose.lab.yml:/app/docker-compose.lab.yml:ro
       - ./config:/app/config:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/app/data
       - ./logs:/app/logs
+      - ./device_passports:/app/device_passports
     expose:
       - "5000"   # tylko wewnętrznie — nginx proxy
     depends_on:

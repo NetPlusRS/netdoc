@@ -26,6 +26,12 @@ try:
 except ImportError:
     PRO_ENABLED = False
 
+try:
+    from netdoc_pro.passport.generate import generate_passport
+    PRO_PASSPORT = True
+except ImportError:
+    PRO_PASSPORT = False
+
 API_URL = os.getenv("NETDOC_API_URL", "http://localhost:8000")
 GRAFANA_URL = os.getenv("GRAFANA_URL", "/grafana")
 
@@ -1530,6 +1536,16 @@ def create_app():
                 .all()
             )
 
+            # Passports already generated for this device
+            from netdoc.storage.models import DevicePassport
+            passports = (
+                db.query(DevicePassport)
+                .filter(DevicePassport.device_id == device_id)
+                .order_by(DevicePassport.generated_at.desc())
+                .limit(5)
+                .all()
+            )
+
             return render_template(
                 "device_detail.html",
                 dev=dev,
@@ -1544,9 +1560,26 @@ def create_app():
                 syslog_rows=syslog_rows,
                 broadcast_info=broadcast_info,
                 sensors=sensors,
+                passports=passports,
+                pro_passport=PRO_PASSPORT,
             )
         finally:
             db.close()
+
+    @app.route("/devices/<int:device_id>/passport", methods=["POST"])
+    def device_passport_generate(device_id):
+        if not PRO_PASSPORT:
+            flash("Device Passport requires NetDoc Pro.", "warning")
+            return redirect(url_for("device_detail", device_id=device_id))
+        db = SessionLocal()
+        try:
+            token, filename = generate_passport(db, device_id)
+            flash(f"Passport generated: {filename}", "success")
+        except Exception as exc:
+            flash(f"Passport generation failed: {exc}", "danger")
+        finally:
+            db.close()
+        return redirect(url_for("device_detail", device_id=device_id))
 
     @app.route("/devices/<int:device_id>/reclassify", methods=["POST"])
     def device_reclassify(device_id):

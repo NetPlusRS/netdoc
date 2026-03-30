@@ -41,6 +41,33 @@
     {% if dev.is_monitored %}
     <span class="badge bg-warning text-dark">&#128065; Monitored</span>
     {% endif %}
+    {# ── Passport button ─────────────────────────────────────────────────── #}
+    {% if pro_passport %}
+    <div class="ms-auto d-flex gap-2 align-items-center">
+      <form method="post" action="{{ url_for('device_passport_generate', device_id=dev.id) }}">
+        <button type="submit" class="btn btn-sm btn-dark">
+          <i class="bi bi-file-earmark-text me-1"></i>Generate Passport
+        </button>
+      </form>
+      {% if passports %}
+      <div class="dropdown">
+        <button class="btn btn-sm btn-outline-dark dropdown-toggle" data-bs-toggle="dropdown">
+          Passports ({{ passports|length }})
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          {% for p in passports %}
+          <li>
+            <a class="dropdown-item small" href="/device_passports/{{ p.html_filename }}" target="_blank">
+              <code>{{ p.token }}</code>
+              <span class="text-muted ms-2">{{ p.generated_at.strftime('%Y-%m-%d %H:%M') }}</span>
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
 
   <div class="row g-3">

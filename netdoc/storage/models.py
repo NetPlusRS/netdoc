@@ -520,3 +520,26 @@ class InterfaceHistory(Base):
     changed_at     = Column(DateTime,    default=datetime.utcnow, nullable=False)
 
     device = relationship("Device", foreign_keys=[device_id])
+
+
+class DevicePassport(Base):
+    """Wygenerowany paszport urządzenia — statyczny HTML eksportowany do sprzedaży.
+
+    Token jest krótkim losowym identyfikatorem URL (np. k7x2m9).
+    data_snapshot przechowuje JSON ze wszystkimi zebranymi danymi w momencie generowania.
+    """
+    __tablename__ = "device_passports"
+    __table_args__ = (
+        Index("ix_passport_device_id", "device_id"),
+    )
+
+    id            = Column(Integer,     primary_key=True)
+    token         = Column(String(12),  unique=True, nullable=False, index=True)
+    device_id     = Column(Integer,     ForeignKey("devices.id", ondelete="SET NULL"), nullable=True)
+    device_ip     = Column(String(45),  nullable=True)
+    device_type   = Column(String(50),  nullable=True)
+    generated_at  = Column(DateTime,    default=datetime.utcnow, nullable=False)
+    html_filename = Column(String(100), nullable=True)
+    data_snapshot = Column(JSON,        nullable=True)
+
+    device = relationship("Device", foreign_keys=[device_id])
