@@ -25,6 +25,22 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 
 import nmap
+import subprocess as _subprocess
+import sys as _sys
+
+# On Windows: nmap subprocesses inherit the parent's console window (or create new ones
+# when parent is pythonw.exe). Patch nmap's Popen reference to add CREATE_NO_WINDOW.
+if _sys.platform == "win32":
+    import nmap.nmap as _nmap_mod
+    _OrigPopen = _nmap_mod.subprocess.Popen
+
+    class _NoWindowPopen(_OrigPopen):
+        def __init__(self, *args, **kwargs):
+            kwargs.setdefault("creationflags", _subprocess.CREATE_NO_WINDOW)
+            super().__init__(*args, **kwargs)
+
+    _nmap_mod.subprocess.Popen = _NoWindowPopen
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from netdoc.collector.oui_lookup import oui_db
 from sqlalchemy.orm import Session

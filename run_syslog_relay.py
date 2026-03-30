@@ -236,12 +236,21 @@ logger = logging.getLogger(__name__)
 # ── Single-instance lock (PID file) ───────────────────────────────────────────
 
 def _pid_alive(pid: int) -> bool:
-    """Returns True if a process with given PID exists."""
+    """Returns True if a process with given PID exists.
+
+    Uses psutil for cross-platform correctness — os.kill(pid, 0) on Windows
+    sends CTRL_C_EVENT (signal 0) instead of checking process existence,
+    which raises SystemError for GUI processes like pythonw.exe.
+    """
     try:
-        os.kill(pid, 0)
-        return True
-    except (OSError, ProcessLookupError):
-        return False
+        import psutil
+        return psutil.pid_exists(pid)
+    except ImportError:
+        try:
+            os.kill(pid, 0)
+            return True
+        except (OSError, ProcessLookupError, SystemError):
+            return False
 
 
 def _acquire_relay_lock() -> bool:
