@@ -10,16 +10,21 @@ $TaskName   = "NetDocSyslogRelay"
 $ScriptPath = Join-Path $PSScriptRoot "run_syslog_relay.py"
 $WorkingDir = $PSScriptRoot
 
-# Resolve Python
-$_venvPython = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
-if (Test-Path $_venvPython) {
+# Resolve Python — prefer pythonw.exe (no console window) over python.exe
+$_venvPythonW = Join-Path $PSScriptRoot ".venv\Scripts\pythonw.exe"
+$_venvPython  = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
+if (Test-Path $_venvPythonW) {
+    $PythonExe = $_venvPythonW
+} elseif (Test-Path $_venvPython) {
     $PythonExe = $_venvPython
 } else {
-    $PythonCmd = Get-Command python -ErrorAction SilentlyContinue
-    if ($PythonCmd) { $PythonExe = $PythonCmd.Source } else { $PythonExe = $null }
-    if (-not $PythonExe) {
-        $PythonCmd3 = Get-Command python3 -ErrorAction SilentlyContinue
-        if ($PythonCmd3) { $PythonExe = $PythonCmd3.Source }
+    # No venv — look in PATH, prefer pythonw
+    $PythonCmd = Get-Command pythonw -ErrorAction SilentlyContinue
+    if ($PythonCmd) {
+        $PythonExe = $PythonCmd.Source
+    } else {
+        $PythonCmd = Get-Command python -ErrorAction SilentlyContinue
+        if ($PythonCmd) { $PythonExe = $PythonCmd.Source } else { $PythonExe = $null }
     }
     if (-not $PythonExe) {
         Write-Host "ERROR: Python not found in PATH and no .venv present." -ForegroundColor Red
