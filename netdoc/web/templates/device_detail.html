@@ -42,32 +42,38 @@
     <span class="badge bg-warning text-dark">&#128065; Monitored</span>
     {% endif %}
     {# ── Passport button ─────────────────────────────────────────────────── #}
-    {% if pro_passport %}
-    <div class="ms-auto d-flex gap-2 align-items-center">
-      <form method="post" action="{{ url_for('device_passport_generate', device_id=dev.id) }}">
-        <button type="submit" class="btn btn-sm btn-dark">
-          <i class="bi bi-file-earmark-text me-1"></i>Generate Passport
+    <div class="ms-auto">
+      {% if pro_passport %}
+        {# Pro: single split button — generate or open latest #}
+        <div class="btn-group">
+          <form method="post" action="{{ url_for('device_passport_generate', device_id=dev.id) }}" class="d-inline">
+            <button type="submit" class="btn btn-sm btn-dark">
+              <i class="bi bi-file-earmark-text me-1"></i>Device Passport
+            </button>
+          </form>
+          {% if passports %}
+          <button type="button" class="btn btn-sm btn-dark dropdown-toggle dropdown-toggle-split"
+                  data-bs-toggle="dropdown" aria-expanded="false">
+            <span class="visually-hidden">Options</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li>
+              <a class="dropdown-item" href="/device_passports/{{ passports[0].html_filename }}" target="_blank">
+                <i class="bi bi-box-arrow-up-right me-2"></i>Open latest
+                <span class="text-muted ms-1 small">{{ passports[0].generated_at.strftime('%Y-%m-%d %H:%M') }}</span>
+              </a>
+            </li>
+          </ul>
+          {% endif %}
+        </div>
+      {% else %}
+        {# Community: visible but disabled with tooltip #}
+        <button class="btn btn-sm btn-outline-secondary" disabled
+                title="Device Passport — available in NetDoc Pro">
+          <i class="bi bi-file-earmark-text me-1"></i>Device Passport
         </button>
-      </form>
-      {% if passports %}
-      <div class="dropdown">
-        <button class="btn btn-sm btn-outline-dark dropdown-toggle" data-bs-toggle="dropdown">
-          Passports ({{ passports|length }})
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end">
-          {% for p in passports %}
-          <li>
-            <a class="dropdown-item small" href="/device_passports/{{ p.html_filename }}" target="_blank">
-              <code>{{ p.token }}</code>
-              <span class="text-muted ms-2">{{ p.generated_at.strftime('%Y-%m-%d %H:%M') }}</span>
-            </a>
-          </li>
-          {% endfor %}
-        </ul>
-      </div>
       {% endif %}
     </div>
-    {% endif %}
   </div>
 
   <div class="row g-3">
