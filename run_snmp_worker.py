@@ -330,10 +330,16 @@ def _enrich_edp(ip: str, community: str, timeout: int = 2) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# sysUpTime + Entity MIB serial enrichment — dodawane w trakcie normalnego pollu
+# sysUpTime + Entity MIB enrichment — dodawane w trakcie normalnego pollu
 # ---------------------------------------------------------------------------
-OID_SYSUPTIME   = "1.3.6.1.2.1.1.3.0"
-OID_ENT_SERIAL  = "1.3.6.1.2.1.47.1.1.1.1.11.1"  # entPhysicalSerialNum chassis
+OID_SYSUPTIME        = "1.3.6.1.2.1.1.3.0"
+# entPhysicalEntry (chassis = index 1):
+OID_ENT_DESCR        = "1.3.6.1.2.1.47.1.1.1.1.2.1"   # entPhysicalDescr
+OID_ENT_MODEL        = "1.3.6.1.2.1.47.1.1.1.1.13.1"  # entPhysicalModelName
+OID_ENT_FIRMWARE     = "1.3.6.1.2.1.47.1.1.1.1.9.1"   # entPhysicalFirmwareRev
+OID_ENT_SOFTWARE     = "1.3.6.1.2.1.47.1.1.1.1.10.1"  # entPhysicalSoftwareRev
+OID_ENT_SERIAL       = "1.3.6.1.2.1.47.1.1.1.1.11.1"  # entPhysicalSerialNum
+OID_ENT_HW_REV       = "1.3.6.1.2.1.47.1.1.1.1.8.1"   # entPhysicalHardwareRev
 
 
 def _timeticks_to_str(ticks) -> str:
@@ -434,15 +440,54 @@ def _poll_device(device_id: int, ip: str, community: str,
                 import re as _re
                 device.asset_notes = _re.sub(r'\[uptime [^\]]*\]\n?', '', device.asset_notes).strip() or None
 
-        # Serial number (Entity MIB) — uzupelnij raz jesli puste
-        if not device.serial_number:
-            try:
-                serial = _snmp_get(ip, community, OID_ENT_SERIAL, timeout=snmp_timeout)
-                if serial and str(serial).strip() not in ("", "0", ".."):
-                    device.serial_number = str(serial).strip()[:255]
-                    logger.info("Serial %-18s: %s", ip, device.serial_number)
-            except Exception:
-                pass  # brak Entity MIB — normalne dla prostych urzadzen
+        # Entity MIB — model, firmware, serial, hardware rev (chassis index 1)
+        # Pobieramy zawsze — nadpisujemy tylko gdy nowe dane są niepuste i różne
+        try:
+            ent_serial   = _snmp_get(ip, community, OID_ENT_SERIAL,   timeout=snmp_timeout)
+            ent_model    = _snmp_get(ip, community, OID_ENT_MODEL,     timeout=snmp_timeout)
+            ent_firmware = _snmp_get(ip, community, OID_ENT_FIRMWARE,  timeout=snmp_timeout)
+            ent_software = _snmp_get(ip, community, OID_ENT_SOFTWARE,  timeout=snmp_timeout)
+            ent_hw_rev   = _snmp_get(ip, community, OID_ENT_HW_REV,   timeout=snmp_timeout)
+
+            def _clean(v) -> str | None:
+                s = str(v).strip() if v is not None else ""
+                return s[:255] if s and s not in ("0", "..", "Not Specified", "N/A", "") else None
+
+            # Serial
+            s = _clean(ent_serial)
+            if s and s != device.serial_number:
+                if device.serial_number:
+                    logger.info("Serial update %-18s: %r → %r", ip, device.serial_number, s)
+                device.serial_number = s
+
+            # Model — sklejamy model + hw_rev jeśli oba są
+            raw_model = _clean(ent_model)
+            hw_rev    = _clean(ent_hw_rev)
+            new_model = raw_model
+            if raw_model and hw_rev and hw_rev not in raw_model:
+                new_model = f"{raw_model} (hw {hw_rev})"
+            if new_model and new_model != device.model:
+                if device.model:
+                    db.add(DeviceFieldHistory(device_id=device_id, field_name="model",
+                                             old_value=device.model, new_value=new_model, source="snmp"))
+                device.model = new_model
+                logger.info("Model    %-18s: %s", ip, new_model)
+
+            # Firmware/software — zapisujemy do os_version jeśli bardziej szczegółowy niż sysDescr
+            # Preferujemy entPhysicalSoftwareRev > entPhysicalFirmwareRev
+            fw = _clean(ent_software) or _clean(ent_firmware)
+            if fw:
+                current = device.os_version or ""
+                if fw not in current:
+                    new_os = f"{current} | fw:{fw}" if current else fw
+                    new_os = new_os[:120]
+                    if new_os != device.os_version:
+                        db.add(DeviceFieldHistory(device_id=device_id, field_name="os_version",
+                                                 old_value=device.os_version, new_value=new_os, source="snmp"))
+                        device.os_version = new_os
+                        logger.info("Firmware %-18s: %s", ip, fw)
+        except Exception:
+            pass  # brak Entity MIB — normalne dla prostych urzadzen
 
         device.snmp_ok_at = datetime.utcnow()
 

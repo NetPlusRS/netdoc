@@ -938,7 +938,31 @@ def read_arp_table(ignore_laa: bool = True) -> dict:
     return arp_map
 
 
+def _is_infrastructure_cidr(cidr: str) -> bool:
+    """Zwraca True dla zakresów infrastrukturalnych, które nie powinny być skanowane:
+    - 172.16.0.0/12  — Docker bridge / overlay (172.16–172.31)
+    - 100.64.0.0/10  — CGNAT / Tailscale / VPN (100.64–100.127)
+    - 127.0.0.0/8    — loopback
+    - 169.254.0.0/16 — link-local / APIPA
+    """
+    import ipaddress as _ip
+    _INFRA = [
+        _ip.IPv4Network("172.16.0.0/12"),
+        _ip.IPv4Network("100.64.0.0/10"),
+        _ip.IPv4Network("127.0.0.0/8"),
+        _ip.IPv4Network("169.254.0.0/16"),
+    ]
+    try:
+        net = _ip.IPv4Network(cidr, strict=False)
+        return any(net.subnet_of(infra) or net.supernet_of(infra) for infra in _INFRA)
+    except (ValueError, TypeError):
+        return False
+
+
 def _upsert_network(db, cidr, source):
+    if _is_infrastructure_cidr(cidr):
+        logger.debug("Pomijam infrastrukturalny zakres: %s (%s)", cidr, source.value if hasattr(source, 'value') else source)
+        return None
     net = db.query(DiscoveredNetwork).filter(DiscoveredNetwork.cidr == cidr).first()
     if net is None:
         net = DiscoveredNetwork(cidr=cidr, source=source, is_active=True)
@@ -1012,6 +1036,9 @@ def get_scan_targets(db):
             _upsert_network(db, cidr, NetworkSource.auto)
             logger.info("Auto-detected new network: %s (added to scan targets)", cidr)
     for net in db.query(DiscoveredNetwork).filter(DiscoveredNetwork.is_active == True).all():
+        if _is_infrastructure_cidr(net.cidr):
+            logger.debug("Pomijam infrastrukturalny zakres z DB: %s", net.cidr)
+            continue
         targets.add(net.cidr)
     if not targets:
         logger.error("No networks to scan! Set NETWORK_RANGES in .env or make sure the machine has a private IP address.")
