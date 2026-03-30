@@ -1566,6 +1566,14 @@ def create_app():
         finally:
             db.close()
 
+    @app.route("/device_passports/<path:filename>")
+    def device_passport_file(filename):
+        """Serwuje wygenerowane pliki passport HTML jako pliki statyczne."""
+        import pathlib
+        from flask import send_from_directory as _sfd
+        passport_dir = str(pathlib.Path(__file__).parent.parent.parent / "device_passports")
+        return _sfd(passport_dir, filename)
+
     @app.route("/devices/<int:device_id>/passport", methods=["POST"])
     def device_passport_generate(device_id):
         if not PRO_PASSPORT:
