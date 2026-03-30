@@ -18,7 +18,7 @@ from datetime import datetime
 from prometheus_client import Gauge, start_http_server
 
 from netdoc.storage.database import SessionLocal, init_db
-from netdoc.storage.models import Device, Credential, CredentialMethod, DeviceType, DeviceFieldHistory, InterfaceHistory
+from netdoc.storage.models import Device, Credential, CredentialMethod, DeviceType, DeviceFieldHistory, InterfaceHistory, DeviceSensor
 
 logging.basicConfig(
     level=logging.INFO,
@@ -668,6 +668,52 @@ def _save_arp_devices(db, src_ip: str, entries: list[dict]) -> int:
     return saved
 
 
+def _save_sensors(db, device_id: int, sensors: list[dict]) -> int:
+    """Upsertuje sensory do device_sensors (ON CONFLICT DO UPDATE).
+
+    Każdy sensor to dict z kluczami: name, value, unit, raw_str, source.
+    Zwraca liczbę zapisanych/zaktualizowanych sensorów.
+    """
+    if not sensors:
+        return 0
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from netdoc.storage.database import engine
+
+    rows = [
+        {
+            "device_id":   device_id,
+            "sensor_name": s["name"],
+            "value":       s.get("value"),
+            "unit":        s.get("unit"),
+            "raw_str":     s.get("raw_str"),
+            "source":      s.get("source"),
+            "polled_at":   datetime.utcnow(),
+        }
+        for s in sensors if s.get("name")
+    ]
+    if not rows:
+        return 0
+    try:
+        stmt = pg_insert(DeviceSensor.__table__).values(rows)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_sensor_dev_name",
+            set_={
+                "value":     stmt.excluded.value,
+                "unit":      stmt.excluded.unit,
+                "raw_str":   stmt.excluded.raw_str,
+                "source":    stmt.excluded.source,
+                "polled_at": stmt.excluded.polled_at,
+            },
+        )
+        db.execute(stmt)
+        db.commit()
+        return len(rows)
+    except Exception as exc:
+        logger.warning("sensor save error device_id=%s: %s", device_id, exc)
+        db.rollback()
+        return 0
+
+
 _DEFAULT_SNMP_TIMEOUT = int(os.getenv("SNMP_TIMEOUT_S", "2"))
 
 
@@ -825,6 +871,37 @@ def scan_once() -> None:
         db_if.close()
     if if_changed:
         logger.info("Interface history total: %d new entries", if_changed)
+
+    # Sensor poll — temperature, CPU, RAM, voltage, fans (per device type/vendor)
+    sensor_total = 0
+    db_sens = SessionLocal()
+    try:
+        from netdoc.collector.snmp_sensors import poll_sensors
+        for d in devices:
+            vendor_hint = (d.vendor or "").lower()
+            os_hint     = (d.os_version or "").lower()
+            try:
+                sensors = poll_sensors(
+                    str(d.ip), d.snmp_community,
+                    vendor_hint=vendor_hint,
+                    os_hint=os_hint,
+                    timeout=snmp_timeout,
+                )
+            except Exception as exc:
+                logger.debug("Sensor poll %s: %s", d.ip, exc)
+                continue
+            if sensors:
+                n = _save_sensors(db_sens, d.id, sensors)
+                sensor_total += n
+                logger.info("Sensors %-18s: %d values", d.ip, len(sensors))
+    except ImportError:
+        logger.debug("snmp_sensors module not available — skipping sensor poll")
+    except Exception as exc:
+        logger.warning("Sensor poll error: %s", exc)
+    finally:
+        db_sens.close()
+    if sensor_total:
+        logger.info("Sensor upserts total: %d", sensor_total)
 
 
 def _wait_for_schema(max_retries: int = 12, wait_s: int = 10) -> None:

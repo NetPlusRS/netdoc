@@ -468,6 +468,30 @@ class DeviceFieldHistory(Base):
     device = relationship("Device", foreign_keys=[device_id])
 
 
+class DeviceSensor(Base):
+    """Odczyty sensorów urządzenia pobierane przez SNMP (temperatura, CPU, RAM, napięcie, fan...).
+
+    Każdy sensor to osobny wiersz (unikalne: device_id + sensor_name).
+    Wartość aktualizowana in-place przy każdym cyklu SNMP workera.
+    """
+    __tablename__ = "device_sensors"
+    __table_args__ = (
+        UniqueConstraint("device_id", "sensor_name", name="uq_sensor_dev_name"),
+        Index("ix_sensor_device_id", "device_id"),
+    )
+
+    id          = Column(Integer, primary_key=True)
+    device_id   = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    sensor_name = Column(String(100), nullable=False)   # e.g. "cpu_load", "temp_cpu", "fan_1"
+    value       = Column(Float,       nullable=True)    # numeric value
+    unit        = Column(String(20),  nullable=True)    # "°C", "%", "V", "rpm", "mW", "dBm"
+    raw_str     = Column(String(200), nullable=True)    # original string if non-numeric
+    source      = Column(String(50),  nullable=True)    # "entity_sensor", "cisco_envmon", "mikrotik"...
+    polled_at   = Column(DateTime,    default=datetime.utcnow, nullable=False)
+
+    device = relationship("Device", foreign_keys=[device_id])
+
+
 class InterfaceHistory(Base):
     """Historia zmian stanu interfejsów (port up/down, zmiana prędkości, dodany/usunięty).
 

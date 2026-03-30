@@ -121,6 +121,51 @@
         </div>
       </div>
 
+      {# ── Sensors ──────────────────────────────────────────────────────── #}
+      {% if sensors %}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2"><i class="bi bi-thermometer-half me-1"></i>Sensors <span class="badge bg-secondary">{{ sensors|length }}</span></div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0 param-table">
+            {% for s in sensors %}
+            <tr>
+              <td>{{ s.sensor_name }}</td>
+              <td>
+                {% if s.value is not none %}
+                  <span class="fw-bold">
+                    {%- if s.unit == '°C' -%}
+                      {%- if s.value >= 80 -%}<span class="text-danger">{{ "%.1f"|format(s.value) }} °C</span>
+                      {%- elif s.value >= 60 -%}<span class="text-warning">{{ "%.1f"|format(s.value) }} °C</span>
+                      {%- else -%}<span class="text-success">{{ "%.1f"|format(s.value) }} °C</span>{%- endif -%}
+                    {%- elif s.unit == '%' -%}
+                      {%- if s.value >= 90 -%}<span class="text-danger">{{ "%.0f"|format(s.value) }}%</span>
+                      {%- elif s.value >= 70 -%}<span class="text-warning">{{ "%.0f"|format(s.value) }}%</span>
+                      {%- else -%}{{ "%.0f"|format(s.value) }}%{%- endif -%}
+                    {%- elif s.unit == 'rpm' -%}
+                      {{ s.value|int }} rpm
+                    {%- elif s.unit in ('V', 'mV') -%}
+                      {{ "%.2f"|format(s.value) }} {{ s.unit }}
+                    {%- elif s.unit == 'dBm' -%}
+                      {{ "%.1f"|format(s.value) }} dBm
+                    {%- else -%}
+                      {{ s.value }} {% if s.unit %}{{ s.unit }}{% endif %}
+                    {%- endif -%}
+                  </span>
+                {% elif s.raw_str %}
+                  <span class="text-muted small">{{ s.raw_str }}</span>
+                {% else %}—{% endif %}
+                {% if s.source %}<span class="text-muted small ms-1">({{ s.source }})</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </table>
+          {% if sensors[0].polled_at %}
+          <p class="text-muted small px-3 py-1 mb-0">Last polled: {{ sensors[0].polled_at.strftime('%Y-%m-%d %H:%M') }}</p>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
       {# ── Broadcast Discovery ───────────────────────────────────────────── #}
       {% if broadcast_info %}
       <div class="card mb-3">

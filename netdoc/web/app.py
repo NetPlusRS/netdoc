@@ -1420,7 +1420,7 @@ def create_app():
         """Strona szczegółów urządzenia: parametry, historia pingów, zmiany pól, interfejsy, syslog."""
         from netdoc.storage.models import (
             DeviceFieldHistory, InterfaceHistory, Interface, ScanResult,
-            Vulnerability, TopologyLink,
+            Vulnerability, TopologyLink, DeviceSensor,
         )
         from netdoc.storage.clickhouse import query_ping_history, query_ping_stats, query_syslog
         db = SessionLocal()
@@ -1522,6 +1522,14 @@ def create_app():
                             _k, _v = _part.split('=', 1)
                             broadcast_info[_k] = _v
 
+            # Sensors (temperature, CPU, RAM, voltage, fans)
+            sensors = (
+                db.query(DeviceSensor)
+                .filter(DeviceSensor.device_id == device_id)
+                .order_by(DeviceSensor.sensor_name)
+                .all()
+            )
+
             return render_template(
                 "device_detail.html",
                 dev=dev,
@@ -1535,6 +1543,7 @@ def create_app():
                 ping_stats=ping_stats,
                 syslog_rows=syslog_rows,
                 broadcast_info=broadcast_info,
+                sensors=sensors,
             )
         finally:
             db.close()

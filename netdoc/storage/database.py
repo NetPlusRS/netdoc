@@ -130,6 +130,19 @@ def _migrate_columns() -> None:
             changed_at     TIMESTAMP NOT NULL DEFAULT NOW()
         )""",
         "CREATE INDEX IF NOT EXISTS ix_ifh_device_changed ON interface_history (device_id, changed_at)",
+        # Device sensors — SNMP temperature, CPU, RAM, voltage, fans (2026-03-30)
+        """CREATE TABLE IF NOT EXISTS device_sensors (
+            id          SERIAL PRIMARY KEY,
+            device_id   INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+            sensor_name VARCHAR(100) NOT NULL,
+            value       DOUBLE PRECISION,
+            unit        VARCHAR(20),
+            raw_str     VARCHAR(200),
+            source      VARCHAR(50),
+            polled_at   TIMESTAMP NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_sensor_dev_name UNIQUE (device_id, sensor_name)
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_sensor_device_id ON device_sensors (device_id)",
         # Ping worker — czas ostatniego udanego pingu (2026-03-24)
         # Oddzielony od last_seen (ktory jest odswiezany przez discovery/ARP),
         # pozwala na prawidlowe oznaczanie DOWN nawet gdy discovery falszywie odswierza last_seen.
