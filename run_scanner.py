@@ -19,10 +19,21 @@ Scanner status visible in the panel: http://localhost/settings
 import sys
 import atexit
 import os
+import subprocess
 import time
 import logging
 import argparse
 from datetime import datetime
+
+# On Windows: hide console windows spawned by subprocesses (schtasks, powershell,
+# docker, arp, etc.) when running as pythonw.exe (no parent console).
+if sys.platform == "win32":
+    _OrigPopen = subprocess.Popen
+    class _NoWindowPopen(_OrigPopen):
+        def __init__(self, *args, **kwargs):
+            kwargs.setdefault("creationflags", subprocess.CREATE_NO_WINDOW)
+            super().__init__(*args, **kwargs)
+    subprocess.Popen = _NoWindowPopen
 
 # Set DB to localhost:15432 (PostgreSQL in Docker) if no other setting is present
 if "DB_URL" not in os.environ:
