@@ -29,6 +29,7 @@ Usage:
   Task Scheduler: registered by netdoc-setup.ps1 or install_syslog_relay.ps1
 """
 
+import atexit
 import datetime
 import logging
 import os
@@ -232,16 +233,50 @@ def _setup_logging() -> None:
 logger = logging.getLogger(__name__)
 
 
-# ── PID file ───────────────────────────────────────────────────────────────────
+# ── Single-instance lock (PID file) ───────────────────────────────────────────
 
-def _write_pid() -> None:
-    PID_FILE.write_text(str(os.getpid()))
+def _pid_alive(pid: int) -> bool:
+    """Returns True if a process with given PID exists."""
+    try:
+        os.kill(pid, 0)
+        return True
+    except (OSError, ProcessLookupError):
+        return False
+
+
+def _acquire_relay_lock() -> bool:
+    """Ensures only one syslog relay instance runs at a time.
+
+    Returns True if lock acquired, False if another instance is already running.
+    """
+    my_pid = os.getpid()
+
+    if PID_FILE.exists():
+        try:
+            old_pid = int(PID_FILE.read_text().strip())
+            if old_pid != my_pid and _pid_alive(old_pid):
+                logger.error(
+                    "Syslog relay already running (PID=%d). Exiting.", old_pid
+                )
+                return False
+            logger.warning("Stale syslog_relay.pid (PID=%d) — overwriting.", old_pid)
+        except (ValueError, OSError):
+            pass  # corrupted file — overwrite
+
+    try:
+        PID_FILE.write_text(str(my_pid))
+    except OSError as exc:
+        logger.warning("Cannot write PID file: %s — continuing anyway.", exc)
+
+    atexit.register(_remove_pid)
+    return True
 
 
 def _remove_pid() -> None:
     try:
-        PID_FILE.unlink()
-    except FileNotFoundError:
+        if PID_FILE.exists() and PID_FILE.read_text().strip() == str(os.getpid()):
+            PID_FILE.unlink()
+    except OSError:
         pass
 
 
@@ -259,7 +294,8 @@ def _stats_loop() -> None:
 
 def main() -> None:
     _setup_logging()
-    _write_pid()
+    if not _acquire_relay_lock():
+        sys.exit(0)
 
     logger.info("NetDoc Syslog Relay starting")
     logger.info("  listen  : UDP %s:%d  (network devices)", LISTEN_HOST, LISTEN_PORT)
