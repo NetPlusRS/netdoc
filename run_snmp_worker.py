@@ -176,6 +176,31 @@ def _is_ip(s: str) -> bool:
         return False
 
 
+def _is_infrastructure_ip(ip: str) -> bool:
+    """Zwraca True dla zakresów które nie są urządzeniami sieciowymi użytkownika:
+    - 172.16.0.0/12  — Docker bridge / overlay networks (172.16–172.31)
+    - 100.64.0.0/10  — CGNAT / Tailscale / VPN tunnel IPs (100.64–100.127)
+    - 127.0.0.0/8    — loopback
+    - 169.254.0.0/16 — link-local
+    """
+    parts = ip.split(".")
+    if len(parts) != 4:
+        return False
+    try:
+        a, b = int(parts[0]), int(parts[1])
+    except (ValueError, IndexError):
+        return False
+    if a == 127:
+        return True  # loopback
+    if a == 169 and b == 254:
+        return True  # link-local
+    if a == 172 and 16 <= b <= 31:
+        return True  # Docker bridge 172.16–172.31
+    if a == 100 and 64 <= b <= 127:
+        return True  # CGNAT/Tailscale/VPN 100.64–100.127
+    return False
+
+
 # ---------------------------------------------------------------------------
 # CDP enrichment — Cisco Discovery Protocol via SNMP (ciscocdpMIB)
 # ---------------------------------------------------------------------------
@@ -503,6 +528,7 @@ def _enrich_arp(ip: str, community: str, timeout: int = 2) -> list[dict]:
         return []
 
     # Odfiltruj wpisy invalid (type=2) i multicast/broadcast MAC
+    # oraz zakresy infrastrukturalne: Docker bridge (172.16-31.x), CGNAT/VPN (100.64-127.x), loopback
     result = []
     for v in rows.values():
         if v.get("arp_type") == 2:
@@ -510,8 +536,13 @@ def _enrich_arp(ip: str, community: str, timeout: int = 2) -> list[dict]:
         mac = v.get("mac", "").upper()
         if mac and (mac.startswith("FF:FF") or mac.startswith("01:")):
             continue  # broadcast/multicast
-        if v.get("mac"):  # potrzebujemy MAC żeby nie śmiecić w DB
-            result.append(v)
+        if not v.get("mac"):
+            continue  # potrzebujemy MAC żeby nie śmiecić w DB
+        # Skip Docker/overlay/CGNAT/VPN ranges
+        ip_str = v.get("ip", "")
+        if _is_infrastructure_ip(ip_str):
+            continue
+        result.append(v)
     return result
 
 
