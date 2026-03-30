@@ -103,65 +103,62 @@
       </div>
 
       {# ── SNMP ──────────────────────────────────────────────────────────── #}
+      {% if dev.snmp_community or dev.snmp_ok_at %}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">SNMP</div>
+        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-diagram-3 me-1"></i>SNMP
+            {% if dev.snmp_ok_at %}<span class="badge bg-success ms-1">OK</span>{% endif %}
+          </span>
+          {% if dev.snmp_ok_at %}<small class="text-muted fw-normal">{{ dev.snmp_ok_at.strftime('%Y-%m-%d %H:%M') }}</small>{% endif %}
+        </div>
         <div class="card-body p-0">
           <table class="table table-sm mb-0 param-table">
             <tr><td>Community</td><td>
-              {% if dev.snmp_community %}
-              <code>{{ dev.snmp_community[:2] }}****</code>
+              {% if dev.snmp_community %}<code>{{ dev.snmp_community[:2] }}****</code>
               {% else %}<span class="text-muted">—</span>{% endif %}
             </td></tr>
-            <tr><td>Uptime</td><td>{{ dev.snmp_uptime or '<span class="text-muted">—</span>' | safe }}</td></tr>
-            <tr><td>Last SNMP OK</td><td>
-              {% if dev.snmp_ok_at %}{{ dev.snmp_ok_at.strftime('%Y-%m-%d %H:%M') }}
+            <tr><td>sysName</td><td>{{ dev.hostname or '<span class="text-muted">—</span>' | safe }}</td></tr>
+            <tr><td>sysDescr</td><td>
+              {% if dev.os_version %}
+              <span class="small" title="{{ dev.os_version }}">{{ dev.os_version[:100] }}{% if dev.os_version|length > 100 %}…{% endif %}</span>
               {% else %}<span class="text-muted">—</span>{% endif %}
             </td></tr>
-          </table>
-        </div>
-      </div>
-
-      {# ── Sensors ──────────────────────────────────────────────────────── #}
-      {% if sensors %}
-      <div class="card mb-3">
-        <div class="card-header fw-semibold py-2"><i class="bi bi-thermometer-half me-1"></i>Sensors <span class="badge bg-secondary">{{ sensors|length }}</span></div>
-        <div class="card-body p-0">
-          <table class="table table-sm mb-0 param-table">
+            <tr><td>sysLocation</td><td>{{ dev.location or '<span class="text-muted">—</span>' | safe }}</td></tr>
+            <tr><td>sysContact</td><td>{{ dev.sys_contact or '<span class="text-muted">—</span>' | safe }}</td></tr>
+            <tr><td>sysUpTime</td><td>{{ dev.snmp_uptime or '<span class="text-muted">—</span>' | safe }}</td></tr>
+            {% if dev.serial_number %}
+            <tr><td>Serial (SNMP)</td><td><code>{{ dev.serial_number }}</code></td></tr>
+            {% endif %}
+            {# ── Sensors ────────────────────────────────────────────────── #}
+            {% if sensors %}
+            <tr><td colspan="2" class="pt-2 pb-1 px-3">
+              <small class="text-muted text-uppercase fw-semibold" style="letter-spacing:.05em">Sensors</small>
+            </td></tr>
             {% for s in sensors %}
             <tr>
-              <td>{{ s.sensor_name }}</td>
+              <td class="ps-3">{{ s.sensor_name }}</td>
               <td>
-                {% if s.value is not none %}
-                  <span class="fw-bold">
-                    {%- if s.unit == '°C' -%}
-                      {%- if s.value >= 80 -%}<span class="text-danger">{{ "%.1f"|format(s.value) }} °C</span>
-                      {%- elif s.value >= 60 -%}<span class="text-warning">{{ "%.1f"|format(s.value) }} °C</span>
-                      {%- else -%}<span class="text-success">{{ "%.1f"|format(s.value) }} °C</span>{%- endif -%}
-                    {%- elif s.unit == '%' -%}
-                      {%- if s.value >= 90 -%}<span class="text-danger">{{ "%.0f"|format(s.value) }}%</span>
-                      {%- elif s.value >= 70 -%}<span class="text-warning">{{ "%.0f"|format(s.value) }}%</span>
-                      {%- else -%}{{ "%.0f"|format(s.value) }}%{%- endif -%}
-                    {%- elif s.unit == 'rpm' -%}
-                      {{ s.value|int }} rpm
-                    {%- elif s.unit in ('V', 'mV') -%}
-                      {{ "%.2f"|format(s.value) }} {{ s.unit }}
-                    {%- elif s.unit == 'dBm' -%}
-                      {{ "%.1f"|format(s.value) }} dBm
-                    {%- else -%}
-                      {{ s.value }} {% if s.unit %}{{ s.unit }}{% endif %}
-                    {%- endif -%}
-                  </span>
-                {% elif s.raw_str %}
-                  <span class="text-muted small">{{ s.raw_str }}</span>
-                {% else %}—{% endif %}
+                {%- if s.value is not none -%}
+                  {%- if s.unit == '°C' -%}
+                    {%- if s.value >= 80 -%}<span class="text-danger fw-bold">{{ "%.1f"|format(s.value) }} °C</span>
+                    {%- elif s.value >= 60 -%}<span class="text-warning fw-bold">{{ "%.1f"|format(s.value) }} °C</span>
+                    {%- else -%}<span class="text-success">{{ "%.1f"|format(s.value) }} °C</span>{%- endif -%}
+                  {%- elif s.unit == '%' -%}
+                    {%- if s.value >= 90 -%}<span class="text-danger fw-bold">{{ "%.0f"|format(s.value) }}%</span>
+                    {%- elif s.value >= 70 -%}<span class="text-warning fw-bold">{{ "%.0f"|format(s.value) }}%</span>
+                    {%- else -%}{{ "%.0f"|format(s.value) }}%{%- endif -%}
+                  {%- elif s.unit == 'rpm' -%}{{ s.value|int }} rpm
+                  {%- elif s.unit in ('V', 'mV') -%}{{ "%.2f"|format(s.value) }} {{ s.unit }}
+                  {%- elif s.unit == 'dBm' -%}{{ "%.1f"|format(s.value) }} dBm
+                  {%- else -%}{{ s.value }}{% if s.unit %} {{ s.unit }}{% endif %}{%- endif -%}
+                {%- elif s.raw_str -%}<span class="text-muted small">{{ s.raw_str }}</span>
+                {%- else -%}—{%- endif -%}
                 {% if s.source %}<span class="text-muted small ms-1">({{ s.source }})</span>{% endif %}
               </td>
             </tr>
             {% endfor %}
+            {% endif %}
           </table>
-          {% if sensors[0].polled_at %}
-          <p class="text-muted small px-3 py-1 mb-0">Last polled: {{ sensors[0].polled_at.strftime('%Y-%m-%d %H:%M') }}</p>
-          {% endif %}
         </div>
       </div>
       {% endif %}
