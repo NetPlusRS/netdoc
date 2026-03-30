@@ -499,67 +499,178 @@ def _mikrotik(ip: str, community: str, timeout: float) -> list[dict]:
 
 
 # ─── 6. Ubiquiti / UniFi ─────────────────────────────────────────────────────
-# UBNT-MIB: 1.3.6.1.4.1.41112.1.4
-#   .5.1.5  ubntAirFifoTxPktTotal → signal quality proxies
-# UBNT-AirMAX: 1.3.6.1.4.1.41112.1.4.5.1
-#   .3  ubntWirelessSignal  (dBm, signed)
-#   .5  ubntWirelessNoiseFloor (dBm)
-#   .6  ubntWirelessTxCapacity (%)
-#   .7  ubntWirelessRxCapacity (%)
-# UniFi AP:
-#   .1.3.6.1.4.1.41112.1.6.1.2.1.3  unifiApSystemCpuLoad (%)
-#   .1.3.6.1.4.1.41112.1.6.1.2.1.4  unifiApSystemMemUsed (KB)
-#   .1.3.6.1.4.1.41112.1.6.1.2.1.5  unifiApSystemMemTotal (KB)
-#   .1.3.6.1.4.1.41112.1.6.3.1.3    unifiIfUtilRx (%)
-#   .1.3.6.1.4.1.41112.1.6.3.1.4    unifiIfUtilTx (%)
+#
+# Layer A — UniFi AP sysinfo (1.3.6.1.4.1.41112.1.6.1.2.1)
+#   .3  unifiApSystemCpuLoad    (%)
+#   .4  unifiApSystemMemUsed    (KB)
+#   .5  unifiApSystemMemTotal   (KB)
+#
+# Layer B — UBNT-AirOS generic scalars (1.3.6.1.4.1.41112.1.7.8)
+#   .3  ubntHostCpuLoad         (0–65535 → /655.35 = %)
+#   .4  ubntHostTemperature     (°C, integer)
+#
+# Layer C — lmsensors MIB (1.3.6.1.4.1.2021.13.16)  — UDM/UDMP Linux net-snmp
+#   lmTempSensorsTable  .2.1.{2,3}.idx  name / value (millidegrees °C → /1000)
+#   lmFanSensorsTable   .3.1.{2,3}.idx  name / value (RPM)
+#   lmMiscSensorsTable  .5.1.{2,3}.idx  name / value (mV*1000 → /1000 = V for voltage)
+#
+# Layer D — EdgeSwitch / EdgeRouter (1.3.6.1.4.1.4413.1.1.43.1)
+#   Fan table     .6.1.{2,3,4}.idx  descr / state (2=ok) / speed RPM
+#   Temp table    .8.1.{3,4,5}.idx  descr / state / value °C
+#
+# Layer E — AirMAX / AirFiber wireless (1.3.6.1.4.1.41112.1.4.5.1)
+#   .3  signal dBm  .5  noise dBm  .6  tx_capacity %  .7  rx_capacity %
 
-_UBNT_SYSINFO  = "1.3.6.1.4.1.41112.1.6.1.2.1"
-_UBNT_WIRELESS = "1.3.6.1.4.1.41112.1.4.5.1"
+_UBNT_AP_SYSINFO  = "1.3.6.1.4.1.41112.1.6.1.2.1"
+_UBNT_HOST        = "1.3.6.1.4.1.41112.1.7.8"
+_UBNT_WIRELESS    = "1.3.6.1.4.1.41112.1.4.5.1"
+_LMSENSORS_TEMP   = "1.3.6.1.4.1.2021.13.16.2.1"
+_LMSENSORS_FAN    = "1.3.6.1.4.1.2021.13.16.3.1"
+_LMSENSORS_MISC   = "1.3.6.1.4.1.2021.13.16.5.1"
+_EDGE_FAN_TABLE   = "1.3.6.1.4.1.4413.1.1.43.1.6.1"
+_EDGE_TEMP_TABLE  = "1.3.6.1.4.1.4413.1.1.43.1.8.1"
+
+
+def _lmsensors_table(ip: str, base_oid: str, community: str, timeout: float,
+                     value_scale: float, unit: str, source: str) -> list[dict]:
+    """Reads an lmsensors-style table: field .2 = name, field .3 = value."""
+    names: dict[str, str]   = {}
+    values: dict[str, int]  = {}
+    for oid_str, raw_val, _ in _walk(ip, base_oid, community, timeout, max_iter=200):
+        suffix = oid_str[len(base_oid):].lstrip(".")
+        parts = suffix.split(".", 1)
+        if len(parts) < 2:
+            continue
+        field, idx = parts[0], parts[1]
+        if field == "2":
+            names[idx] = _str_val(raw_val)
+        elif field == "3":
+            iv = _int_val(raw_val)
+            if iv is not None:
+                values[idx] = iv
+    results = []
+    for idx, name in names.items():
+        if idx not in values:
+            continue
+        val = values[idx] * value_scale
+        results.append(_sensor(name, round(val, 2) if value_scale != 1 else val, unit, source))
+    return results
 
 
 def _ubiquiti(ip: str, community: str, timeout: float) -> list[dict]:
-    results = []
-    oids = {
-        "1.3.6.1.4.1.41112.1.6.1.2.1.3": ("cpu_load",      1,  "%"),
-        "1.3.6.1.4.1.41112.1.6.1.2.1.4": ("ram_used_kb",   1,  "KB"),
-        "1.3.6.1.4.1.41112.1.6.1.2.1.5": ("ram_total_kb",  1,  "KB"),
-    }
-    raw_vals = {}
-    for oid, (name, div, unit) in oids.items():
+    results: list[dict] = []
+    seen: set[str] = set()
+
+    def _add(s: dict) -> None:
+        if s["name"] not in seen:
+            seen.add(s["name"])
+            results.append(s)
+
+    # ── Layer A: UniFi AP sysinfo ────────────────────────────────────────────
+    ap_raw: dict[str, int] = {}
+    for oid, field in [
+        ("1.3.6.1.4.1.41112.1.6.1.2.1.3", "cpu_load"),
+        ("1.3.6.1.4.1.41112.1.6.1.2.1.4", "ram_used_kb"),
+        ("1.3.6.1.4.1.41112.1.6.1.2.1.5", "ram_total_kb"),
+    ]:
         val, _ = _get(ip, oid, community, timeout)
-        if val is None: continue
         iv = _int_val(val)
-        if iv is None: continue
-        results.append(_sensor(name, iv, unit, "ubiquiti"))
-        raw_vals[name] = iv
-
-    ru = raw_vals.get("ram_used_kb")
-    rt = raw_vals.get("ram_total_kb")
+        if iv is not None:
+            ap_raw[field] = iv
+    if "cpu_load" in ap_raw:
+        _add(_sensor("cpu_load", ap_raw["cpu_load"], "%", "ubiquiti-ap"))
+    ru, rt = ap_raw.get("ram_used_kb"), ap_raw.get("ram_total_kb")
     if ru is not None and rt and rt > 0:
-        results.append(_sensor("ram_used_pct", round(ru / rt * 100, 1), "%", "ubiquiti"))
+        _add(_sensor("ram_used_pct", round(ru / rt * 100, 1), "%", "ubiquiti-ap"))
 
-    # Wireless sensors (per radio index)
+    # ── Layer B: ubntHost scalars (airOS, all models) ────────────────────────
+    cpu_val, _ = _get(ip, f"{_UBNT_HOST}.3", community, timeout)
+    if cpu_val is not None:
+        iv = _int_val(cpu_val)
+        if iv is not None:
+            # scale 0–65535 → %
+            _add(_sensor("cpu_load", round(iv / 655.35, 1), "%", "ubiquiti-airos"))
+    temp_val, _ = _get(ip, f"{_UBNT_HOST}.4", community, timeout)
+    if temp_val is not None:
+        iv = _int_val(temp_val)
+        if iv is not None and 0 < iv < 200:
+            _add(_sensor("temperature", float(iv), "°C", "ubiquiti-airos"))
+
+    # ── Layer C: lmsensors MIB (UDM/UDMP running net-snmp on Linux) ─────────
+    for s in _lmsensors_table(ip, _LMSENSORS_TEMP, community, timeout,
+                               value_scale=0.001, unit="°C", source="lmsensors"):
+        _add(s)
+    for s in _lmsensors_table(ip, _LMSENSORS_FAN, community, timeout,
+                               value_scale=1, unit="rpm", source="lmsensors"):
+        _add(s)
+    # lmMisc: voltage in mV*1000 → divide by 1000 to get V; filter out non-voltage by name
+    for s in _lmsensors_table(ip, _LMSENSORS_MISC, community, timeout,
+                               value_scale=0.001, unit="V", source="lmsensors"):
+        n = s["name"].lower()
+        if any(k in n for k in ("volt", "vin", "vout", "vcore", "3v", "5v", "12v", "+v")):
+            _add(s)
+
+    # ── Layer D: EdgeSwitch / EdgeRouter fan + temp tables ───────────────────
+    edge_fans: dict[str, dict] = {}
+    for oid_str, raw_val, _ in _walk(ip, _EDGE_FAN_TABLE, community, timeout, max_iter=100):
+        suffix = oid_str[len(_EDGE_FAN_TABLE):].lstrip(".")
+        parts = suffix.split(".", 1)
+        if len(parts) < 2:
+            continue
+        field, idx = parts[0], parts[1]
+        entry = edge_fans.setdefault(idx, {})
+        if field == "2":
+            entry["descr"] = _str_val(raw_val)
+        elif field == "3":
+            entry["state"] = _int_val(raw_val)   # 2 = operational
+        elif field == "4":
+            entry["rpm"]   = _int_val(raw_val)
+    for idx, f in edge_fans.items():
+        if f.get("state") == 2 and f.get("rpm") is not None:
+            name = f.get("descr") or f"fan_{idx}"
+            _add(_sensor(name, float(f["rpm"]), "rpm", "edge"))
+
+    edge_temps: dict[str, dict] = {}
+    for oid_str, raw_val, _ in _walk(ip, _EDGE_TEMP_TABLE, community, timeout, max_iter=100):
+        suffix = oid_str[len(_EDGE_TEMP_TABLE):].lstrip(".")
+        parts = suffix.split(".", 1)
+        if len(parts) < 2:
+            continue
+        field, idx = parts[0], parts[1]
+        entry = edge_temps.setdefault(idx, {})
+        if field == "3":
+            entry["descr"] = _str_val(raw_val)
+        elif field == "4":
+            entry["state"] = _int_val(raw_val)
+        elif field == "5":
+            entry["temp"]  = _int_val(raw_val)
+    for idx, t in edge_temps.items():
+        if t.get("temp") is not None and t.get("state") in (None, 2, 4):  # 4=good on some models
+            name = t.get("descr") or f"temperature_{idx}"
+            _add(_sensor(name, float(t["temp"]), "°C", "edge"))
+
+    # ── Layer E: AirMAX / AirFiber wireless (per radio) ─────────────────────
     wireless: dict[str, dict] = {}
-    for oid_str, raw_val, _tag in _walk(ip, _UBNT_WIRELESS, community, timeout, max_iter=100):
+    for oid_str, raw_val, _ in _walk(ip, _UBNT_WIRELESS, community, timeout, max_iter=100):
         suffix = oid_str[len(_UBNT_WIRELESS):].lstrip(".")
         parts = suffix.split(".")
-        if len(parts) < 2: continue
+        if len(parts) < 2:
+            continue
         field, idx = int(parts[0]), parts[1]
         entry = wireless.setdefault(idx, {})
         iv = _int_val(raw_val)
-        if field == 3:  entry["signal"]   = iv
+        if   field == 3: entry["signal"]  = iv
         elif field == 5: entry["noise"]   = iv
         elif field == 6: entry["tx_cap"]  = iv
-        elif field == 7: entry["rx_cap"]  = iv
 
     for i, (idx, w) in enumerate(wireless.items(), 1):
         sfx = f"_{i}" if i > 1 else ""
         if w.get("signal") is not None:
-            results.append(_sensor(f"wireless_signal{sfx}", w["signal"], "dBm", "ubiquiti"))
+            _add(_sensor(f"wireless_signal{sfx}", w["signal"], "dBm", "ubiquiti"))
         if w.get("noise") is not None:
-            results.append(_sensor(f"wireless_noise{sfx}", w["noise"], "dBm", "ubiquiti"))
+            _add(_sensor(f"wireless_noise{sfx}", w["noise"], "dBm", "ubiquiti"))
         if w.get("tx_cap") is not None:
-            results.append(_sensor(f"wireless_tx_capacity{sfx}", w["tx_cap"], "%", "ubiquiti"))
+            _add(_sensor(f"wireless_tx_capacity{sfx}", w["tx_cap"], "%", "ubiquiti"))
 
     return results
 
