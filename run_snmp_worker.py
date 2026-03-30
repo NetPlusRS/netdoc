@@ -13,7 +13,7 @@ import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from prometheus_client import Gauge, start_http_server
 
@@ -440,7 +440,12 @@ def _poll_device(device_id: int, ip: str, community: str,
             return result
 
         if not sysname:
-            # Community przestalo dzialac — wyczysc, community-worker znajdzie nowe
+            # Nie czysc community przy jednorazowym bladzie — urzadzenie moglo byc chwilowo zajete.
+            # Czysc dopiero gdy nie odpowiadalo przez >30 minut (zabezpieczenie przed flappingiem).
+            stale_limit = datetime.utcnow() - timedelta(minutes=30)
+            if device.snmp_ok_at and device.snmp_ok_at > stale_limit:
+                logger.debug("Community '%s' no response for %s — skipping (ok_at recent)", community, ip)
+                return result
             logger.info("Community '%s' no longer responds for %s — clearing", community, ip)
             device.snmp_community = None
             device.snmp_ok_at     = None
