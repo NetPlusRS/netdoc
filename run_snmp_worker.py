@@ -368,6 +368,53 @@ def _update_asset_notes_tag(notes: str | None, tag: str, value: str) -> str:
     return (notes + "\n" + new_tag) if notes else new_tag
 
 
+_UBNT_AP_PFX     = ("u6-", "u7-", "u5-", "u2-", "uap", "unifi ap")
+_UBNT_SWITCH_PFX = ("us-", "usw", "us8", "us16", "us24", "us48", "unifi switch")
+_UBNT_ROUTER_PFX = ("udm", "usg", "udr", "unifi dream", "unifi gateway")
+_NAS_OS_HINTS    = ("diskstation", "synology", "dsm ", "qts ", "qnap",
+                    "readynas", "freenas", "truenas", "nas4free", "openmediavault")
+
+
+def _reclassify_from_snmp(device) -> None:
+    """Re-klasyfikuje urządzenie na podstawie danych SNMP (hostname, vendor, os_version).
+
+    Koryguje błędne typy nadane przez discovery gdy SNMP dostarcza dokładniejszych danych.
+    Ubiquiti: AP/switch/router po hostname. NAS: Synology/QNAP po vendor lub os_version.
+    Zapis do device.device_type jeśli się zmieni.
+    """
+    from netdoc.storage.models import DeviceType as DT
+    hn  = (device.hostname  or "").lower()
+    vn  = (device.vendor    or "").lower()
+    osv = (device.os_version or "").lower()
+
+    # NAS — vendor lub sysDescr wskazuje jednoznacznie
+    if any(k in vn for k in ("synology", "qnap", "western digital", "buffalo")):
+        if device.device_type != DT.nas:
+            device.device_type = DT.nas
+        return
+    if any(k in osv for k in _NAS_OS_HINTS):
+        if device.device_type != DT.nas:
+            device.device_type = DT.nas
+        return
+
+    # Ubiquiti — tylko gdy vendor = ubiquiti (nie nadpisuj innych)
+    if "ubiquiti" not in vn and "ubnt" not in vn:
+        return
+    if any(hn.startswith(p) for p in _UBNT_ROUTER_PFX):
+        new_type = DT.router
+    elif any(hn.startswith(p) for p in _UBNT_SWITCH_PFX):
+        new_type = DT.switch
+    elif any(hn.startswith(p) for p in _UBNT_AP_PFX):
+        new_type = DT.ap
+    else:
+        return  # nieznany Ubiquiti — nie zmieniaj
+    if device.device_type != new_type:
+        logger.info("Reclassify %s: %s → %s (snmp hostname %r)",
+                    device.ip, device.device_type.value if device.device_type else "?",
+                    new_type.value, device.hostname)
+        device.device_type = new_type
+
+
 def _poll_device(device_id: int, ip: str, community: str,
                  hostname: str | None, os_version: str | None, location: str | None,
                  snmp_timeout: int = 2) -> dict:
@@ -490,6 +537,10 @@ def _poll_device(device_id: int, ip: str, community: str,
             pass  # brak Entity MIB — normalne dla prostych urzadzen
 
         device.snmp_ok_at = datetime.utcnow()
+
+        # Re-klasyfikacja gdy SNMP nadpisał hostname i typ może być błędny
+        # Dotyczy głównie Ubiquiti: AP vs Switch vs Router po hostname
+        _reclassify_from_snmp(device)
 
         # Zaktualizuj last_success_at na credentialu jesli istnieje
         existing = (
@@ -770,6 +821,7 @@ def _save_sensors(db, device_id: int, sensors: list[dict]) -> int:
     if not rows:
         return 0
     try:
+        # Upsert nowych wartości
         stmt = pg_insert(DeviceSensor.__table__).values(rows)
         stmt = stmt.on_conflict_do_update(
             constraint="uq_sensor_dev_name",
@@ -782,6 +834,12 @@ def _save_sensors(db, device_id: int, sensors: list[dict]) -> int:
             },
         )
         db.execute(stmt)
+        # Usuń sensory których już nie zwraca poll (stare/nieobecne) — zapobiega zaleganiu śmieci
+        current_names = [r["sensor_name"] for r in rows]
+        db.query(DeviceSensor).filter(
+            DeviceSensor.device_id == device_id,
+            DeviceSensor.sensor_name.notin_(current_names),
+        ).delete(synchronize_session=False)
         db.commit()
         return len(rows)
     except Exception as exc:

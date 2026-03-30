@@ -1654,8 +1654,8 @@ _NETWORK_VENDORS = (
 # Wzorce hostname dla sprzetu Ubiquiti (rozroznienie AP/switch/router)
 # AP: U6-*, U7-*, UAP-*, U2-*, U5-*
 _UBIQUITI_AP_PREFIXES = ("u6-", "u7-", "u5-", "u2-", "uap", "unifi ap")
-# Switch: US-*, USW-*, US8*, US16*, US24*, US48* (modele bez myslnika np. US860W)
-_UBIQUITI_SWITCH_PREFIXES = ("us-", "usw-", "unifi switch", "us8", "us16", "us24", "us48")
+# Switch: US-*, USW*, US8*, US16*, US24*, US48* (modele bez myslnika np. US860W, USWLite8PoE)
+_UBIQUITI_SWITCH_PREFIXES = ("us-", "usw", "unifi switch", "us8", "us16", "us24", "us48")
 # Router/gateway: UDM, USG, UDR, UniFi Dream
 _UBIQUITI_ROUTER_PREFIXES = ("udm", "usg", "udr", "unifi dream", "unifi gateway")
 
@@ -1927,6 +1927,14 @@ def _guess_device_type(open_ports, os_name, vendor=None, mac=None, hostname=None
     #    37777/37778 = Dahua proprietary, 34567 = XMEye/generyczne DVR/NVR
     #    Wyjątek: Cisco IOS (router) też ma 554 — ale ten przypadek jest już obsłużony wyżej
     _CAMERA_PORTS_STRONG = {554, 8554, 37777, 37778, 34567}
+    # 2a-pre. NAS vendor = pewnik — sprawdź PRZED kamerami (Synology ma Surveillance Station na 554)
+    if any(v in vendor_lower for v in _NAS_VENDORS):
+        return DeviceType.nas
+    _NAS_OS_HINTS_EARLY = ("diskstation", "synology", "dsm ", "qts ", "qnap",
+                           "readynas", "freenas", "truenas", "nas4free", "openmediavault")
+    if any(v in _effective_os for v in _NAS_OS_HINTS_EARLY):
+        return DeviceType.nas
+
     if any(p in open_ports for p in _CAMERA_PORTS_STRONG):
         # Upewnij się że to nie serwer mediów (Linux z SSH + web = serwer)
         _likely_server = (22 in open_ports and (80 in open_ports or 443 in open_ports)

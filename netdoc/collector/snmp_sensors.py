@@ -1065,8 +1065,54 @@ def poll_sensors(
                 except Exception:
                     pass
 
+    results = _sanitize_sensors(results)
+
     if results:
         logger.debug("Sensors %s: %d values from %s",
                      ip, len(results),
                      ", ".join(sorted({r["source"] for r in results})))
     return results
+
+
+def _sanitize_sensors(sensors: list[dict]) -> list[dict]:
+    """Czyści listę sensorów:
+    - Usuwa surowe KB (ram_total_kb, ram_used_kb) — tylko ram_used_pct ma sens
+    - Usuwa ram_used_pct poza zakresem 0-100 (błędne OIDy Ubiquiti AP)
+    - Usuwa temp = 0°C (nieobecny/nieaktywny sensor, nie realna temperatura)
+    - Usuwa fan = 0 rpm (nieaktywny wentylator — zaśmieca kartę)
+    - Deduplikuje case-insensitive (temp-CPU vs temp-cpu → zostaje pierwsza)
+    """
+    keep: list[dict] = []
+    seen_lower: set[str] = set()
+
+    for s in sensors:
+        name  = s.get("name", "")
+        value = s.get("value")
+        unit  = s.get("unit", "")
+        nl    = name.lower()
+
+        # Odrzuć surowe wartości KB — zbędne gdy mamy %
+        if nl in ("ram_total_kb", "ram_used_kb", "ram_free_kb"):
+            continue
+
+        # ram_used_pct musi być w sensownym zakresie
+        if nl == "ram_used_pct" and (value is None or not (0 <= value <= 100)):
+            continue
+
+        # Temperatura 0–1°C = nieobecny/niedostępny sensor (wartość sentinel)
+        # Żaden działający komponent nie ma temperatury 0 lub 1°C
+        if unit == "°C" and value is not None and value <= 1.0:
+            continue
+
+        # Wentylator 0 rpm = nieaktywny / nieobecny
+        if unit == "rpm" and value is not None and value == 0:
+            continue
+
+        # Deduplikacja case-insensitive — zostaje pierwsza (wyższy priorytet źródła)
+        if nl in seen_lower:
+            continue
+        seen_lower.add(nl)
+
+        keep.append(s)
+
+    return keep
