@@ -17,8 +17,15 @@ def _make_postgres_engine():
         pool_pre_ping=True,
         pool_size=pool_size,
         max_overflow=max_overflow,
+        pool_recycle=1800,          # odświeżaj połączenia co 30 min (przed idle timeout)
         echo=False,
-        connect_args={"connect_timeout": 10},
+        connect_args={
+            "connect_timeout": 10,
+            "keepalives": 1,        # TCP keepalives — wykrywaj martwe połączenia
+            "keepalives_idle": 60,  # zacznij po 60s bezczynności
+            "keepalives_interval": 10,
+            "keepalives_count": 3,
+        },
     )
 
 
@@ -175,6 +182,10 @@ def _migrate_columns() -> None:
         )""",
         "CREATE INDEX IF NOT EXISTS ix_passport_device_id ON device_passports (device_id)",
         "CREATE INDEX IF NOT EXISTS ix_passport_token ON device_passports (token)",
+        # RAM całkowita z SNMP UCD-MIB memTotalReal (2026-03-30)
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS ram_total_mb INTEGER",
+        # Flaga wyłączenia automatycznego full scan 1-65535 (2026-03-30)
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS no_full_scan BOOLEAN NOT NULL DEFAULT FALSE",
         # Usun stary constraint (za wazki — blokuje wiele hasel dla jednego usera)
         """
         DO $$ BEGIN

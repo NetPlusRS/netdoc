@@ -168,6 +168,8 @@ class Device(Base):
     asset_tag          = Column(String(100),    nullable=True)
     sys_contact        = Column(String(255),    nullable=True)   # sysContact z SNMP (1.3.6.1.2.1.1.4.0)
     snmp_uptime        = Column(String(64),     nullable=True)   # sysUpTime z SNMP (czytelny string, np. "10d 5h 23m")
+    ram_total_mb       = Column(Integer,        nullable=True)   # całkowita RAM z UCD-SNMP memTotalReal (w MB)
+    no_full_scan       = Column(Boolean,        nullable=False, default=False)  # wyłącz automatyczny full scan 1-65535
     # Kolumny zakupowe — zachowane w DB dla kompatybilności, nieużywane w UI od 2026-03-29
     purchase_date      = Column(Date,           nullable=True)
     purchase_vendor    = Column(String(255),    nullable=True)

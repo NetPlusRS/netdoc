@@ -1727,6 +1727,25 @@ def create_app():
             flash("Monitorowanie wylaczone.", "info")
         return redirect(url_for("devices"))
 
+    @app.route("/devices/<int:device_id>/toggle-full-scan", methods=["POST"])
+    def device_toggle_full_scan(device_id):
+        """Włącza lub wyłącza automatyczny full scan portów 1-65535 dla urządzenia."""
+        db = SessionLocal()
+        try:
+            dev = db.query(Device).filter_by(id=device_id).first()
+            if not dev:
+                flash("Urządzenie nie znalezione.", "danger")
+                return redirect(url_for("devices"))
+            dev.no_full_scan = not dev.no_full_scan
+            db.commit()
+            if dev.no_full_scan:
+                flash(f"Full scan wyłączony dla {dev.ip}. Automatyczne skanowanie portów 1-65535 nie będzie uruchamiane.", "info")
+            else:
+                flash(f"Full scan włączony dla {dev.ip}. Urządzenie będzie automatycznie skanowane.", "success")
+        finally:
+            db.close()
+        return redirect(url_for("device_detail", device_id=device_id))
+
     @app.route("/devices/<int:device_id>/set-ip-type", methods=["POST"])
     def device_set_ip_type(device_id):
         """Ustawia typ adresacji IP urzadzenia."""

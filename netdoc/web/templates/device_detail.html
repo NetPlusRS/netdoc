@@ -416,6 +416,29 @@
       </div>
       {% endif %}
 
+      {# ── Full scan toggle ─────────────────────────────────────────────── #}
+      <div class="card mb-3">
+        <div class="card-body py-2 d-flex align-items-center justify-content-between gap-2">
+          <div>
+            <span class="fw-semibold">Full port scan (1–65535)</span>
+            <span class="ms-2 text-muted small">automatyczny, cykliczny</span>
+          </div>
+          <form method="post" action="{{ url_for('device_toggle_full_scan', device_id=dev.id) }}" class="d-inline">
+            {% if dev.no_full_scan %}
+            <button type="submit" class="btn btn-sm btn-outline-success"
+                    title="Full scan wyłączony — kliknij aby włączyć">
+              <i class="bi bi-shield-slash me-1"></i>Wyłączony — włącz
+            </button>
+            {% else %}
+            <button type="submit" class="btn btn-sm btn-outline-secondary"
+                    title="Kliknij aby wyłączyć automatyczny full scan dla tego urządzenia">
+              <i class="bi bi-shield-check me-1"></i>Włączony — wyłącz
+            </button>
+            {% endif %}
+          </form>
+        </div>
+      </div>
+
       {# ── Open ports ───────────────────────────────────────────────────── #}
       {% if latest_scan and latest_scan.open_ports %}
       <div class="card mb-3">

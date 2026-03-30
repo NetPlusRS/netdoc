@@ -340,6 +340,8 @@ OID_ENT_FIRMWARE     = "1.3.6.1.2.1.47.1.1.1.1.9.1"   # entPhysicalFirmwareRev
 OID_ENT_SOFTWARE     = "1.3.6.1.2.1.47.1.1.1.1.10.1"  # entPhysicalSoftwareRev
 OID_ENT_SERIAL       = "1.3.6.1.2.1.47.1.1.1.1.11.1"  # entPhysicalSerialNum
 OID_ENT_HW_REV       = "1.3.6.1.2.1.47.1.1.1.1.8.1"   # entPhysicalHardwareRev
+# UCD-SNMP MIB — hardware facts (nie runtime)
+OID_MEM_TOTAL_REAL   = "1.3.6.1.4.1.2021.4.5.0"        # memTotalReal — całkowita RAM w KB
 
 
 def _timeticks_to_str(ticks) -> str:
@@ -540,6 +542,16 @@ def _poll_device(device_id: int, ip: str, community: str,
                         logger.info("Firmware %-18s: %s", ip, fw)
         except Exception:
             pass  # brak Entity MIB — normalne dla prostych urzadzen
+
+        # UCD-SNMP — RAM (hardware fact, nie runtime)
+        try:
+            mem_raw = _snmp_get(ip, community, OID_MEM_TOTAL_REAL, timeout=snmp_timeout)
+            if mem_raw is not None:
+                mem_kb = int(mem_raw)
+                if mem_kb > 0:
+                    device.ram_total_mb = mem_kb // 1024
+        except Exception:
+            pass  # brak UCD-SNMP MIB — normalne dla switchów, drukarek
 
         device.snmp_ok_at = datetime.utcnow()
 
