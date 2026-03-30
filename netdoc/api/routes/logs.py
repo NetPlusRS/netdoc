@@ -6,10 +6,11 @@ from fastapi.responses import PlainTextResponse
 router = APIRouter(prefix="/api/logs", tags=["logs"])
 
 _LOG_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "logs"))
-LOG_FILE = os.path.join(_LOG_DIR, "scanner.log")
-_WATCHDOG_LOG = os.path.join(_LOG_DIR, "watchdog.log")
+LOG_FILE       = os.path.join(_LOG_DIR, "scanner.log")
+_WATCHDOG_LOG  = os.path.join(_LOG_DIR, "watchdog.log")
 _CRED_LOG      = os.path.join(_LOG_DIR, "cred.log")
 _BROADCAST_LOG = os.path.join(_LOG_DIR, "broadcast.log")
+_SYSLOG_RELAY_LOG = os.path.join(_LOG_DIR, "syslog_relay.log")
 
 
 def _read_tail(path: str, tail: int) -> str:
@@ -46,3 +47,9 @@ def cred_log(tail: int = Query(default=200, ge=10, le=2000)):
 def broadcast_log(tail: int = Query(default=200, ge=10, le=2000)):
     """Zwraca ostatnie N linii pliku logs/broadcast.log."""
     return _read_tail(_BROADCAST_LOG, tail)
+
+
+@router.get("/syslog-relay", response_class=PlainTextResponse)
+def syslog_relay_log(tail: int = Query(default=200, ge=10, le=2000)):
+    """Zwraca ostatnie N linii pliku logs/syslog_relay.log."""
+    return _read_tail(_SYSLOG_RELAY_LOG, tail)

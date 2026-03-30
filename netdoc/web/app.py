@@ -3483,6 +3483,15 @@ def create_app():
         except Exception as exc:
             return f"Error connecting to API: {exc}", 500, {"Content-Type": "text/plain; charset=utf-8"}
 
+    @app.route("/api/logs/syslog-relay")
+    def logs_syslog_relay_proxy():
+        tail = request.args.get("tail", 200, type=int)
+        try:
+            resp = requests.get(f"{API_URL}/api/logs/syslog-relay?tail={tail}", timeout=10)
+            return resp.text, 200, {"Content-Type": "text/plain; charset=utf-8"}
+        except Exception as exc:
+            return f"Error connecting to API: {exc}", 500, {"Content-Type": "text/plain; charset=utf-8"}
+
     @app.route("/api/broadcast/packet-stats")
     def broadcast_packet_stats():
         """Zwraca statystyki pakietow per urzadzenie (top spammers)."""

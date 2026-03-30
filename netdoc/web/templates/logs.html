@@ -35,6 +35,11 @@
     </button>
   </li>
   <li class="nav-item">
+    <button class="nav-link" data-tab="syslog-relay">
+      <i class="bi bi-arrow-left-right me-1"></i>Syslog Relay
+    </button>
+  </li>
+  <li class="nav-item">
     <button class="nav-link" data-tab="workers">
       <i class="bi bi-activity me-1"></i>Docker workers
     </button>
@@ -113,6 +118,20 @@
         <span class="text-muted small">File: <code>logs/watchdog.log</code> — Docker watchdog every 5 min</span>
       </div>
       <pre id="watchdogOutput" class="mb-0 p-3 font-monospace small"
+           style="background:#0d1117;color:#c9d1d9;max-height:72vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all">Loading...</pre>
+    </div>
+
+    {# ── Syslog Relay (host process) ── #}
+    <div id="tab-syslog-relay" style="display:none">
+      <div class="d-flex align-items-center gap-3 p-2 border-bottom" style="background:var(--bg3)">
+        <select class="form-select form-select-sm" style="width:120px" id="syslogRelayTail">
+          <option value="100">100 lines</option>
+          <option value="200" selected>200 lines</option>
+          <option value="500">500 lines</option>
+        </select>
+        <span class="text-muted small">File: <code>logs/syslog_relay.log</code> — host process, UDP/TCP 514 → ClickHouse</span>
+      </div>
+      <pre id="syslogRelayOutput" class="mb-0 p-3 font-monospace small"
            style="background:#0d1117;color:#c9d1d9;max-height:72vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all">Loading...</pre>
     </div>
 
@@ -355,6 +374,7 @@
 let activeTab = "events";
 let autoScrollScanner = true;
 let autoScrollWatchdog = true;
+let autoScrollSyslogRelay = true;
 let autoScrollCred = true;
 let autoScrollWorkers = true;
 let credRawText = "";   // cache surowego tekstu — filtrowanie bez ponownego fetch
@@ -368,7 +388,7 @@ document.querySelectorAll("#logTabs .nav-link").forEach(btn => {
     document.querySelectorAll("#logTabs .nav-link").forEach(b => b.classList.remove("active"));
     this.classList.add("active");
     activeTab = this.dataset.tab;
-    ["events","scanner","watchdog","workers","cred","broadcast","ai"].forEach(t => {
+    ["events","scanner","watchdog","syslog-relay","workers","cred","broadcast","ai"].forEach(t => {
       document.getElementById("tab-" + t).style.display = (t === activeTab ? "" : "none");
     });
     refreshActive();
@@ -464,6 +484,19 @@ function fetchWatchdog() {
     .then(t => {
       pre.innerHTML = colorizeLog(t);
       if (autoScrollWatchdog) pre.scrollTop = pre.scrollHeight;
+      setStatus("ok");
+    })
+    .catch(() => setStatus("err"));
+}
+
+function fetchSyslogRelay() {
+  const tail = document.getElementById("syslogRelayTail").value;
+  const pre  = document.getElementById("syslogRelayOutput");
+  fetch("/api/logs/syslog-relay?tail=" + tail)
+    .then(r => r.text())
+    .then(t => {
+      pre.innerHTML = colorizeLog(t);
+      if (autoScrollSyslogRelay) pre.scrollTop = pre.scrollHeight;
       setStatus("ok");
     })
     .catch(() => setStatus("err"));
@@ -885,8 +918,9 @@ document.querySelectorAll("[data-tab]").forEach(btn => {
 function refreshActive() {
   if      (activeTab === "events")    fetchEvents();
   else if (activeTab === "scanner")   fetchScanner();
-  else if (activeTab === "watchdog")  fetchWatchdog();
-  else if (activeTab === "workers")   fetchWorkers();
+  else if (activeTab === "watchdog")     fetchWatchdog();
+  else if (activeTab === "syslog-relay") fetchSyslogRelay();
+  else if (activeTab === "workers")      fetchWorkers();
   else if (activeTab === "cred")      fetchCred();
   else if (activeTab === "broadcast") { fetchBroadcast(); fetchSpammers(); }
   else if (activeTab === "ai")        fetchAiLogs();
@@ -904,6 +938,9 @@ document.getElementById("scannerOutput").addEventListener("scroll", function() {
 });
 document.getElementById("watchdogOutput").addEventListener("scroll", function() {
   autoScrollWatchdog = (this.scrollTop + this.clientHeight >= this.scrollHeight - 50);
+});
+document.getElementById("syslogRelayOutput").addEventListener("scroll", function() {
+  autoScrollSyslogRelay = (this.scrollTop + this.clientHeight >= this.scrollHeight - 50);
 });
 document.getElementById("credOutput").addEventListener("scroll", function() {
   autoScrollCred = (this.scrollTop + this.clientHeight >= this.scrollHeight - 50);
@@ -939,7 +976,7 @@ document.querySelectorAll("#credFilter button").forEach(btn => {
 document.getElementById("workersFilter").addEventListener("input", applyWorkersFilter);
 
 // Zmiana liczby linii / zdarzen
-["scannerTail","watchdogTail","workersTail","credTail","eventsLimit","broadcastTail"].forEach(id => {
+["scannerTail","watchdogTail","syslogRelayTail","workersTail","credTail","eventsLimit","broadcastTail"].forEach(id => {
   document.getElementById(id).addEventListener("change", refreshActive);
 });
 
