@@ -99,8 +99,8 @@ class TestSnmpWorkerPollDevice:
         db.refresh(dev)
         assert dev.hostname == "router-main"
 
-    def test_poll_does_not_overwrite_existing_hostname(self, db):
-        """Udany poll NIE nadpisuje hostname jesli juz ustawiony."""
+    def test_poll_overwrites_hostname_snmp_authoritative(self, db):
+        """Udany poll NADPISUJE hostname — SNMP jest autorytatywne wzgledem nmap."""
         dev = _dev(db, "10.1.0.4", community="public", hostname="istniejaca-nazwa")
 
         with _patch_session(db)[0]:
@@ -108,7 +108,7 @@ class TestSnmpWorkerPollDevice:
                 self._pd(dev)
 
         db.refresh(dev)
-        assert dev.hostname == "istniejaca-nazwa"
+        assert dev.hostname == "nowa-nazwa"
 
     def test_factory_reset_clears_community(self, db):
         """Po factory reset urzadzenia stara community przestaje dzialac."""
@@ -751,15 +751,15 @@ class TestPollDeviceUptimeSerial:
         return _poll_device(dev.id, dev.ip, dev.snmp_community,
                             dev.hostname, dev.os_version, dev.location)
 
-    def test_uptime_saved_to_asset_notes(self, db):
-        """Poll zapisuje sysUpTime jako [uptime ...] tag w asset_notes."""
+    def test_uptime_saved_to_snmp_uptime_column(self, db):
+        """Poll zapisuje sysUpTime do kolumny snmp_uptime (nie do asset_notes)."""
         dev = _dev(db, "10.9.0.1", community="public")
 
         def fake_get(ip, community, oid, timeout=2):
             from run_snmp_worker import OID_SYSUPTIME
             from netdoc.collector.drivers.snmp import OID_SYSNAME
             if oid == OID_SYSNAME:   return "router-x"
-            if oid == OID_SYSUPTIME: return 360000  # 1h
+            if oid == OID_SYSUPTIME: return 360000  # 1h = 3600s = 360000 timeticks
             return None
 
         with _patch_session(db)[0]:
@@ -767,9 +767,8 @@ class TestPollDeviceUptimeSerial:
                 self._pd(dev, db)
 
         db.refresh(dev)
-        assert dev.asset_notes is not None
-        assert "[uptime" in dev.asset_notes
-        assert "1h" in dev.asset_notes
+        assert dev.snmp_uptime is not None
+        assert "1h" in dev.snmp_uptime  # 360000 timeticks = 3600s = 1h → "1h 0m"
 
     def test_serial_saved_when_empty(self, db):
         """Poll zapisuje serial number z Entity MIB jesli pole puste."""
@@ -790,8 +789,8 @@ class TestPollDeviceUptimeSerial:
         db.refresh(dev)
         assert dev.serial_number == "FCW2134X0AB"
 
-    def test_serial_not_overwritten(self, db):
-        """Poll NIE nadpisuje serial_number jesli juz ustawiony."""
+    def test_serial_updated_when_snmp_returns_different(self, db):
+        """Poll NADPISUJE serial_number gdy SNMP zwraca inny numer — SNMP jest autorytatywne."""
         dev = _dev(db, "10.9.0.3", community="public")
         dev.serial_number = "EXISTING-SERIAL"
         db.commit()
@@ -808,7 +807,7 @@ class TestPollDeviceUptimeSerial:
                 self._pd(dev, db)
 
         db.refresh(dev)
-        assert dev.serial_number == "EXISTING-SERIAL"
+        assert dev.serial_number == "NEW-SERIAL"
 
     def test_empty_serial_not_saved(self, db):
         """Poll ignoruje pusty/zerowy serial z Entity MIB."""
