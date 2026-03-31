@@ -298,14 +298,15 @@ def test_get_scan_targets_includes_db_networks(db):
     from netdoc.collector.discovery import get_scan_targets, register_network
     from netdoc.storage.models import NetworkSource
 
-    register_network(db, "172.16.5.0/24", NetworkSource.lldp)
+    # 172.16.0.0/12 is filtered as infrastructure — use 10.99.x.x which is not in infra list
+    register_network(db, "10.99.5.0/24", NetworkSource.lldp)
 
     with patch("netdoc.collector.discovery.settings") as mock_settings, \
          patch("netdoc.collector.discovery.detect_local_networks", return_value=[]):
         mock_settings.network_ranges_list = []
         targets = get_scan_targets(db)
 
-    assert "172.16.5.0/24" in targets
+    assert "10.99.5.0/24" in targets
 
 
 # --- get_stale_full_scan_ips ---

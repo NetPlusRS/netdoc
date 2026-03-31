@@ -45,7 +45,9 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
 LOG_FILE = BASE_DIR / "logs" / "syslog_relay.log"
-PID_FILE = BASE_DIR / "syslog_relay.pid"
+# PID file in %TEMP% to avoid OneDrive file-handle retention after unlink()
+# (OneDrive keeps a handle open briefly, causing open("x") to fail on re-create)
+PID_FILE = Path(os.environ.get("TEMP", str(BASE_DIR))) / "netdoc_syslog_relay.pid"
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
