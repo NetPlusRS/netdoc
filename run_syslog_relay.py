@@ -268,12 +268,27 @@ def _acquire_relay_lock() -> bool:
                     "Syslog relay already running (PID=%d). Exiting.", old_pid
                 )
                 return False
-            logger.warning("Stale syslog_relay.pid (PID=%d) — overwriting.", old_pid)
+            if old_pid != my_pid:
+                logger.warning("Stale syslog_relay.pid (PID=%d) — removing.", old_pid)
         except (ValueError, OSError):
             pass  # corrupted file — overwrite
+        try:
+            PID_FILE.unlink()
+        except OSError:
+            pass
 
+    # Atomic write — open("x") raises FileExistsError if another instance
+    # managed to create the file between our check and this write (TOCTOU guard).
     try:
-        PID_FILE.write_text(str(my_pid))
+        with open(str(PID_FILE), "x") as _f:
+            _f.write(str(my_pid))
+    except FileExistsError:
+        try:
+            racing_pid = int(PID_FILE.read_text().strip())
+            logger.error("Race condition: relay PID=%d got ahead. Exiting.", racing_pid)
+        except OSError:
+            logger.error("Race condition: another relay instance got ahead. Exiting.")
+        return False
     except OSError as exc:
         logger.warning("Cannot write PID file: %s — continuing anyway.", exc)
 

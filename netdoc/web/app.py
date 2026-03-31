@@ -1744,12 +1744,17 @@ def create_app():
             if not dev:
                 flash("Urządzenie nie znalezione.", "danger")
                 return redirect(url_for("devices"))
-            dev.no_full_scan = not dev.no_full_scan
+            new_val = not dev.no_full_scan
+            dev.no_full_scan = new_val
+            ip = str(dev.ip)
             db.commit()
-            if dev.no_full_scan:
-                flash(f"Full scan wyłączony dla {dev.ip}. Automatyczne skanowanie portów 1-65535 nie będzie uruchamiane.", "info")
+            if new_val:
+                flash(f"Full scan wyłączony dla {ip}. Automatyczne skanowanie portów 1-65535 nie będzie uruchamiane.", "info")
             else:
-                flash(f"Full scan włączony dla {dev.ip}. Urządzenie będzie automatycznie skanowane.", "success")
+                flash(f"Full scan włączony dla {ip}. Urządzenie będzie automatycznie skanowane.", "success")
+        except Exception as exc:
+            db.rollback()
+            flash(f"Błąd zapisu: {exc}", "danger")
         finally:
             db.close()
         return redirect(url_for("device_detail", device_id=device_id))

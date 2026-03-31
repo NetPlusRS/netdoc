@@ -1554,7 +1554,7 @@ def get_stale_full_scan_ips(db, max_age_days: int) -> list:
         .filter(
             Device.is_active == True,
             Device.no_full_scan == False,
-            or_(latest_full.c.last_full == None, latest_full.c.last_full < cutoff),
+            or_(latest_full.c.last_full.is_(None), latest_full.c.last_full < cutoff),
         )
         .all()
     )
