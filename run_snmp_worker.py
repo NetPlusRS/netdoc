@@ -457,10 +457,11 @@ def _poll_device(device_id: int, ip: str, community: str,
         result["success"]   = True
         result["community"] = community
 
-        sysdescr = _snmp_get(ip, community, OID_SYSDESCR,   timeout=snmp_timeout)
-        sysloc   = _snmp_get(ip, community, OID_SYSLOCATION, timeout=snmp_timeout)
-        uptime   = _snmp_get(ip, community, OID_SYSUPTIME,   timeout=snmp_timeout)
-        contact  = _snmp_get(ip, community, OID_SYSCONTACT,  timeout=snmp_timeout)
+        sysdescr  = _snmp_get(ip, community, OID_SYSDESCR,    timeout=snmp_timeout)
+        sysloc    = _snmp_get(ip, community, OID_SYSLOCATION,  timeout=snmp_timeout)
+        uptime    = _snmp_get(ip, community, OID_SYSUPTIME,    timeout=snmp_timeout)
+        contact   = _snmp_get(ip, community, OID_SYSCONTACT,   timeout=snmp_timeout)
+        sysobject = _snmp_get(ip, community, "1.3.6.1.2.1.1.2.0", timeout=snmp_timeout)  # sysObjectID
 
         # Change detection + update: SNMP is authoritative over nmap fingerprinting.
         # Always update fields with SNMP values so nmap guesses don't persist.
@@ -486,6 +487,22 @@ def _poll_device(device_id: int, ip: str, community: str,
                 logger.info("Field change %s [%s]: %r → %r", ip, _field, _old, _new)
             # Always write SNMP value (overrides nmap OS fingerprint)
             setattr(device, _field, _new)
+
+        # sysObjectID — zapisuj do vendor detection + wyznacz profil vendora
+        if sysobject:
+            oid_str = str(sysobject).strip().lstrip(".")
+            if oid_str and oid_str != device.snmp_sys_object_id:
+                device.snmp_sys_object_id = oid_str[:100]
+                # Aktualizuj vendor jesli nieznany lub auto-wykryty
+                try:
+                    from netdoc.collector.snmp_profiles import detect_vendor_profile, VENDOR_PROFILES
+                    profile_name = detect_vendor_profile(oid_str, sysdescr or "")
+                    profile = VENDOR_PROFILES.get(profile_name, {})
+                    display = profile.get("display_name")
+                    if display and (not device.vendor or device.vendor == "Unknown"):
+                        device.vendor = display
+                except Exception:
+                    pass
 
         # sysUpTime — zapisuj do dedykowanej kolumny; wyczyść stary tag z asset_notes
         if uptime is not None:
@@ -967,6 +984,200 @@ def _save_interfaces(db, device_id: int, ifaces: list[dict]) -> int:
         return 0
 
 
+def _save_fdb(db, device_id: int, entries: list[dict]) -> int:
+    """Upsertuje tablice FDB switcha (MAC-port mapping) do device_fdb.
+
+    Klucz unikatowosci: (device_id, mac). Stare wpisy (> 2 cykle) usuwane.
+    Zwraca liczbe wierszy zapisanych.
+    """
+    if not entries:
+        return 0
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from netdoc.storage.models import DeviceFdbEntry
+
+    # Uzupelnij interface_name z tabeli interfaces jesli mamy if_index
+    from netdoc.storage.models import Interface as _Iface
+    ifindex_to_name: dict[int, str] = {}
+    all_indices = [e["if_index"] for e in entries if e.get("if_index")]
+    if all_indices:
+        ifaces = db.query(_Iface.if_index, _Iface.name).filter(
+            _Iface.device_id == device_id,
+            _Iface.if_index.in_(all_indices),
+        ).all()
+        ifindex_to_name = {row.if_index: row.name for row in ifaces}
+
+    now = datetime.utcnow()
+    rows = []
+    for e in entries:
+        rows.append({
+            "device_id":      device_id,
+            "mac":            e["mac"],
+            "bridge_port":    e["bridge_port"],
+            "if_index":       e.get("if_index"),
+            "interface_name": ifindex_to_name.get(e.get("if_index")),
+            "vlan_id":        e.get("vlan_id"),
+            "fdb_status":     e.get("fdb_status", 3),
+            "polled_at":      now,
+        })
+    if not rows:
+        return 0
+    try:
+        stmt = pg_insert(DeviceFdbEntry.__table__).values(rows)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_fdb_dev_mac",
+            set_={
+                "bridge_port":    stmt.excluded.bridge_port,
+                "if_index":       stmt.excluded.if_index,
+                "interface_name": stmt.excluded.interface_name,
+                "vlan_id":        stmt.excluded.vlan_id,
+                "fdb_status":     stmt.excluded.fdb_status,
+                "polled_at":      stmt.excluded.polled_at,
+            },
+        )
+        db.execute(stmt)
+        # Usun stale wpisy (niewidziane przez > 2 cykle ~30 min)
+        from datetime import timedelta
+        stale_cutoff = now - timedelta(minutes=30)
+        db.query(DeviceFdbEntry).filter(
+            DeviceFdbEntry.device_id == device_id,
+            DeviceFdbEntry.polled_at < stale_cutoff,
+        ).delete(synchronize_session=False)
+        db.commit()
+        return len(rows)
+    except Exception as exc:
+        logger.warning("_save_fdb device_id=%s: %s", device_id, exc)
+        db.rollback()
+        return 0
+
+
+def _save_vlan_port(db, device_id: int, entries: list[dict]) -> int:
+    """Upsertuje przynaleznosc portow do VLAN-ow do device_vlan_port.
+
+    Klucz unikatowosci: (device_id, vlan_id, if_index).
+    Zwraca liczbe wierszy zapisanych.
+    """
+    if not entries:
+        return 0
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from netdoc.storage.models import DeviceVlanPort
+
+    now = datetime.utcnow()
+    rows = [
+        {
+            "device_id":  device_id,
+            "vlan_id":    e["vlan_id"],
+            "vlan_name":  e.get("vlan_name"),
+            "if_index":   e["if_index"],
+            "port_mode":  e.get("port_mode"),
+            "is_pvid":    bool(e.get("is_pvid", False)),
+            "polled_at":  now,
+        }
+        for e in entries
+        if e.get("vlan_id") and e.get("if_index")
+    ]
+    if not rows:
+        return 0
+    try:
+        stmt = pg_insert(DeviceVlanPort.__table__).values(rows)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_vlan_port",
+            set_={
+                "vlan_name": stmt.excluded.vlan_name,
+                "port_mode": stmt.excluded.port_mode,
+                "is_pvid":   stmt.excluded.is_pvid,
+                "polled_at": stmt.excluded.polled_at,
+            },
+        )
+        db.execute(stmt)
+        # Usun VLAN-porty ktore znikly
+        current = {(r["vlan_id"], r["if_index"]) for r in rows}
+        existing = db.query(DeviceVlanPort.vlan_id, DeviceVlanPort.if_index).filter(
+            DeviceVlanPort.device_id == device_id
+        ).all()
+        stale_ids = []
+        for row in existing:
+            if (row.vlan_id, row.if_index) not in current:
+                stale_ids.append((row.vlan_id, row.if_index))
+        for vlan_id, if_index in stale_ids:
+            db.query(DeviceVlanPort).filter(
+                DeviceVlanPort.device_id == device_id,
+                DeviceVlanPort.vlan_id  == vlan_id,
+                DeviceVlanPort.if_index == if_index,
+            ).delete(synchronize_session=False)
+        db.commit()
+        return len(rows)
+    except Exception as exc:
+        logger.warning("_save_vlan_port device_id=%s: %s", device_id, exc)
+        db.rollback()
+        return 0
+
+
+def _save_stp_ports(db, device_id: int, ports: list[dict],
+                    root_mac: str | None, root_cost: int | None) -> int:
+    """Upsertuje stan STP portow + root bridge info.
+
+    Klucz unikatowosci: (device_id, stp_port_num).
+    Aktualizuje device.stp_root_mac i device.stp_root_cost.
+    Zwraca liczbe wierszy zapisanych.
+    """
+    if not ports and root_mac is None:
+        return 0
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from netdoc.storage.models import DeviceStpPort
+
+    now = datetime.utcnow()
+
+    # Aktualizuj root bridge info w device
+    if root_mac is not None or root_cost is not None:
+        dev = db.query(Device).filter_by(id=device_id).first()
+        if dev:
+            if root_mac  is not None: dev.stp_root_mac  = root_mac
+            if root_cost is not None: dev.stp_root_cost = root_cost
+
+    if not ports:
+        try:
+            db.commit()
+        except Exception as exc:
+            logger.warning("_save_stp_ports device_id=%s commit: %s", device_id, exc)
+            db.rollback()
+        return 0
+
+    rows = [
+        {
+            "device_id":    device_id,
+            "stp_port_num": p["stp_port_num"],
+            "if_index":     p.get("if_index"),
+            "stp_state":    p.get("stp_state"),
+            "stp_role":     p.get("stp_role"),
+            "path_cost":    p.get("path_cost"),
+            "polled_at":    now,
+        }
+        for p in ports
+        if p.get("stp_port_num") is not None
+    ]
+    if not rows:
+        return 0
+    try:
+        stmt = pg_insert(DeviceStpPort.__table__).values(rows)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_stp_dev_port",
+            set_={
+                "if_index":   stmt.excluded.if_index,
+                "stp_state":  stmt.excluded.stp_state,
+                "stp_role":   stmt.excluded.stp_role,
+                "path_cost":  stmt.excluded.path_cost,
+                "polled_at":  stmt.excluded.polled_at,
+            },
+        )
+        db.execute(stmt)
+        db.commit()
+        return len(rows)
+    except Exception as exc:
+        logger.warning("_save_stp_ports device_id=%s: %s", device_id, exc)
+        db.rollback()
+        return 0
+
+
 _DEFAULT_SNMP_TIMEOUT = int(os.getenv("SNMP_TIMEOUT_S", "2"))
 
 
@@ -1172,6 +1383,136 @@ def scan_once() -> None:
     if sensor_total:
         logger.info("Sensor upserts total: %d", sensor_total)
 
+    # L2 data — FDB, VLAN, STP (tylko switche; co 15 minut — nie co 5 min)
+    _L2_TYPES = {DeviceType.switch}
+    _L2_INTERVAL = 900  # 15 minut
+    _l2_last_run_key = "_l2_last_run"
+    import time as _time_mod
+    _l2_now = _time_mod.monotonic()
+    if not hasattr(scan_once, "_l2_last"):
+        scan_once._l2_last = 0.0  # type: ignore[attr-defined]
+    if _l2_now - scan_once._l2_last >= _L2_INTERVAL:  # type: ignore[attr-defined]
+        scan_once._l2_last = _l2_now  # type: ignore[attr-defined]
+        from netdoc.collector.snmp_profiles import get_profile
+        l2_candidates = [d for d in devices if d.snmp_community and d.device_type in _L2_TYPES]
+        if l2_candidates:
+            logger.info("L2 collection: %d switches (FDB/VLAN/STP)", len(l2_candidates))
+            db_l2 = SessionLocal()
+            try:
+                from netdoc.collector.snmp_l2 import collect_fdb, collect_vlan_port, collect_stp_ports
+                for d in l2_candidates:
+                    _prof = get_profile(d.snmp_sys_object_id, d.os_version)
+                    _ip = str(d.ip)
+                    _comm = d.snmp_community
+                    if _prof.get("fdb_supported", True):
+                        try:
+                            fdb = collect_fdb(_ip, _comm, snmp_timeout)
+                            if fdb:
+                                n = _save_fdb(db_l2, d.id, fdb)
+                                logger.info("FDB  %-18s: %d entries", _ip, n)
+                        except Exception as exc:
+                            logger.debug("FDB %s: %s", _ip, exc)
+                    if _prof.get("vlan_supported", True):
+                        try:
+                            vlan_ports = collect_vlan_port(_ip, _comm, snmp_timeout)
+                            if vlan_ports:
+                                n = _save_vlan_port(db_l2, d.id, vlan_ports)
+                                logger.info("VLAN %-18s: %d vlan-port entries", _ip, n)
+                        except Exception as exc:
+                            logger.debug("VLAN %s: %s", _ip, exc)
+                    if _prof.get("stp_supported", True):
+                        try:
+                            stp_ports, root_mac, root_cost = collect_stp_ports(_ip, _comm, snmp_timeout)
+                            if stp_ports or root_mac:
+                                n = _save_stp_ports(db_l2, d.id, stp_ports, root_mac, root_cost)
+                                logger.info("STP  %-18s: %d ports, root=%s", _ip, n, root_mac or "-")
+                        except Exception as exc:
+                            logger.debug("STP %s: %s", _ip, exc)
+            except Exception as exc:
+                logger.warning("L2 collection error: %s", exc)
+            finally:
+                db_l2.close()
+
+    # Interface metrics → ClickHouse (in/out octets HC, errors, discards)
+    try:
+        from netdoc.storage.clickhouse import insert_if_metrics
+        from datetime import datetime as _dt
+        metrics_batch: list[tuple] = []
+        now_ts = _dt.utcnow()
+        for d in devices:
+            raw = _collect_if_metrics(str(d.ip), d.snmp_community, snmp_timeout)
+            for if_index, metric_name, value in raw:
+                metrics_batch.append((now_ts, d.id, if_index, metric_name, value))
+        if metrics_batch:
+            insert_if_metrics(metrics_batch)
+            logger.info("IF metrics: %d data points -> ClickHouse", len(metrics_batch))
+    except Exception as exc:
+        logger.warning("IF metrics collection error: %s", exc)
+
+
+def _collect_if_metrics(ip: str, community: str, timeout: int = 2) -> list[tuple]:
+    """Zbiera metryki interfejsow (64-bit HC gdy dostepne, fallback na 32-bit).
+
+    Zwraca liste krotek: (if_index: int, metric_name: str, value: float)
+
+    OID-y:
+      ifHCInOctets  (1.3.6.1.2.1.31.1.1.1.6)  — 64-bit bajty wchodzace
+      ifHCOutOctets (1.3.6.1.2.1.31.1.1.1.10) — 64-bit bajty wychodzace
+      ifInOctets    (1.3.6.1.2.1.2.2.1.10)    — 32-bit fallback wchodzace
+      ifOutOctets   (1.3.6.1.2.1.2.2.1.16)    — 32-bit fallback wychodzace
+      ifInErrors    (1.3.6.1.2.1.2.2.1.14)    — bledy wchodzace
+      ifOutErrors   (1.3.6.1.2.1.2.2.1.20)    — bledy wychodzace
+      ifInDiscards  (1.3.6.1.2.1.2.2.1.13)    — odrzucone wchodzace
+      ifOutDiscards (1.3.6.1.2.1.2.2.1.19)    — odrzucone wychodzace
+    """
+    from netdoc.collector.snmp_walk import snmp_walk
+
+    _OID_GROUPS = [
+        # (oid_prefix, metric_name, is_hc)
+        ("1.3.6.1.2.1.31.1.1.1.6",  "in_octets_hc",  True),
+        ("1.3.6.1.2.1.31.1.1.1.10", "out_octets_hc", True),
+        ("1.3.6.1.2.1.2.2.1.10",    "in_octets",     False),
+        ("1.3.6.1.2.1.2.2.1.16",    "out_octets",    False),
+        ("1.3.6.1.2.1.2.2.1.14",    "in_errors",     False),
+        ("1.3.6.1.2.1.2.2.1.20",    "out_errors",    False),
+        ("1.3.6.1.2.1.2.2.1.13",    "in_discards",   False),
+        ("1.3.6.1.2.1.2.2.1.19",    "out_discards",  False),
+    ]
+
+    # Zbieramy ktore if_index maja HC (by pominac 32-bit duplikaty gdy HC dostepne)
+    hc_indices: set = set()
+    results: list[tuple] = []
+
+    for oid_prefix, metric_name, is_hc in _OID_GROUPS:
+        try:
+            rows = snmp_walk(ip, oid_prefix, community, timeout=timeout, max_iter=512)
+            for full_oid, raw_val, _ in rows:
+                try:
+                    # ifIndex jest ostatnim elementem OID: 1.3.6.1.2.1.2.2.1.10.5 → 5
+                    if_index = int(full_oid.rstrip(".").rsplit(".", 1)[-1])
+                    value    = float(raw_val)
+                except (ValueError, TypeError, IndexError):
+                    continue
+                if is_hc:
+                    if value > 0:
+                        hc_indices.add(if_index)
+                    results.append((if_index, metric_name, value))
+                else:
+                    results.append((if_index, metric_name, value))
+        except Exception as exc:
+            logger.debug("_collect_if_metrics %s %s: %s", ip, metric_name, exc)
+
+    # Filtruj 32-bit octets gdy HC dostepne dla danego if_index
+    # (unikamy duplikatu tego samego pomiaru w dwoch metrykach)
+    filtered = []
+    skip_32bit = {"in_octets", "out_octets"}
+    for if_index, metric_name, value in results:
+        if metric_name in skip_32bit and if_index in hc_indices:
+            continue
+        filtered.append((if_index, metric_name, value))
+
+    return filtered
+
 
 def _wait_for_schema(max_retries: int = 12, wait_s: int = 10) -> None:
     """Czeka az tabela devices bedzie dostepna (race condition przy swiezej bazie)."""
@@ -1193,6 +1534,11 @@ def main() -> None:
                 _DEFAULT_SNMP_INTERVAL, _DEFAULT_SNMP_WORKERS, METRICS_PORT)
     _wait_for_schema()
     init_db()
+    try:
+        from netdoc.storage.clickhouse import _ensure_metrics_table
+        _ensure_metrics_table()
+    except Exception as exc:
+        logger.warning("ClickHouse metrics table init failed: %s — metryki IF beda pomijane", exc)
     start_http_server(METRICS_PORT)
     logger.info("Metrics: http://0.0.0.0:%d/metrics", METRICS_PORT)
     # PERF-02: sleep-until-next-run zamiast sleep-after-work

@@ -159,6 +159,12 @@
             <tr><td>sysLocation</td><td>{{ dev.location or '<span class="text-muted">—</span>' | safe }}</td></tr>
             <tr><td>sysContact</td><td>{{ dev.sys_contact or '<span class="text-muted">—</span>' | safe }}</td></tr>
             <tr><td>sysUpTime</td><td>{{ dev.snmp_uptime or '<span class="text-muted">—</span>' | safe }}</td></tr>
+            {% if dev.ram_total_mb %}
+            <tr><td>RAM</td><td>{{ dev.ram_total_mb }} MB</td></tr>
+            {% endif %}
+            {% if dev.snmp_sys_object_id %}
+            <tr><td>sysObjectID</td><td><code class="small">{{ dev.snmp_sys_object_id }}</code></td></tr>
+            {% endif %}
             {% if dev.serial_number %}
             <tr><td>Serial (SNMP)</td><td><code>{{ dev.serial_number }}</code></td></tr>
             {% endif %}
@@ -372,9 +378,10 @@
               <tr>
                 <th style="width:2rem">#</th>
                 <th>Name</th>
-                <th>Alias</th>
+                <th>Alias / Description</th>
                 <th>Status</th>
                 <th>Speed</th>
+                <th>Duplex</th>
                 <th>MAC</th>
                 <th>IP</th>
               </tr>
@@ -384,7 +391,12 @@
               <tr class="{% if iface.oper_status == false and iface.admin_status != false %}table-warning{% endif %}">
                 <td class="text-muted">{{ iface.if_index or '' }}</td>
                 <td><code>{{ iface.name }}</code></td>
-                <td class="text-muted">{{ iface.alias or '' }}</td>
+                <td class="text-muted small">
+                  {% if iface.alias %}{{ iface.alias }}{% endif %}
+                  {% if iface.alias and iface.description %}<br>{% endif %}
+                  {% if iface.description %}<span title="{{ iface.description }}">{{ iface.description[:50] }}{% if iface.description|length > 50 %}…{% endif %}</span>{% endif %}
+                  {% if not iface.alias and not iface.description %}—{% endif %}
+                </td>
                 <td>
                   {% if iface.oper_status == true %}
                     <span class="badge bg-success">UP</span>
@@ -406,12 +418,102 @@
                     {% endif %}
                   {% else %}—{% endif %}
                 </td>
+                <td class="text-muted small">{{ iface.duplex or '—' }}</td>
                 <td><code class="text-muted">{{ iface.mac or '' }}</code></td>
                 <td><code class="text-muted">{{ iface.ip or '' }}</code></td>
               </tr>
               {% endfor %}
             </tbody>
           </table>
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── Interface Traffic Chart ──────────────────────────────────────── #}
+      {% if interfaces and dev.snmp_community %}
+      <div class="card mb-3" id="card-if-traffic">
+        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-graph-up me-1"></i>Interface Traffic</span>
+          <div class="d-flex gap-2 align-items-center">
+            <select id="if-select" class="form-select form-select-sm" style="width:auto">
+              {% for iface in interfaces | sort(attribute='if_index') %}
+              {% if iface.if_index %}
+              <option value="{{ iface.if_index }}">{{ iface.name }}{% if iface.alias %} — {{ iface.alias }}{% endif %}</option>
+              {% endif %}
+              {% endfor %}
+            </select>
+            <select id="if-hours" class="form-select form-select-sm" style="width:auto">
+              <option value="1">1h</option>
+              <option value="6">6h</option>
+              <option value="24" selected>24h</option>
+              <option value="72">3d</option>
+              <option value="168">7d</option>
+            </select>
+          </div>
+        </div>
+        <div class="card-body">
+          <canvas id="ifTrafficChart" style="height:160px"></canvas>
+          <div id="if-traffic-msg" class="text-muted text-center small py-2" style="display:none">Brak danych — worker zbiera metryki co 5 min.</div>
+        </div>
+        <div class="card-footer py-2">
+          <table class="table table-sm mb-0" style="font-size:.82rem" id="if-rates-table">
+            <thead class="table-light"><tr>
+              <th>Interface</th><th>In (bps)</th><th>Out (bps)</th><th>In Errors</th><th>Out Errors</th>
+            </tr></thead>
+            <tbody id="if-rates-body"><tr><td colspan="5" class="text-muted text-center">Ladowanie...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── L2 Data tabs: FDB / VLAN / STP ──────────────────────────────── #}
+      {% if dev.snmp_community and dev.device_type and dev.device_type.value == 'switch' %}
+      <div class="card mb-3">
+        <div class="card-header py-0">
+          <ul class="nav nav-tabs card-header-tabs" id="l2-tabs">
+            <li class="nav-item"><a class="nav-link active" href="#" data-l2tab="fdb">FDB <span class="badge bg-secondary ms-1" id="fdb-count">...</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="#" data-l2tab="vlan">VLANs <span class="badge bg-secondary ms-1" id="vlan-count">...</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="#" data-l2tab="stp">STP</a></li>
+          </ul>
+        </div>
+        <div class="card-body p-0">
+          {# FDB tab #}
+          <div id="l2-tab-fdb" class="l2-tab-pane">
+            <div class="px-3 pt-2 pb-1 d-flex gap-2">
+              <input id="fdb-mac-filter" class="form-control form-control-sm" placeholder="Filtruj MAC..." style="width:16rem">
+            </div>
+            <div class="table-responsive" style="max-height:320px;overflow-y:auto">
+              <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
+                <thead class="table-light sticky-top"><tr>
+                  <th>MAC</th><th>Port / Interface</th><th>VLAN</th><th>Status</th>
+                </tr></thead>
+                <tbody id="fdb-tbody"><tr><td colspan="4" class="text-muted text-center py-3">Ladowanie...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+          {# VLAN tab #}
+          <div id="l2-tab-vlan" class="l2-tab-pane" style="display:none">
+            <div class="table-responsive" style="max-height:320px;overflow-y:auto">
+              <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
+                <thead class="table-light sticky-top"><tr>
+                  <th>VLAN</th><th>Nazwa</th><th>Porty (ifIndex)</th><th>Tryb</th>
+                </tr></thead>
+                <tbody id="vlan-tbody"><tr><td colspan="4" class="text-muted text-center py-3">Ladowanie...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+          {# STP tab #}
+          <div id="l2-tab-stp" class="l2-tab-pane" style="display:none">
+            <div id="stp-root-info" class="px-3 py-2 border-bottom small text-muted"></div>
+            <div class="table-responsive" style="max-height:320px;overflow-y:auto">
+              <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
+                <thead class="table-light sticky-top"><tr>
+                  <th>Port #</th><th>Interface</th><th>State</th><th>Role</th><th>Cost</th>
+                </tr></thead>
+                <tbody id="stp-tbody"><tr><td colspan="5" class="text-muted text-center py-3">Ladowanie...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
       {% endif %}
@@ -730,4 +832,193 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
   target.addEventListener('hide.bs.collapse', function() { header.classList.add('collapsed'); });
 });
 </script>
+
+{% if interfaces and dev.snmp_community %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" defer></script>
+<script>
+(function(){
+  const DEV_ID = {{ dev.id }};
+  const API    = '/api/devices/' + DEV_ID;
+  let _chart   = null;
+
+  function fmtBps(v) {
+    if (!v || v < 0) return '—';
+    if (v >= 1e9) return (v/1e9).toFixed(2) + ' Gbps';
+    if (v >= 1e6) return (v/1e6).toFixed(2) + ' Mbps';
+    if (v >= 1e3) return (v/1e3).toFixed(1) + ' Kbps';
+    return v.toFixed(0) + ' bps';
+  }
+
+  // ── Traffic chart ───────────────────────────────────────────────────────
+  function loadTrafficChart() {
+    const ifIndex = document.getElementById('if-select')?.value;
+    const hours   = document.getElementById('if-hours')?.value || 24;
+    if (!ifIndex) return;
+    const metric = 'in_octets_hc';
+    Promise.all([
+      fetch(API+'/if-metrics?if_index='+ifIndex+'&metric=in_octets_hc&hours='+hours+'&step_minutes=5').then(r=>r.json()),
+      fetch(API+'/if-metrics?if_index='+ifIndex+'&metric=out_octets_hc&hours='+hours+'&step_minutes=5').then(r=>r.json()),
+    ]).then(([inData, outData]) => {
+      const msg = document.getElementById('if-traffic-msg');
+      const buckets = inData.buckets || [];
+      if (buckets.length === 0) {
+        msg.style.display = '';
+        if (_chart) { _chart.destroy(); _chart = null; }
+        return;
+      }
+      msg.style.display = 'none';
+      const labels  = buckets.map(b => b.bucket ? b.bucket.substring(11,16) : '');
+      const inVals  = buckets.map(b => (b.avg_value || 0) * 8);   // bytes→bits
+      const outVals = (outData.buckets || []).map(b => (b.avg_value || 0) * 8);
+      const ctx = document.getElementById('ifTrafficChart').getContext('2d');
+      if (_chart) _chart.destroy();
+      _chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            { label: 'In (bps)',  data: inVals,  borderColor:'rgba(13,110,253,0.8)',  backgroundColor:'rgba(13,110,253,0.1)', pointRadius:0, tension:0.2, fill:true },
+            { label: 'Out (bps)', data: outVals, borderColor:'rgba(220,53,69,0.8)',   backgroundColor:'rgba(220,53,69,0.1)',  pointRadius:0, tension:0.2, fill:true },
+          ],
+        },
+        options: {
+          animation: false,
+          plugins: { legend: { position:'bottom' } },
+          scales: {
+            y: { beginAtZero:true, ticks: { callback: v => fmtBps(v) } },
+            x: { ticks: { maxTicksLimit:12, maxRotation:0 } },
+          },
+        },
+      });
+    }).catch(()=>{});
+  }
+
+  function loadRatesTable() {
+    fetch(API+'/if-metrics/rates?since_minutes=10').then(r=>r.json()).then(data=>{
+      const tbody = document.getElementById('if-rates-body');
+      if (!tbody) return;
+      const ifaces = data.interfaces || [];
+      if (ifaces.length === 0) { tbody.innerHTML='<tr><td colspan="5" class="text-muted text-center">Brak danych</td></tr>'; return; }
+      tbody.innerHTML = ifaces.sort((a,b)=>a.if_index-b.if_index).map(r=>
+        '<tr><td><code>'+(r.interface_name||'ifIndex '+r.if_index)+'</code></td>'
+        +'<td>'+fmtBps(r.in_bps)+'</td><td>'+fmtBps(r.out_bps)+'</td>'
+        +'<td class="'+(r.in_errors>0?'text-danger':'')+'">'+Math.round(r.in_errors||0)+'</td>'
+        +'<td class="'+(r.out_errors>0?'text-danger':'')+'">'+Math.round(r.out_errors||0)+'</td></tr>'
+      ).join('');
+    }).catch(()=>{});
+  }
+
+  document.getElementById('if-select')?.addEventListener('change', loadTrafficChart);
+  document.getElementById('if-hours')?.addEventListener('change', loadTrafficChart);
+
+  // Zaladuj po zaladowaniu strony
+  if (document.getElementById('ifTrafficChart')) {
+    // Chart.js moze byc jeszcze niezaladowany — poczekaj
+    window.addEventListener('load', function() { loadTrafficChart(); loadRatesTable(); });
+  }
+})();
+</script>
+{% endif %}
+
+{% if dev.snmp_community and dev.device_type.value == 'switch' %}
+<script>
+(function(){
+  const DEV_ID = {{ dev.id }};
+  const API    = '/api/devices/' + DEV_ID;
+
+  // ── L2 tabs ──────────────────────────────────────────────────────────────
+  let _loaded = {};
+
+  document.querySelectorAll('[data-l2tab]').forEach(function(link) {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      const tab = this.dataset.l2tab;
+      document.querySelectorAll('[data-l2tab]').forEach(l => l.classList.remove('active'));
+      this.classList.add('active');
+      document.querySelectorAll('.l2-tab-pane').forEach(p => p.style.display = 'none');
+      document.getElementById('l2-tab-' + tab).style.display = '';
+      if (!_loaded[tab]) { loadL2Tab(tab); _loaded[tab] = true; }
+    });
+  });
+
+  // Auto-load FDB
+  if (document.getElementById('fdb-tbody')) { loadL2Tab('fdb'); _loaded['fdb'] = true; }
+
+  function loadL2Tab(tab) {
+    if (tab === 'fdb')  return loadFdb();
+    if (tab === 'vlan') return loadVlan();
+    if (tab === 'stp')  return loadStp();
+  }
+
+  // FDB filter
+  document.getElementById('fdb-mac-filter')?.addEventListener('input', function() {
+    const q = this.value.toLowerCase().replace(/[:\-]/g,'');
+    document.querySelectorAll('#fdb-tbody tr').forEach(tr => {
+      tr.style.display = tr.textContent.toLowerCase().replace(/[:\-]/g,'').includes(q) ? '' : 'none';
+    });
+  });
+
+  function loadFdb() {
+    fetch(API+'/fdb?limit=1000').then(r=>r.json()).then(data=>{
+      const count = document.getElementById('fdb-count');
+      if (count) count.textContent = data.total || 0;
+      const tbody = document.getElementById('fdb-tbody');
+      if (!tbody) return;
+      const entries = data.entries || [];
+      if (entries.length === 0) { tbody.innerHTML='<tr><td colspan="4" class="text-muted text-center py-3">Brak wpisow FDB</td></tr>'; return; }
+      const STATUS = {3:'learned',5:'static'};
+      tbody.innerHTML = entries.map(e=>
+        '<tr><td><code>'+e.mac+'</code></td>'
+        +'<td>'+(e.interface_name?'<code>'+e.interface_name+'</code>':'')+' <small class="text-muted">port '+e.bridge_port+'</small></td>'
+        +'<td>'+(e.vlan_id||'—')+'</td>'
+        +'<td><span class="badge bg-'+(e.fdb_status===5?'info':'secondary')+'">'+(STATUS[e.fdb_status]||e.fdb_status)+'</span></td></tr>'
+      ).join('');
+    }).catch(()=>{ document.getElementById('fdb-tbody').innerHTML='<tr><td colspan="4" class="text-danger text-center">Blad ladowania</td></tr>'; });
+  }
+
+  function loadVlan() {
+    fetch(API+'/vlan-ports').then(r=>r.json()).then(data=>{
+      const count = document.getElementById('vlan-count');
+      const vlans = data.vlans || [];
+      if (count) count.textContent = vlans.length;
+      const tbody = document.getElementById('vlan-tbody');
+      if (!tbody) return;
+      if (vlans.length === 0) { tbody.innerHTML='<tr><td colspan="4" class="text-muted text-center py-3">Brak danych VLAN</td></tr>'; return; }
+      tbody.innerHTML = vlans.map(v => {
+        const ports = v.ports || [];
+        const access = ports.filter(p=>p.port_mode==='access').map(p=>'<code>'+p.if_index+(p.is_pvid?'*':'')+'</code>').join(' ');
+        const trunk  = ports.filter(p=>p.port_mode==='trunk').map(p=>'<code>'+p.if_index+'</code>').join(' ');
+        return '<tr><td><strong>'+v.vlan_id+'</strong></td><td>'+(v.vlan_name||'—')+'</td>'
+          +'<td>'+access+' '+(trunk?'<span class="text-muted">T:'+trunk+'</span>':'')+'</td>'
+          +'<td><small class="text-muted">'+ports.length+' portow</small></td></tr>';
+      }).join('');
+    }).catch(()=>{});
+  }
+
+  function loadStp() {
+    fetch(API+'/stp').then(r=>r.json()).then(data=>{
+      const info = document.getElementById('stp-root-info');
+      if (info) {
+        info.innerHTML = 'Root bridge: <code>'+(data.root_mac||'?')+'</code>'
+          + ' | Root path cost: <strong>'+(data.root_cost??'?')+'</strong>'
+          + (data.is_root ? ' <span class="badge bg-success ms-2">THIS IS ROOT</span>' : '');
+      }
+      const tbody = document.getElementById('stp-tbody');
+      if (!tbody) return;
+      const ports = data.ports || [];
+      if (ports.length === 0) { tbody.innerHTML='<tr><td colspan="5" class="text-muted text-center py-3">Brak danych STP</td></tr>'; return; }
+      const STATE_COLOR = {2:'warning',3:'info',4:'primary',5:'success',6:'danger'};
+      tbody.innerHTML = ports.map(p=>
+        '<tr><td>'+p.stp_port_num+'</td>'
+        +'<td>'+(p.interface_name?'<code>'+p.interface_name+'</code>':p.if_index||'—')+'</td>'
+        +'<td><span class="badge bg-'+(STATE_COLOR[p.stp_state]||'secondary')+'">'+p.stp_state_label+'</span></td>'
+        +'<td><span class="badge bg-secondary">'+(p.stp_role||'—')+'</span></td>'
+        +'<td>'+(p.path_cost||'—')+'</td></tr>'
+      ).join('');
+    }).catch(()=>{});
+  }
+})();
+</script>
+{% endif %}
+
 {% endblock %}

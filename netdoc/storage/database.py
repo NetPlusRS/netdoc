@@ -186,6 +186,53 @@ def _migrate_columns() -> None:
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS ram_total_mb INTEGER",
         # Flaga wyłączenia automatycznego full scan 1-65535 (2026-03-30)
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS no_full_scan BOOLEAN NOT NULL DEFAULT FALSE",
+        # SNMP sysObjectID — OID producenta do wykrywania vendor profile (2026-04-04)
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS snmp_sys_object_id VARCHAR(100)",
+        # STP — informacje o root bridge (2026-04-04)
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS stp_root_mac VARCHAR(17)",
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS stp_root_cost INTEGER",
+        # FDB — tablica przekazywania MAC (MAC-port mapping) (2026-04-04)
+        """CREATE TABLE IF NOT EXISTS device_fdb (
+            id             SERIAL PRIMARY KEY,
+            device_id      INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+            mac            VARCHAR(17) NOT NULL,
+            bridge_port    INTEGER NOT NULL,
+            if_index       INTEGER,
+            interface_name VARCHAR(100),
+            vlan_id        INTEGER,
+            fdb_status     INTEGER,
+            polled_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_fdb_dev_mac UNIQUE (device_id, mac)
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_fdb_device_id  ON device_fdb (device_id)",
+        "CREATE INDEX IF NOT EXISTS ix_fdb_mac        ON device_fdb (mac)",
+        "CREATE INDEX IF NOT EXISTS ix_fdb_polled_at  ON device_fdb (polled_at)",
+        # VLAN membership — przynaleznosc portow do VLAN (2026-04-04)
+        """CREATE TABLE IF NOT EXISTS device_vlan_port (
+            id         SERIAL PRIMARY KEY,
+            device_id  INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+            vlan_id    INTEGER NOT NULL,
+            vlan_name  VARCHAR(64),
+            if_index   INTEGER NOT NULL,
+            port_mode  VARCHAR(10),
+            is_pvid    BOOLEAN NOT NULL DEFAULT FALSE,
+            polled_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_vlan_port UNIQUE (device_id, vlan_id, if_index)
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_vlan_port_device_id ON device_vlan_port (device_id)",
+        # STP stan portow (2026-04-04)
+        """CREATE TABLE IF NOT EXISTS device_stp_port (
+            id           SERIAL PRIMARY KEY,
+            device_id    INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+            stp_port_num INTEGER NOT NULL,
+            if_index     INTEGER,
+            stp_state    INTEGER,
+            stp_role     VARCHAR(20),
+            path_cost    INTEGER,
+            polled_at    TIMESTAMP NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_stp_dev_port UNIQUE (device_id, stp_port_num)
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_stp_port_device_id ON device_stp_port (device_id)",
         # Usun stary constraint (za wazki — blokuje wiele hasel dla jednego usera)
         """
         DO $$ BEGIN

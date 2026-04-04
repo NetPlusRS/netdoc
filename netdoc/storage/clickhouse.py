@@ -227,6 +227,163 @@ def query_ping_stats(
     return {"avg_rtt_ms": None, "min_rtt_ms": None, "max_rtt_ms": None, "uptime_pct": None, "total": 0}
 
 
+_METRICS_TABLE_CREATED = False
+
+
+def _ensure_metrics_table() -> None:
+    """Tworzy tabele device_metrics jesli nie istnieje (lazy-init, wywolywane przy starcie workera)."""
+    global _METRICS_TABLE_CREATED
+    if _METRICS_TABLE_CREATED:
+        return
+    try:
+        _get_client().command("""
+            CREATE TABLE IF NOT EXISTS netdoc_logs.device_metrics
+            (
+                ts        DateTime                  COMMENT 'Czas pomiaru (UTC)',
+                device_id UInt32                    COMMENT 'ID urzadzenia z NetDoc',
+                if_index  UInt16                    COMMENT 'ifIndex (0 = metryka calego urzadzenia)',
+                metric    LowCardinality(String)    COMMENT 'Nazwa metryki: in_octets, out_octets, in_errors...',
+                value     Float64                   COMMENT 'Wartosc numeryczna'
+            )
+            ENGINE = MergeTree()
+            PARTITION BY toYYYYMM(ts)
+            ORDER BY (device_id, if_index, metric, ts)
+            TTL toDateTime(ts) + INTERVAL 90 DAY
+            SETTINGS index_granularity = 8192
+        """)
+        _METRICS_TABLE_CREATED = True
+        logger.info("ClickHouse: tabela device_metrics gotowa")
+    except Exception as exc:
+        logger.warning("_ensure_metrics_table failed: %s", exc)
+
+
+def insert_if_metrics(rows: list[tuple]) -> None:
+    """Wstawia batch metryk interfejsow do device_metrics.
+
+    rows: lista krotek (ts: datetime, device_id: int, if_index: int, metric: str, value: float)
+    Wywolywane co cykl SNMP workera — batch, nie per-wiersz.
+    """
+    if not rows:
+        return
+    try:
+        _get_client().insert(
+            "netdoc_logs.device_metrics",
+            rows,
+            column_names=["ts", "device_id", "if_index", "metric", "value"],
+        )
+    except Exception as exc:
+        logger.warning("insert_if_metrics failed (%d rows): %s", len(rows), exc)
+
+
+def query_if_metrics_history(
+    device_id: int,
+    if_index: int,
+    metric: str,
+    since_hours: int = 24,
+    step_minutes: int = 5,
+) -> list[dict]:
+    """Zwraca zagregowaną historię prędkości interfejsu (bajty/s) per okno czasowe.
+
+    Dla liczników kumulatywnych (octets_hc/octets): oblicza pochodną:
+      delta = max(value_w_bucket) - max(value_w_poprzednim_bucket)
+      rate  = delta / krok_sekundy  [bajty/s]
+    Zwraca listę słowników: {bucket, avg_value, max_value}
+    avg_value = max_value = bytes/s (identyczne — dla kompatybilności z API)
+    Uwaga: pierwszy bucket zawsze 0 (brak poprzedniego punktu referencyjnego).
+    """
+    params: dict = {
+        "device_id":   device_id,
+        "if_index":    if_index,
+        "metric":      metric,
+        "since_hours": since_hours,
+        "step":        step_minutes * 60,
+    }
+    # Oblicza maksymalną wartość licznika per bucket, potem różnicę między
+    # sąsiednimi bucketami (neighbor(-1)) dzieloną przez krok [s] → bytes/s.
+    # neighbor() wymaga ORDER BY bucket w tym samym zakresie zapytania.
+    sql = (
+        "SELECT"
+        "  bucket,"
+        "  round(if(prev_max >= 0 AND cur_max >= prev_max,"
+        "     (cur_max - prev_max) / {step:Float64}, 0), 2) AS avg_value,"
+        "  round(if(prev_max >= 0 AND cur_max >= prev_max,"
+        "     (cur_max - prev_max) / {step:Float64}, 0), 2) AS max_value"
+        " FROM ("
+        "  SELECT"
+        "    toStartOfInterval(ts, toIntervalSecond({step:UInt32})) AS bucket,"
+        "    max(value) AS cur_max,"
+        "    neighbor(max(value), -1, -1.0)                         AS prev_max"
+        "  FROM netdoc_logs.device_metrics"
+        "  WHERE device_id = {device_id:UInt32}"
+        "    AND if_index  = {if_index:UInt16}"
+        "    AND metric    = {metric:String}"
+        "    AND ts >= now() - INTERVAL {since_hours:UInt32} HOUR"
+        "  GROUP BY bucket"
+        "  ORDER BY bucket"
+        " )"
+    )
+    try:
+        result = _get_client().query(sql, parameters=params)
+        cols = result.column_names
+        return [dict(zip(cols, row)) for row in result.result_rows]
+    except Exception as exc:
+        logger.warning("query_if_metrics_history failed: %s", exc)
+        return []
+
+
+def query_if_current_rates(device_id: int, since_minutes: int = 10) -> list[dict]:
+    """Zwraca biezace predkosci (bps) per interfejs dla danego urzadzenia.
+
+    Oblicza roznice ostatnich dwoch pomiarow in_octets_hc/out_octets_hc (lub 32-bit).
+    Zwraca liste: {if_index, in_bps, out_bps, in_errors, out_errors, in_discards, out_discards}
+    Uwaga: wartosc ujemna oznacza counter wrap — klient powinien to ignorowac.
+    """
+    params: dict = {"device_id": device_id, "since_minutes": since_minutes}
+    sql = (
+        "SELECT"
+        "  if_index,"
+        "  metric,"
+        "  argMax(value, ts) AS last_val,"
+        "  argMin(value, ts) AS first_val,"
+        "  max(ts) AS last_ts,"
+        "  min(ts) AS first_ts"
+        " FROM netdoc_logs.device_metrics"
+        " WHERE device_id = {device_id:UInt32}"
+        "   AND ts >= now() - INTERVAL {since_minutes:UInt32} MINUTE"
+        "   AND metric IN ('in_octets_hc','out_octets_hc','in_octets','out_octets',"
+        "                  'in_errors','out_errors','in_discards','out_discards')"
+        " GROUP BY if_index, metric"
+    )
+    try:
+        result = _get_client().query(sql, parameters=params)
+        rows = {}
+        for if_index, metric, last_val, first_val, last_ts, first_ts in result.result_rows:
+            dt = (last_ts - first_ts).total_seconds()
+            if dt <= 0:
+                continue
+            diff = last_val - first_val
+            rate = diff / dt
+            rows.setdefault(if_index, {})[metric] = rate
+
+        out = []
+        for if_index, metrics in rows.items():
+            in_bps  = metrics.get("in_octets_hc",  metrics.get("in_octets",  0.0)) * 8
+            out_bps = metrics.get("out_octets_hc", metrics.get("out_octets", 0.0)) * 8
+            out.append({
+                "if_index":     if_index,
+                "in_bps":       max(0.0, in_bps),
+                "out_bps":      max(0.0, out_bps),
+                "in_errors":    metrics.get("in_errors",   0.0),
+                "out_errors":   metrics.get("out_errors",  0.0),
+                "in_discards":  metrics.get("in_discards", 0.0),
+                "out_discards": metrics.get("out_discards",0.0),
+            })
+        return out
+    except Exception as exc:
+        logger.warning("query_if_current_rates failed: %s", exc)
+        return []
+
+
 def count_syslog_by_severity(device_id: int, since_hours: int = 24) -> dict[int, int]:
     """Zlicza logi per severity dla jednego urządzenia (do badge'ów w UI)."""
     sql = (

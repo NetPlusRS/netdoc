@@ -1771,6 +1771,52 @@ def create_app():
             flash(f"Typ IP ustawiony: {labels.get(ip_type, ip_type)}.", "success")
         return redirect(url_for("devices"))
 
+    # ── L2 + Metrics API proxy (AJAX z przegladarki → Flask → FastAPI) ──────
+
+    @app.route("/api/devices/<int:device_id>/if-metrics")
+    def api_proxy_if_metrics(device_id):
+        """Proxy: historia metryk interfejsu z ClickHouse."""
+        data, err = _api("get", f"/api/devices/{device_id}/if-metrics",
+                         params=request.args.to_dict())
+        if err:
+            return jsonify({"error": err}), 502
+        return jsonify(data)
+
+    @app.route("/api/devices/<int:device_id>/if-metrics/rates")
+    def api_proxy_if_metrics_rates(device_id):
+        """Proxy: biezace predkosci per interfejs."""
+        data, err = _api("get", f"/api/devices/{device_id}/if-metrics/rates",
+                         params=request.args.to_dict())
+        if err:
+            return jsonify({"error": err}), 502
+        return jsonify(data)
+
+    @app.route("/api/devices/<int:device_id>/fdb")
+    def api_proxy_fdb(device_id):
+        """Proxy: tablica FDB (MAC-port mapping)."""
+        data, err = _api("get", f"/api/devices/{device_id}/fdb",
+                         params=request.args.to_dict())
+        if err:
+            return jsonify({"error": err}), 502
+        return jsonify(data)
+
+    @app.route("/api/devices/<int:device_id>/vlan-ports")
+    def api_proxy_vlan_ports(device_id):
+        """Proxy: przynaleznosc portow do VLAN-ow."""
+        data, err = _api("get", f"/api/devices/{device_id}/vlan-ports",
+                         params=request.args.to_dict())
+        if err:
+            return jsonify({"error": err}), 502
+        return jsonify(data)
+
+    @app.route("/api/devices/<int:device_id>/stp")
+    def api_proxy_stp(device_id):
+        """Proxy: stan STP + root bridge."""
+        data, err = _api("get", f"/api/devices/{device_id}/stp")
+        if err:
+            return jsonify({"error": err}), 502
+        return jsonify(data)
+
     @app.route("/devices/<int:device_id>/inventory", methods=["POST"])
     def device_inventory(device_id):
         """Zapisuje pola inwentarzowe urzadzenia."""

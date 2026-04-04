@@ -170,6 +170,10 @@ class Device(Base):
     snmp_uptime        = Column(String(64),     nullable=True)   # sysUpTime z SNMP (czytelny string, np. "10d 5h 23m")
     ram_total_mb       = Column(Integer,        nullable=True)   # całkowita RAM z UCD-SNMP memTotalReal (w MB)
     no_full_scan       = Column(Boolean,        nullable=False, default=False)  # wyłącz automatyczny full scan 1-65535
+    # SNMP vendor detection + STP (2026-04-04)
+    snmp_sys_object_id = Column(String(100),    nullable=True)   # sysObjectID np. "1.3.6.1.4.1.9.1.1"
+    stp_root_mac       = Column(String(17),     nullable=True)   # MAC root bridge z STP
+    stp_root_cost      = Column(Integer,        nullable=True)   # koszt sciezki do root
     # Kolumny zakupowe — zachowane w DB dla kompatybilności, nieużywane w UI od 2026-03-29
     purchase_date      = Column(Date,           nullable=True)
     purchase_vendor    = Column(String(255),    nullable=True)
@@ -543,5 +547,87 @@ class DevicePassport(Base):
     generated_at  = Column(DateTime,    default=datetime.utcnow, nullable=False)
     html_filename = Column(String(100), nullable=True)
     data_snapshot = Column(JSON,        nullable=True)
+
+
+class DeviceFdbEntry(Base):
+    """Tablica przekazywania MAC (FDB) switcha — mapowanie MAC -> port fizyczny.
+
+    Aktualizowana co cykl SNMP workera przez collect_fdb() z snmp_l2.py.
+    Pozwala znalezc na ktorym porcie switcha znajduje sie dane urzadzenie.
+
+    fdb_status: wartosci z dot1dTpFdbStatus (1=other, 2=invalid, 3=learned, 4=self, 5=mgmt)
+    """
+    __tablename__ = "device_fdb"
+    __table_args__ = (
+        UniqueConstraint("device_id", "mac", name="uq_fdb_dev_mac"),
+        Index("ix_fdb_device_id", "device_id"),
+        Index("ix_fdb_mac", "mac"),
+        Index("ix_fdb_polled_at", "polled_at"),
+    )
+
+    id             = Column(Integer,     primary_key=True)
+    device_id      = Column(Integer,     ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    mac            = Column(String(17),  nullable=False)   # XX:XX:XX:XX:XX:XX
+    bridge_port    = Column(Integer,     nullable=False)   # dot1dTpFdbPort (numer w bridge)
+    if_index       = Column(Integer,     nullable=True)    # zmapowany ifIndex (dot1dBasePortIfIndex)
+    interface_name = Column(String(100), nullable=True)    # ifDescr (lookup z interfaces)
+    vlan_id        = Column(Integer,     nullable=True)    # VLAN (gdy dostepny)
+    fdb_status     = Column(Integer,     nullable=True)    # dot1dTpFdbStatus: 3=learned, 5=static
+    polled_at      = Column(DateTime,    default=datetime.utcnow, nullable=False)
+
+    device = relationship("Device", foreign_keys=[device_id])
+
+
+class DeviceVlanPort(Base):
+    """Przynaleznosc portow do VLAN na urzadzeniu (switchu).
+
+    Aktualizowana co cykl SNMP workera przez collect_vlan_port() z snmp_l2.py.
+    port_mode: 'access' (untagged), 'trunk' (tagged), None (nieznany)
+    is_pvid: True jezeli to domyslny VLAN portu (PVID)
+    """
+    __tablename__ = "device_vlan_port"
+    __table_args__ = (
+        UniqueConstraint("device_id", "vlan_id", "if_index", name="uq_vlan_port"),
+        Index("ix_vlan_port_device_id", "device_id"),
+    )
+
+    id         = Column(Integer,    primary_key=True)
+    device_id  = Column(Integer,    ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    vlan_id    = Column(Integer,    nullable=False)   # numer VLAN (1-4094)
+    vlan_name  = Column(String(64), nullable=True)    # nazwa VLAN (gdy dostepna)
+    if_index   = Column(Integer,    nullable=False)   # ifIndex portu
+    port_mode  = Column(String(10), nullable=True)    # 'access' | 'trunk' | None
+    is_pvid    = Column(Boolean,    nullable=False, default=False)  # True = PVID portu
+    polled_at  = Column(DateTime,   default=datetime.utcnow, nullable=False)
+
+    device = relationship("Device", foreign_keys=[device_id])
+
+
+class DeviceStpPort(Base):
+    """Stan STP (Spanning Tree Protocol) per port switcha.
+
+    Aktualizowana co cykl SNMP workera przez collect_stp_ports() z snmp_l2.py.
+
+    stp_state (dot1dStpPortState):
+        1=disabled, 2=blocking, 3=listening, 4=learning, 5=forwarding, 6=broken
+    stp_role (RSTP dot1dStpPortRole):
+        'root', 'designated', 'alternate', 'backup', 'disabled'
+    """
+    __tablename__ = "device_stp_port"
+    __table_args__ = (
+        UniqueConstraint("device_id", "stp_port_num", name="uq_stp_dev_port"),
+        Index("ix_stp_port_device_id", "device_id"),
+    )
+
+    id           = Column(Integer,    primary_key=True)
+    device_id    = Column(Integer,    ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    stp_port_num = Column(Integer,    nullable=False)   # dot1dStpPort
+    if_index     = Column(Integer,    nullable=True)    # zmapowany ifIndex
+    stp_state    = Column(Integer,    nullable=True)    # 1-6, patrz docstring
+    stp_role     = Column(String(20), nullable=True)    # 'root'|'designated'|'alternate'|'backup'
+    path_cost    = Column(Integer,    nullable=True)    # dot1dStpPortPathCost
+    polled_at    = Column(DateTime,   default=datetime.utcnow, nullable=False)
+
+    device = relationship("Device", foreign_keys=[device_id])
 
     device = relationship("Device", foreign_keys=[device_id])
