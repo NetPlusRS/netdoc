@@ -629,5 +629,3 @@ class DeviceStpPort(Base):
     polled_at    = Column(DateTime,   default=datetime.utcnow, nullable=False)
 
     device = relationship("Device", foreign_keys=[device_id])
-
-    device = relationship("Device", foreign_keys=[device_id])

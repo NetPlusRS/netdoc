@@ -775,8 +775,10 @@
 
 </div>{# /container-fluid #}
 
-{% if ping_history %}
+{% if ping_history or (interfaces and dev.snmp_community) %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+{% endif %}
+{% if ping_history %}
 <script>
 (function () {
   const raw = {{ ping_history | tojson }};
@@ -834,7 +836,6 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
 </script>
 
 {% if interfaces and dev.snmp_community %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" defer></script>
 <script>
 (function(){
   const DEV_ID = {{ dev.id }};
@@ -849,15 +850,23 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
     return v.toFixed(0) + ' bps';
   }
 
+  function esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function apiFetch(url) {
+    return fetch(url).then(r => { if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); });
+  }
+
   // ── Traffic chart ───────────────────────────────────────────────────────
   function loadTrafficChart() {
     const ifIndex = document.getElementById('if-select')?.value;
     const hours   = document.getElementById('if-hours')?.value || 24;
     if (!ifIndex) return;
-    const metric = 'in_octets_hc';
     Promise.all([
-      fetch(API+'/if-metrics?if_index='+ifIndex+'&metric=in_octets_hc&hours='+hours+'&step_minutes=5').then(r=>r.json()),
-      fetch(API+'/if-metrics?if_index='+ifIndex+'&metric=out_octets_hc&hours='+hours+'&step_minutes=5').then(r=>r.json()),
+      apiFetch(API+'/if-metrics?if_index='+ifIndex+'&metric=in_octets_hc&hours='+hours+'&step_minutes=5'),
+      apiFetch(API+'/if-metrics?if_index='+ifIndex+'&metric=out_octets_hc&hours='+hours+'&step_minutes=5'),
     ]).then(([inData, outData]) => {
       const msg = document.getElementById('if-traffic-msg');
       const buckets = inData.buckets || [];
@@ -868,7 +877,7 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
       }
       msg.style.display = 'none';
       const labels  = buckets.map(b => b.bucket ? b.bucket.substring(11,16) : '');
-      const inVals  = buckets.map(b => (b.avg_value || 0) * 8);   // bytes→bits
+      const inVals  = buckets.map(b => (b.avg_value || 0) * 8);   // bytes/s → bps
       const outVals = (outData.buckets || []).map(b => (b.avg_value || 0) * 8);
       const ctx = document.getElementById('ifTrafficChart').getContext('2d');
       if (_chart) _chart.destroy();
@@ -890,17 +899,17 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
           },
         },
       });
-    }).catch(()=>{});
+    }).catch(()=>{ const msg = document.getElementById('if-traffic-msg'); if(msg) msg.style.display=''; });
   }
 
   function loadRatesTable() {
-    fetch(API+'/if-metrics/rates?since_minutes=10').then(r=>r.json()).then(data=>{
+    apiFetch(API+'/if-metrics/rates?since_minutes=10').then(data=>{
       const tbody = document.getElementById('if-rates-body');
       if (!tbody) return;
       const ifaces = data.interfaces || [];
       if (ifaces.length === 0) { tbody.innerHTML='<tr><td colspan="5" class="text-muted text-center">Brak danych</td></tr>'; return; }
       tbody.innerHTML = ifaces.sort((a,b)=>a.if_index-b.if_index).map(r=>
-        '<tr><td><code>'+(r.interface_name||'ifIndex '+r.if_index)+'</code></td>'
+        '<tr><td><code>'+esc(r.interface_name||'ifIndex '+r.if_index)+'</code></td>'
         +'<td>'+fmtBps(r.in_bps)+'</td><td>'+fmtBps(r.out_bps)+'</td>'
         +'<td class="'+(r.in_errors>0?'text-danger':'')+'">'+Math.round(r.in_errors||0)+'</td>'
         +'<td class="'+(r.out_errors>0?'text-danger':'')+'">'+Math.round(r.out_errors||0)+'</td></tr>'
@@ -920,11 +929,20 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
 </script>
 {% endif %}
 
-{% if dev.snmp_community and dev.device_type.value == 'switch' %}
+{% if dev.snmp_community and dev.device_type and dev.device_type.value == 'switch' %}
 <script>
 (function(){
   const DEV_ID = {{ dev.id }};
   const API    = '/api/devices/' + DEV_ID;
+
+  function esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function apiFetch(url) {
+    return fetch(url).then(r => { if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); });
+  }
 
   // ── L2 tabs ──────────────────────────────────────────────────────────────
   let _loaded = {};
@@ -950,16 +968,17 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
     if (tab === 'stp')  return loadStp();
   }
 
-  // FDB filter
-  document.getElementById('fdb-mac-filter')?.addEventListener('input', function() {
-    const q = this.value.toLowerCase().replace(/[:\-]/g,'');
+  // FDB filter — stosowany po zaladowaniu danych
+  function applyFdbFilter() {
+    const q = (document.getElementById('fdb-mac-filter')?.value || '').toLowerCase().replace(/[:\-]/g,'');
     document.querySelectorAll('#fdb-tbody tr').forEach(tr => {
       tr.style.display = tr.textContent.toLowerCase().replace(/[:\-]/g,'').includes(q) ? '' : 'none';
     });
-  });
+  }
+  document.getElementById('fdb-mac-filter')?.addEventListener('input', applyFdbFilter);
 
   function loadFdb() {
-    fetch(API+'/fdb?limit=1000').then(r=>r.json()).then(data=>{
+    apiFetch(API+'/fdb?limit=1000').then(data=>{
       const count = document.getElementById('fdb-count');
       if (count) count.textContent = data.total || 0;
       const tbody = document.getElementById('fdb-tbody');
@@ -968,16 +987,17 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
       if (entries.length === 0) { tbody.innerHTML='<tr><td colspan="4" class="text-muted text-center py-3">Brak wpisow FDB</td></tr>'; return; }
       const STATUS = {3:'learned',5:'static'};
       tbody.innerHTML = entries.map(e=>
-        '<tr><td><code>'+e.mac+'</code></td>'
-        +'<td>'+(e.interface_name?'<code>'+e.interface_name+'</code>':'')+' <small class="text-muted">port '+e.bridge_port+'</small></td>'
-        +'<td>'+(e.vlan_id||'—')+'</td>'
-        +'<td><span class="badge bg-'+(e.fdb_status===5?'info':'secondary')+'">'+(STATUS[e.fdb_status]||e.fdb_status)+'</span></td></tr>'
+        '<tr><td><code>'+esc(e.mac)+'</code></td>'
+        +'<td>'+(e.interface_name?'<code>'+esc(e.interface_name)+'</code>':'')+' <small class="text-muted">port '+esc(e.bridge_port)+'</small></td>'
+        +'<td>'+esc(e.vlan_id||'—')+'</td>'
+        +'<td><span class="badge bg-'+(e.fdb_status===5?'info':'secondary')+'">'+esc(STATUS[e.fdb_status]||e.fdb_status)+'</span></td></tr>'
       ).join('');
-    }).catch(()=>{ document.getElementById('fdb-tbody').innerHTML='<tr><td colspan="4" class="text-danger text-center">Blad ladowania</td></tr>'; });
+      applyFdbFilter();  // zastosuj aktywny filtr po zaladowaniu
+    }).catch(()=>{ const b=document.getElementById('fdb-tbody'); if(b) b.innerHTML='<tr><td colspan="4" class="text-danger text-center">Blad ladowania</td></tr>'; });
   }
 
   function loadVlan() {
-    fetch(API+'/vlan-ports').then(r=>r.json()).then(data=>{
+    apiFetch(API+'/vlan-ports').then(data=>{
       const count = document.getElementById('vlan-count');
       const vlans = data.vlans || [];
       if (count) count.textContent = vlans.length;
@@ -986,21 +1006,21 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
       if (vlans.length === 0) { tbody.innerHTML='<tr><td colspan="4" class="text-muted text-center py-3">Brak danych VLAN</td></tr>'; return; }
       tbody.innerHTML = vlans.map(v => {
         const ports = v.ports || [];
-        const access = ports.filter(p=>p.port_mode==='access').map(p=>'<code>'+p.if_index+(p.is_pvid?'*':'')+'</code>').join(' ');
-        const trunk  = ports.filter(p=>p.port_mode==='trunk').map(p=>'<code>'+p.if_index+'</code>').join(' ');
-        return '<tr><td><strong>'+v.vlan_id+'</strong></td><td>'+(v.vlan_name||'—')+'</td>'
+        const access = ports.filter(p=>p.port_mode==='access').map(p=>'<code>'+esc(p.if_index)+(p.is_pvid?'*':'')+'</code>').join(' ');
+        const trunk  = ports.filter(p=>p.port_mode==='trunk').map(p=>'<code>'+esc(p.if_index)+'</code>').join(' ');
+        return '<tr><td><strong>'+esc(v.vlan_id)+'</strong></td><td>'+esc(v.vlan_name||'—')+'</td>'
           +'<td>'+access+' '+(trunk?'<span class="text-muted">T:'+trunk+'</span>':'')+'</td>'
           +'<td><small class="text-muted">'+ports.length+' portow</small></td></tr>';
       }).join('');
-    }).catch(()=>{});
+    }).catch(()=>{ const b=document.getElementById('vlan-tbody'); if(b) b.innerHTML='<tr><td colspan="4" class="text-danger text-center">Blad ladowania</td></tr>'; });
   }
 
   function loadStp() {
-    fetch(API+'/stp').then(r=>r.json()).then(data=>{
+    apiFetch(API+'/stp').then(data=>{
       const info = document.getElementById('stp-root-info');
       if (info) {
-        info.innerHTML = 'Root bridge: <code>'+(data.root_mac||'?')+'</code>'
-          + ' | Root path cost: <strong>'+(data.root_cost??'?')+'</strong>'
+        info.innerHTML = 'Root bridge: <code>'+esc(data.root_mac||'?')+'</code>'
+          + ' | Root path cost: <strong>'+esc(data.root_cost??'?')+'</strong>'
           + (data.is_root ? ' <span class="badge bg-success ms-2">THIS IS ROOT</span>' : '');
       }
       const tbody = document.getElementById('stp-tbody');
@@ -1009,13 +1029,13 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
       if (ports.length === 0) { tbody.innerHTML='<tr><td colspan="5" class="text-muted text-center py-3">Brak danych STP</td></tr>'; return; }
       const STATE_COLOR = {2:'warning',3:'info',4:'primary',5:'success',6:'danger'};
       tbody.innerHTML = ports.map(p=>
-        '<tr><td>'+p.stp_port_num+'</td>'
-        +'<td>'+(p.interface_name?'<code>'+p.interface_name+'</code>':p.if_index||'—')+'</td>'
-        +'<td><span class="badge bg-'+(STATE_COLOR[p.stp_state]||'secondary')+'">'+p.stp_state_label+'</span></td>'
-        +'<td><span class="badge bg-secondary">'+(p.stp_role||'—')+'</span></td>'
-        +'<td>'+(p.path_cost||'—')+'</td></tr>'
+        '<tr><td>'+esc(p.stp_port_num)+'</td>'
+        +'<td>'+(p.interface_name?'<code>'+esc(p.interface_name)+'</code>':esc(p.if_index||'—'))+'</td>'
+        +'<td><span class="badge bg-'+(STATE_COLOR[p.stp_state]||'secondary')+'">'+esc(p.stp_state_label||'—')+'</span></td>'
+        +'<td><span class="badge bg-secondary">'+esc(p.stp_role||'—')+'</span></td>'
+        +'<td>'+esc(p.path_cost||'—')+'</td></tr>'
       ).join('');
-    }).catch(()=>{});
+    }).catch(()=>{ const b=document.getElementById('stp-tbody'); if(b) b.innerHTML='<tr><td colspan="5" class="text-danger text-center">Blad ladowania</td></tr>'; });
   }
 })();
 </script>

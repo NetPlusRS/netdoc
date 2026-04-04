@@ -1494,11 +1494,8 @@ def _collect_if_metrics(ip: str, community: str, timeout: int = 2) -> list[tuple
                 except (ValueError, TypeError, IndexError):
                     continue
                 if is_hc:
-                    if value > 0:
-                        hc_indices.add(if_index)
-                    results.append((if_index, metric_name, value))
-                else:
-                    results.append((if_index, metric_name, value))
+                    hc_indices.add(if_index)
+                results.append((if_index, metric_name, value))
         except Exception as exc:
             logger.debug("_collect_if_metrics %s %s: %s", ip, metric_name, exc)
 

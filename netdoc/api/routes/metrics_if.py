@@ -129,7 +129,7 @@ def get_fdb(
 
     q = db.query(DeviceFdbEntry).filter_by(device_id=device_id)
     if mac:
-        q = q.filter(DeviceFdbEntry.mac.ilike(f"%{mac.replace(':', '').lower()}%"))
+        q = q.filter(DeviceFdbEntry.mac.ilike(f"%{mac.strip().lower()}%"))
     if if_index is not None:
         q = q.filter(DeviceFdbEntry.if_index == if_index)
 
@@ -181,11 +181,14 @@ def get_vlan_ports(
     # Zgrupuj per VLAN
     vlans: dict[int, dict] = {}
     for e in entries:
+        if e.vlan_id is None:
+            continue
         if e.vlan_id not in vlans:
             vlans[e.vlan_id] = {
                 "vlan_id":   e.vlan_id,
                 "vlan_name": e.vlan_name,
                 "ports":     [],
+                "polled_at": e.polled_at.isoformat() if e.polled_at else None,
             }
         vlans[e.vlan_id]["ports"].append({
             "if_index":  e.if_index,
@@ -243,14 +246,14 @@ def get_stp(
         "device_id":    device_id,
         "root_mac":     dev.stp_root_mac,
         "root_cost":    dev.stp_root_cost,
-        "is_root":      dev.mac == dev.stp_root_mac if (dev.mac and dev.stp_root_mac) else None,
+        "is_root":      (dev.mac.lower() == dev.stp_root_mac.lower()) if (dev.mac and dev.stp_root_mac) else None,
         "ports": [
             {
                 "stp_port_num":  p.stp_port_num,
                 "if_index":      p.if_index,
                 "interface_name": ifname_map.get(p.if_index) if p.if_index else None,
                 "stp_state":     p.stp_state,
-                "stp_state_label": _STP_STATE_LABELS.get(p.stp_state, str(p.stp_state)),
+                "stp_state_label": _STP_STATE_LABELS.get(p.stp_state) if p.stp_state is not None else None,
                 "stp_role":      p.stp_role,
                 "path_cost":     p.path_cost,
                 "polled_at":     p.polled_at.isoformat() if p.polled_at else None,

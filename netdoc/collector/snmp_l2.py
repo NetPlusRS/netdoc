@@ -401,7 +401,18 @@ def collect_stp_ports(ip: str, community: str, timeout: int = 2) -> tuple[list[d
         from netdoc.collector.drivers.snmp import _snmp_get
         raw_root = _snmp_get(ip, community, _OID_STP_ROOT + ".0", timeout=timeout)
         if raw_root is not None:
-            root_mac = _bytes_to_mac(raw_root)
+            # dot1dStpDesignatedRoot = Bridge ID (8 bajty): 2B priorytet + 6B MAC.
+            # _bytes_to_mac oczekuje dokladnie 6 bajtow — pomijamy 2 bajty priorytetu.
+            if isinstance(raw_root, (bytes, bytearray)) and len(raw_root) == 8:
+                root_mac = _bytes_to_mac(raw_root[2:])
+            elif isinstance(raw_root, str):
+                parts = raw_root.split(".")
+                if len(parts) == 8 and all(p.isdigit() for p in parts):
+                    root_mac = _bytes_to_mac(bytes(int(p) for p in parts[2:]))
+                else:
+                    root_mac = _bytes_to_mac(raw_root)
+            else:
+                root_mac = _bytes_to_mac(raw_root)
     except Exception as exc:
         logger.debug("collect_stp_ports %s: root mac error: %s", ip, exc)
     try:

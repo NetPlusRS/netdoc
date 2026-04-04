@@ -1812,7 +1812,7 @@ def create_app():
     @app.route("/api/devices/<int:device_id>/stp")
     def api_proxy_stp(device_id):
         """Proxy: stan STP + root bridge."""
-        data, err = _api("get", f"/api/devices/{device_id}/stp")
+        data, err = _api("get", f"/api/devices/{device_id}/stp", params=request.args.to_dict())
         if err:
             return jsonify({"error": err}), 502
         return jsonify(data)

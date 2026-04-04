@@ -372,16 +372,29 @@ def detect_vendor_profile(
     oid  = (sys_object_id or "").strip().lstrip(".")
     desc = (sys_descr or "").lower()
 
-    # Krok 1: sysObjectID prefix match (najdokladniejsza metoda)
+    # Krok 1: sysObjectID prefix match (deterministyczna metoda)
+    # Po dopasowaniu OID, sprawdz czy sysDescr nie wskazuje bardziej specyficznego profilu
+    # w tej samej rodzinie (np. Cisco IOS-XE vs Cisco IOS — oba maja ten sam OID prefix).
     for profile_name, profile in VENDOR_PROFILES.items():
         if profile_name == "generic":
             continue
         for prefix in profile.get("sysObjectID_prefix", []):
             if oid.startswith(prefix.lstrip(".")):
+                # Refinement: sprawdz czy sysDescr wskazuje inny profil w tej rodzinie
+                if desc:
+                    for refine_name, refine_profile in VENDOR_PROFILES.items():
+                        if refine_name in ("generic", profile_name):
+                            continue
+                        refine_pattern = refine_profile.get("sysdescr_regex")
+                        if refine_pattern and re.search(refine_pattern, desc, re.IGNORECASE):
+                            logger.debug(
+                                "vendor_profile: %s (OID=%s, refined by sysDescr)", refine_name, profile_name
+                            )
+                            return refine_name
                 logger.debug("vendor_profile: %s (via OID %s)", profile_name, oid[:30])
                 return profile_name
 
-    # Krok 2: sysDescr regex fallback
+    # Krok 2: sysDescr regex fallback (gdy OID nieznany)
     for profile_name, profile in VENDOR_PROFILES.items():
         if profile_name == "generic":
             continue
