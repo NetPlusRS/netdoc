@@ -5467,3 +5467,85 @@ class TestPerf11EventQuery:
         assert ".order_by(Event.event_time.desc())" not in source or \
                source.count(".order_by(Event.event_time.desc())") <= 1, \
             "PERF-11: zduplikowana query Event z ORDER BY DESC — powinna być jedna query"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# toggle-full-scan route
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _toggle_client(db_engine):
+    """Kontekst: Flask test_client z prawdziwą DB podpiętą przez SessionLocal."""
+    from sqlalchemy.orm import sessionmaker
+    from netdoc.web.app import create_app
+    app2 = create_app()
+    app2.config["TESTING"] = True
+    RealSession = sessionmaker(bind=db_engine)
+    return app2, RealSession
+
+
+def test_toggle_full_scan_disables(db_engine):
+    """POST toggle-full-scan ustawia no_full_scan=True (wylacza) gdy byl False."""
+    from sqlalchemy.orm import sessionmaker
+    from netdoc.storage.models import Device, DeviceType
+    from datetime import datetime
+    Session = sessionmaker(bind=db_engine)
+    db = Session()
+    dev = Device(ip="10.99.1.1", device_type=DeviceType.unknown, is_active=True,
+                 no_full_scan=False, first_seen=datetime.utcnow(), last_seen=datetime.utcnow())
+    db.add(dev); db.commit()
+    dev_id = dev.id
+    db.close()
+
+    app2, RealSession = _toggle_client(db_engine)
+    with patch("netdoc.web.app.SessionLocal", side_effect=RealSession):
+        with patch("netdoc.web.app.requests") as mr:
+            _setup_mock_api(mr, {})
+            with app2.test_client() as c:
+                resp = c.post(f"/devices/{dev_id}/toggle-full-scan",
+                              follow_redirects=False)
+
+    assert resp.status_code == 302
+    db2 = Session()
+    updated = db2.query(Device).filter_by(id=dev_id).first()
+    assert updated.no_full_scan is True
+    db2.close()
+
+
+def test_toggle_full_scan_enables(db_engine):
+    """POST toggle-full-scan ustawia no_full_scan=False (wlacza) gdy byl True."""
+    from sqlalchemy.orm import sessionmaker
+    from netdoc.storage.models import Device, DeviceType
+    from datetime import datetime
+    Session = sessionmaker(bind=db_engine)
+    db = Session()
+    dev = Device(ip="10.99.1.2", device_type=DeviceType.unknown, is_active=True,
+                 no_full_scan=True, first_seen=datetime.utcnow(), last_seen=datetime.utcnow())
+    db.add(dev); db.commit()
+    dev_id = dev.id
+    db.close()
+
+    app2, RealSession = _toggle_client(db_engine)
+    with patch("netdoc.web.app.SessionLocal", side_effect=RealSession):
+        with patch("netdoc.web.app.requests") as mr:
+            _setup_mock_api(mr, {})
+            with app2.test_client() as c:
+                resp = c.post(f"/devices/{dev_id}/toggle-full-scan",
+                              follow_redirects=False)
+
+    assert resp.status_code == 302
+    db2 = Session()
+    updated = db2.query(Device).filter_by(id=dev_id).first()
+    assert updated.no_full_scan is False
+    db2.close()
+
+
+def test_toggle_full_scan_device_not_found(db_engine):
+    """POST toggle-full-scan dla nieistniejacego device_id redirectuje z flash danger."""
+    app2, RealSession = _toggle_client(db_engine)
+    with patch("netdoc.web.app.SessionLocal", side_effect=RealSession):
+        with patch("netdoc.web.app.requests") as mr:
+            _setup_mock_api(mr, {})
+            with app2.test_client() as c:
+                resp = c.post("/devices/99999/toggle-full-scan",
+                              follow_redirects=False)
+    assert resp.status_code == 302

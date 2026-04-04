@@ -829,6 +829,91 @@ class TestPollDeviceUptimeSerial:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# RAM (UCD-SNMP memTotalReal)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestPollDeviceRam:
+    """Testy dla bloku UCD-SNMP OID_MEM_TOTAL_REAL → ram_total_mb."""
+
+    def _pd(self, dev, db):
+        from run_snmp_worker import _poll_device
+        return _poll_device(dev.id, str(dev.ip), dev.snmp_community,
+                            dev.hostname, dev.os_version, dev.location)
+
+    def test_ram_saved_from_snmp(self, db):
+        """Poll zapisuje ram_total_mb z memTotalReal (w KB)."""
+        dev = _dev(db, "10.10.0.1", community="public")
+
+        def fake_get(ip, community, oid, timeout=2):
+            from run_snmp_worker import OID_MEM_TOTAL_REAL
+            from netdoc.collector.drivers.snmp import OID_SYSNAME
+            if oid == OID_SYSNAME:      return "router-r"
+            if oid == OID_MEM_TOTAL_REAL: return "524288"  # 512 MB in KB
+            return None
+
+        with _patch_session(db)[0]:
+            with patch("netdoc.collector.drivers.snmp._snmp_get", side_effect=fake_get):
+                self._pd(dev, db)
+
+        db.refresh(dev)
+        assert dev.ram_total_mb == 512  # 524288 KB // 1024
+
+    def test_ram_zero_not_saved(self, db):
+        """Poll ignoruje memTotalReal=0 (invalid)."""
+        dev = _dev(db, "10.10.0.2", community="public")
+
+        def fake_get(ip, community, oid, timeout=2):
+            from run_snmp_worker import OID_MEM_TOTAL_REAL
+            from netdoc.collector.drivers.snmp import OID_SYSNAME
+            if oid == OID_SYSNAME:        return "switch-s"
+            if oid == OID_MEM_TOTAL_REAL: return "0"
+            return None
+
+        with _patch_session(db)[0]:
+            with patch("netdoc.collector.drivers.snmp._snmp_get", side_effect=fake_get):
+                self._pd(dev, db)
+
+        db.refresh(dev)
+        assert dev.ram_total_mb is None
+
+    def test_ram_none_not_saved(self, db):
+        """Poll nie nadpisuje ram_total_mb gdy OID niedostepny (brak UCD-SNMP MIB)."""
+        dev = _dev(db, "10.10.0.3", community="public")
+
+        def fake_get(ip, community, oid, timeout=2):
+            from netdoc.collector.drivers.snmp import OID_SYSNAME
+            if oid == OID_SYSNAME: return "printer-p"
+            return None  # OID_MEM_TOTAL_REAL niedostepny
+
+        with _patch_session(db)[0]:
+            with patch("netdoc.collector.drivers.snmp._snmp_get", side_effect=fake_get):
+                result = self._pd(dev, db)
+
+        db.refresh(dev)
+        assert dev.ram_total_mb is None
+        assert result["success"] is True  # brak MIB nie jest bledem
+
+    def test_ram_non_numeric_not_saved(self, db):
+        """Poll ignoruje memTotalReal='N/A' (int() rzuca wyjatek, blok except lapie)."""
+        dev = _dev(db, "10.10.0.4", community="public")
+
+        def fake_get(ip, community, oid, timeout=2):
+            from run_snmp_worker import OID_MEM_TOTAL_REAL
+            from netdoc.collector.drivers.snmp import OID_SYSNAME
+            if oid == OID_SYSNAME:        return "ap-a"
+            if oid == OID_MEM_TOTAL_REAL: return "N/A"
+            return None
+
+        with _patch_session(db)[0]:
+            with patch("netdoc.collector.drivers.snmp._snmp_get", side_effect=fake_get):
+                result = self._pd(dev, db)
+
+        db.refresh(dev)
+        assert dev.ram_total_mb is None
+        assert result["success"] is True  # except: pass — poll nie pada
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # CDP enrichment
 # ─────────────────────────────────────────────────────────────────────────────
 

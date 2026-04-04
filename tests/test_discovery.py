@@ -366,6 +366,25 @@ def test_inactive_device_excluded_from_stale(db):
     assert "10.5.0.4" not in stale
 
 
+def test_no_full_scan_device_excluded_from_stale(db):
+    """Urzadzenie z no_full_scan=True jest pomijane w kolejce full scan."""
+    from netdoc.collector.discovery import get_stale_full_scan_ips
+    d_normal   = Device(ip="10.5.0.5", is_active=True, no_full_scan=False, device_type=DeviceType.unknown)
+    d_excluded = Device(ip="10.5.0.6", is_active=True, no_full_scan=True,  device_type=DeviceType.unknown)
+    db.add_all([d_normal, d_excluded]); db.commit()
+
+    stale = get_stale_full_scan_ips(db, max_age_days=7)
+    assert "10.5.0.5" in stale
+    assert "10.5.0.6" not in stale
+
+
+def test_no_full_scan_default_is_false(db):
+    """Nowe Device() bez podania no_full_scan ma domyslnie False (nie NULL)."""
+    d = Device(ip="10.5.0.7", is_active=True, device_type=DeviceType.unknown)
+    db.add(d); db.commit(); db.refresh(d)
+    assert d.no_full_scan is False
+
+
 def test_run_full_scan_with_ips(db):
     """run_full_scan z lista IP skanuje tylko podane hosty i zapisuje per batch."""
     from unittest.mock import patch
