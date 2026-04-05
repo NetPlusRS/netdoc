@@ -151,10 +151,14 @@ def collect_fdb(ip: str, community: str, timeout: int = 2) -> list[dict]:
     except Exception as exc:
         logger.debug("collect_fdb %s: bridge port map error: %s", ip, exc)
 
+    _FDB_MAX_ITER = 16384  # switche enterprise mogą mieć 16000+ wpisów FDB
+
     # Krok 2: Pobierz FDB — MAC → bridge_port
     mac_to_port: dict[str, int] = {}
     try:
-        rows = snmp_walk(ip, _OID_FDB_PORT, community, timeout=timeout, max_iter=5000)
+        rows = snmp_walk(ip, _OID_FDB_PORT, community, timeout=timeout, max_iter=_FDB_MAX_ITER)
+        if len(rows) >= _FDB_MAX_ITER:
+            logger.warning("collect_fdb %s: FDB walk truncated at %d — switch może mieć więcej wpisów", ip, _FDB_MAX_ITER)
         for full_oid, raw_val, _ in rows:
             try:
                 # Suffix OID to bajty MAC: 1.3.6.1.2.1.17.4.3.1.2.0.21.105.X.X.X
@@ -171,7 +175,7 @@ def collect_fdb(ip: str, community: str, timeout: int = 2) -> list[dict]:
     # Krok 3: Pobierz status wpisow
     mac_to_status: dict[str, int] = {}
     try:
-        rows = snmp_walk(ip, _OID_FDB_STATUS, community, timeout=timeout, max_iter=5000)
+        rows = snmp_walk(ip, _OID_FDB_STATUS, community, timeout=timeout, max_iter=_FDB_MAX_ITER)
         for full_oid, raw_val, _ in rows:
             try:
                 suffix = full_oid.strip().split(_OID_FDB_STATUS.rstrip(".") + ".")[-1]

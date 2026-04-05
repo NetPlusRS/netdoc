@@ -47,6 +47,11 @@ class DeviceOut(BaseModel):
     ip_type: str = "unknown"
     snmp_community: Optional[str] = None
     snmp_ok_at: Optional[datetime] = None
+    snmp_uptime: Optional[str] = None
+    snmp_sys_object_id: Optional[str] = None
+    ram_total_mb: Optional[int] = None
+    stp_root_mac: Optional[str] = None
+    stp_root_cost: Optional[int] = None
 
     model_config = {"from_attributes": True}
 

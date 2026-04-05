@@ -119,6 +119,7 @@ Agenci to specjalizowane asystenty uruchamiane przez Claude Code. Każdy ma wła
 | `@bug-performance` | Aplikacja zwalnia przy wielu urządzeniach | N+1 w pętlach, sleep w złym miejscu, blocking timeouts |
 | `@bug-api` | Po dodaniu nowego pola/endpointu | Niespójności SQLAlchemy↔Pydantic, brak migracji, błędny Flask proxy |
 | `@bug-clickhouse` | Syslog nie wyświetla / retencja nie działa | TTL, typy parametrów, limity Pro/Free, schema tabeli |
+| `@bug-snmp` | SNMP dane NULL / błędne dla konkretnych urządzeń | Złe OIDs, błędne parsowanie typów (bytes/MAC/bitstring), vendor profiles, pysnmp-lextudio 6.x |
 
 ### Jak uruchomić agenta
 

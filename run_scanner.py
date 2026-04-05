@@ -2695,7 +2695,7 @@ def _ensure_docker_services() -> bool:
     return False
 
 
-_LOCK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scanner.pid")
+_LOCK_FILE = os.path.join(os.environ.get("TEMP", os.path.dirname(os.path.abspath(__file__))), "netdoc_scanner.pid")
 
 
 def _is_scanner_process(pid: int) -> bool:

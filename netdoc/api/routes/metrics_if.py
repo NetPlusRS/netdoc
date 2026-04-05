@@ -50,6 +50,12 @@ def get_if_metrics_history(
     Wartosci dla licznikow octets: bajty/s (pochodna licznika / krok czasu).
     GUI mnozy przez 8 aby uzyskac bps. Dla in_errors/out_errors: delty/s.
     """
+    _ALLOWED_METRICS = {
+        "in_octets_hc", "out_octets_hc", "in_octets", "out_octets",
+        "in_errors", "out_errors", "in_discards", "out_discards",
+    }
+    if metric not in _ALLOWED_METRICS:
+        raise HTTPException(status_code=400, detail=f"Niedozwolona metryka. Dozwolone: {', '.join(sorted(_ALLOWED_METRICS))}")
     _get_device_or_404(device_id, db)
 
     # Pobierz nazwe interfejsu (jezeli dostepna)
@@ -129,7 +135,8 @@ def get_fdb(
 
     q = db.query(DeviceFdbEntry).filter_by(device_id=device_id)
     if mac:
-        q = q.filter(DeviceFdbEntry.mac.ilike(f"%{mac.strip().lower()}%"))
+        mac_safe = mac.strip().lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        q = q.filter(DeviceFdbEntry.mac.ilike(f"%{mac_safe}%", escape="\\"))
     if if_index is not None:
         q = q.filter(DeviceFdbEntry.if_index == if_index)
 

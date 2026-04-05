@@ -7,37 +7,42 @@ Lazy init: połączenie nawiązywane przy pierwszym zapytaniu.
 """
 import logging
 import os
+import threading
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 _client = None
+_client_lock = threading.Lock()
 
 
 def _get_client():
     global _client
     if _client is not None:
         return _client
-    try:
-        import clickhouse_connect
-        host     = os.getenv("CLICKHOUSE_HOST", "netdoc-clickhouse")
-        port     = int(os.getenv("CLICKHOUSE_HTTP_PORT", "8123"))
-        user     = os.getenv("CLICKHOUSE_USER", "netdoc")
-        password = os.getenv("CLICKHOUSE_PASSWORD", "netdoc")
-        _client = clickhouse_connect.get_client(
-            host=host,
-            port=port,
-            username=user,
-            password=password,
-            database="netdoc_logs",
-            connect_timeout=5,
-            send_receive_timeout=30,
-        )
-        logger.info("ClickHouse: połączono z %s:%s", host, port)
-    except Exception as exc:
-        logger.warning("ClickHouse niedostępny: %s", exc)
-        raise
-    return _client
+    with _client_lock:
+        if _client is not None:  # double-checked locking
+            return _client
+        try:
+            import clickhouse_connect
+            host     = os.getenv("CLICKHOUSE_HOST", "netdoc-clickhouse")
+            port     = int(os.getenv("CLICKHOUSE_HTTP_PORT", "8123"))
+            user     = os.getenv("CLICKHOUSE_USER", "netdoc")
+            password = os.getenv("CLICKHOUSE_PASSWORD", "netdoc")
+            _client = clickhouse_connect.get_client(
+                host=host,
+                port=port,
+                username=user,
+                password=password,
+                database="netdoc_logs",
+                connect_timeout=5,
+                send_receive_timeout=30,
+            )
+            logger.info("ClickHouse: połączono z %s:%s", host, port)
+        except Exception as exc:
+            logger.warning("ClickHouse niedostępny: %s", exc)
+            raise
+        return _client
 
 
 def query_syslog(
@@ -128,7 +133,9 @@ def get_syslog_retention_days() -> int:
 
 def set_syslog_retention_days(days: int) -> None:
     """Zmienia TTL tabeli syslog (PRO). Dozwolony zakres: 7–365 dni."""
-    days = max(7, min(365, int(days)))
+    if not isinstance(days, int):
+        raise TypeError(f"days must be int, got {type(days).__name__}")
+    days = max(7, min(365, days))
     _get_client().command(
         f"ALTER TABLE netdoc_logs.syslog MODIFY TTL toDateTime(timestamp) + toIntervalDay({days})"
     )
@@ -241,7 +248,7 @@ def _ensure_metrics_table() -> None:
             (
                 ts        DateTime                  COMMENT 'Czas pomiaru (UTC)',
                 device_id UInt32                    COMMENT 'ID urzadzenia z NetDoc',
-                if_index  UInt16                    COMMENT 'ifIndex (0 = metryka calego urzadzenia)',
+                if_index  UInt32                    COMMENT 'ifIndex (0 = metryka calego urzadzenia)',
                 metric    LowCardinality(String)    COMMENT 'Nazwa metryki: in_octets, out_octets, in_errors...',
                 value     Float64                   COMMENT 'Wartosc numeryczna'
             )
@@ -251,6 +258,14 @@ def _ensure_metrics_table() -> None:
             TTL toDateTime(ts) + INTERVAL 90 DAY
             SETTINGS index_granularity = 8192
         """)
+        # Migracja: UInt16 → UInt32 dla ifIndex (ifIndex może przekraczać 65535 na IOS-XR/Juniper)
+        try:
+            _get_client().command(
+                "ALTER TABLE netdoc_logs.device_metrics"
+                " MODIFY COLUMN if_index UInt32"
+            )
+        except Exception:
+            pass  # ignoruj jeśli już UInt32 lub brak uprawnień
         _METRICS_TABLE_CREATED = True
         logger.info("ClickHouse: tabela device_metrics gotowa")
     except Exception as exc:
@@ -299,8 +314,9 @@ def query_if_metrics_history(
         "step":        step_minutes * 60,
     }
     # Oblicza maksymalną wartość licznika per bucket, potem różnicę między
-    # sąsiednimi bucketami (neighbor(-1)) dzieloną przez krok [s] → bytes/s.
-    # neighbor() wymaga ORDER BY bucket w tym samym zakresie zapytania.
+    # sąsiednimi bucketami dzieloną przez krok [s] → bytes/s.
+    # Używa lagInFrame() (window function) zamiast neighbor() — neighbor() jest
+    # deprecated/wyłączony w ClickHouse 24.8+ (allow_deprecated_error_prone_window_functions=0).
     sql = (
         "SELECT"
         "  bucket,"
@@ -309,18 +325,24 @@ def query_if_metrics_history(
         "  round(if(prev_max >= 0 AND cur_max >= prev_max,"
         "     (cur_max - prev_max) / {step:Float64}, 0), 2) AS max_value"
         " FROM ("
-        "  SELECT"
-        "    toStartOfInterval(ts, toIntervalSecond({step:UInt32})) AS bucket,"
-        "    max(value) AS cur_max,"
-        "    neighbor(max(value), -1, -1.0)                         AS prev_max"
-        "  FROM netdoc_logs.device_metrics"
-        "  WHERE device_id = {device_id:UInt32}"
-        "    AND if_index  = {if_index:UInt16}"
-        "    AND metric    = {metric:String}"
-        "    AND ts >= now() - INTERVAL {since_hours:UInt32} HOUR"
-        "  GROUP BY bucket"
-        "  ORDER BY bucket"
+        "  SELECT bucket, cur_max,"
+        "    lagInFrame(cur_max, 1, toFloat64(-1))"
+        "      OVER (ORDER BY bucket ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)"
+        "      AS prev_max"
+        "  FROM ("
+        "    SELECT"
+        "      toStartOfInterval(ts, toIntervalSecond({step:UInt32})) AS bucket,"
+        "      max(value) AS cur_max"
+        "    FROM netdoc_logs.device_metrics"
+        "    WHERE device_id = {device_id:UInt32}"
+        "      AND if_index  = {if_index:UInt32}"
+        "      AND metric    = {metric:String}"
+        "      AND ts >= now() - INTERVAL {since_hours:UInt32} HOUR"
+        "    GROUP BY bucket"
+        "    ORDER BY bucket"
+        "  )"
         " )"
+        " ORDER BY bucket"
     )
     try:
         result = _get_client().query(sql, parameters=params)

@@ -446,9 +446,9 @@ def _poll_device(device_id: int, ip: str, community: str,
             # Czysc dopiero gdy nie odpowiadalo przez >30 minut (zabezpieczenie przed flappingiem).
             stale_limit = datetime.utcnow() - timedelta(minutes=30)
             if device.snmp_ok_at and device.snmp_ok_at > stale_limit:
-                logger.debug("Community '%s' no response for %s — skipping (ok_at recent)", community, ip)
+                logger.debug("Community '****' no response for %s — skipping (ok_at recent)", ip)
                 return result
-            logger.info("Community '%s' no longer responds for %s — clearing", community, ip)
+            logger.info("Community '****' no longer responds for %s — clearing", ip)
             device.snmp_community = None
             device.snmp_ok_at     = None
             db.commit()
@@ -1089,21 +1089,13 @@ def _save_vlan_port(db, device_id: int, entries: list[dict]) -> int:
             },
         )
         db.execute(stmt)
-        # Usun VLAN-porty ktore znikly
-        current = {(r["vlan_id"], r["if_index"]) for r in rows}
-        existing = db.query(DeviceVlanPort.vlan_id, DeviceVlanPort.if_index).filter(
-            DeviceVlanPort.device_id == device_id
-        ).all()
-        stale_ids = []
-        for row in existing:
-            if (row.vlan_id, row.if_index) not in current:
-                stale_ids.append((row.vlan_id, row.if_index))
-        for vlan_id, if_index in stale_ids:
-            db.query(DeviceVlanPort).filter(
-                DeviceVlanPort.device_id == device_id,
-                DeviceVlanPort.vlan_id  == vlan_id,
-                DeviceVlanPort.if_index == if_index,
-            ).delete(synchronize_session=False)
+        # Usun VLAN-porty ktore znikly (batch DELETE)
+        current_pairs = [(r["vlan_id"], r["if_index"]) for r in rows]
+        from sqlalchemy import tuple_ as sa_tuple
+        db.query(DeviceVlanPort).filter(
+            DeviceVlanPort.device_id == device_id,
+            ~sa_tuple(DeviceVlanPort.vlan_id, DeviceVlanPort.if_index).in_(current_pairs),
+        ).delete(synchronize_session=False)
         db.commit()
         return len(rows)
     except Exception as exc:
@@ -1392,57 +1384,84 @@ def scan_once() -> None:
     if not hasattr(scan_once, "_l2_last"):
         scan_once._l2_last = 0.0  # type: ignore[attr-defined]
     if _l2_now - scan_once._l2_last >= _L2_INTERVAL:  # type: ignore[attr-defined]
-        scan_once._l2_last = _l2_now  # type: ignore[attr-defined]
+        # BUG-WRK1: _l2_last ustawiany NA KOŃCU (nie na początku) — błąd w kolekcji
+        # nie blokuje kolejnej próby na 15 min, tylko do następnego 5-min cyklu.
         from netdoc.collector.snmp_profiles import get_profile
         l2_candidates = [d for d in devices if d.snmp_community and d.device_type in _L2_TYPES]
         if l2_candidates:
             logger.info("L2 collection: %d switches (FDB/VLAN/STP)", len(l2_candidates))
             db_l2 = SessionLocal()
             try:
+                import threading as _threading
                 from netdoc.collector.snmp_l2 import collect_fdb, collect_vlan_port, collect_stp_ports
+                _L2_PER_DEVICE_TIMEOUT = 60  # BUG-WRK2: daemon thread — zabezpiecza przed zawieszonym walkiem
+
+                def _collect_l2_device(d_arg, prof_arg, ip_arg, comm_arg):
+                    if prof_arg.get("fdb_supported", True):
+                        try:
+                            fdb = collect_fdb(ip_arg, comm_arg, snmp_timeout)
+                            if fdb:
+                                n = _save_fdb(db_l2, d_arg.id, fdb)
+                                logger.info("FDB  %-18s: %d entries", ip_arg, n)
+                        except Exception as exc:
+                            logger.debug("FDB %s: %s", ip_arg, exc)
+                    if prof_arg.get("vlan_supported", True):
+                        try:
+                            vlan_ports = collect_vlan_port(ip_arg, comm_arg, snmp_timeout)
+                            if vlan_ports:
+                                n = _save_vlan_port(db_l2, d_arg.id, vlan_ports)
+                                logger.info("VLAN %-18s: %d vlan-port entries", ip_arg, n)
+                        except Exception as exc:
+                            logger.debug("VLAN %s: %s", ip_arg, exc)
+                    if prof_arg.get("stp_supported", True):
+                        try:
+                            stp_ports, root_mac, root_cost = collect_stp_ports(ip_arg, comm_arg, snmp_timeout)
+                            if stp_ports or root_mac:
+                                n = _save_stp_ports(db_l2, d_arg.id, stp_ports, root_mac, root_cost)
+                                logger.info("STP  %-18s: %d ports, root=%s", ip_arg, n, root_mac or "-")
+                        except Exception as exc:
+                            logger.debug("STP %s: %s", ip_arg, exc)
+
                 for d in l2_candidates:
                     _prof = get_profile(d.snmp_sys_object_id, d.os_version)
                     _ip = str(d.ip)
                     _comm = d.snmp_community
-                    if _prof.get("fdb_supported", True):
-                        try:
-                            fdb = collect_fdb(_ip, _comm, snmp_timeout)
-                            if fdb:
-                                n = _save_fdb(db_l2, d.id, fdb)
-                                logger.info("FDB  %-18s: %d entries", _ip, n)
-                        except Exception as exc:
-                            logger.debug("FDB %s: %s", _ip, exc)
-                    if _prof.get("vlan_supported", True):
-                        try:
-                            vlan_ports = collect_vlan_port(_ip, _comm, snmp_timeout)
-                            if vlan_ports:
-                                n = _save_vlan_port(db_l2, d.id, vlan_ports)
-                                logger.info("VLAN %-18s: %d vlan-port entries", _ip, n)
-                        except Exception as exc:
-                            logger.debug("VLAN %s: %s", _ip, exc)
-                    if _prof.get("stp_supported", True):
-                        try:
-                            stp_ports, root_mac, root_cost = collect_stp_ports(_ip, _comm, snmp_timeout)
-                            if stp_ports or root_mac:
-                                n = _save_stp_ports(db_l2, d.id, stp_ports, root_mac, root_cost)
-                                logger.info("STP  %-18s: %d ports, root=%s", _ip, n, root_mac or "-")
-                        except Exception as exc:
-                            logger.debug("STP %s: %s", _ip, exc)
+                    _t = _threading.Thread(
+                        target=_collect_l2_device, args=(d, _prof, _ip, _comm), daemon=True
+                    )
+                    _t.start()
+                    _t.join(timeout=_L2_PER_DEVICE_TIMEOUT)
+                    if _t.is_alive():
+                        logger.warning("L2 collection %s: timeout after %ds — skipping", _ip, _L2_PER_DEVICE_TIMEOUT)
+                scan_once._l2_last = _l2_now  # type: ignore[attr-defined]
             except Exception as exc:
                 logger.warning("L2 collection error: %s", exc)
             finally:
                 db_l2.close()
 
     # Interface metrics → ClickHouse (in/out octets HC, errors, discards)
+    # BUG-WRK3: _ensure_metrics_table() wywoływana tu (nie tylko w main()) — ponawia po restarcie CH.
+    # PERF-1: metryki zbierane równolegle przez ThreadPoolExecutor zamiast sekwencyjnie.
     try:
-        from netdoc.storage.clickhouse import insert_if_metrics
+        from netdoc.storage.clickhouse import insert_if_metrics, _ensure_metrics_table
         from datetime import datetime as _dt
-        metrics_batch: list[tuple] = []
+        _ensure_metrics_table()
         now_ts = _dt.utcnow()
-        for d in devices:
-            raw = _collect_if_metrics(str(d.ip), d.snmp_community, snmp_timeout)
-            for if_index, metric_name, value in raw:
-                metrics_batch.append((now_ts, d.id, if_index, metric_name, value))
+        metrics_batch: list[tuple] = []
+        snmp_devs = [d for d in devices if d.snmp_community]
+
+        def _collect_one(dev):
+            return _collect_if_metrics(str(dev.ip), dev.snmp_community, snmp_timeout), dev.id
+
+        with ThreadPoolExecutor(max_workers=min(32, len(snmp_devs) or 1)) as _pool:
+            futures = {_pool.submit(_collect_one, d): d for d in snmp_devs}
+            for fut in as_completed(futures):
+                try:
+                    raw, dev_id = fut.result()
+                    for if_index, metric_name, value in raw:
+                        metrics_batch.append((now_ts, dev_id, if_index, metric_name, value))
+                except Exception as exc:
+                    logger.debug("IF metrics collect error: %s", exc)
         if metrics_batch:
             insert_if_metrics(metrics_batch)
             logger.info("IF metrics: %d data points -> ClickHouse", len(metrics_batch))

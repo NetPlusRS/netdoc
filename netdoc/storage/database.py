@@ -268,13 +268,20 @@ def _migrate_columns() -> None:
         END $$
         """,
     ]
-    try:
-        with engine.begin() as conn:
-            for sql in migrations:
+    # Każda migracja w osobnej transakcji — błąd jednego kroku nie blokuje pozostałych.
+    errors = []
+    for sql in migrations:
+        try:
+            with engine.begin() as conn:
                 conn.execute(text(sql))
-        logger.info("Migracja kolumn: sprawdzono vulnerabilities + devices (flagi/monitorowanie/inwentaryzacja)")
-    except Exception as exc:
-        logger.warning("Migracja kolumn pominięta: %s", exc)
+        except Exception as exc:
+            short = str(exc)[:120].replace("\n", " ")
+            errors.append(short)
+            logger.debug("Migracja pominięta (ok gdy kolumna/tabela już istnieje): %s", short)
+    if errors:
+        logger.info("Migracja kolumn: %d kroków wykonano, %d pominięto (patrz DEBUG)", len(migrations) - len(errors), len(errors))
+    else:
+        logger.info("Migracja kolumn: wszystkie %d kroków wykonano", len(migrations))
 
 
 def init_db() -> None:
