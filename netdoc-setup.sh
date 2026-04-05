@@ -9,6 +9,34 @@
 
 set -euo pipefail
 
+# ── Argument handling ────────────────────────────────────────────────────────
+# --skip-group-fix: wewnetrzny flag uzywany przy exec sg docker (nie pokazuj ponownie promptu)
+SKIP_GROUP_FIX=0
+for _arg in "$@"; do
+    [[ "$_arg" == "--skip-group-fix" ]] && SKIP_GROUP_FIX=1
+done
+
+# ── Bash version check ───────────────────────────────────────────────────────
+# ${VAR,,} (lowercase) wymaga bash 4.0+. macOS ma wbudowany bash 3.2.
+# Sprawdzamy wersje i na macOS proponujemy brew install bash.
+_BASH_MAJOR="${BASH_VERSINFO[0]:-3}"
+if [[ "$_BASH_MAJOR" -lt 4 ]]; then
+    echo "WARNING: bash $_BASH_MAJOR.x detected — bash 4.0+ required."
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        echo "Install a newer bash via Homebrew:  brew install bash"
+        echo "Then re-run:  /opt/homebrew/bin/bash netdoc-setup.sh"
+        echo "Or:  /usr/local/bin/bash netdoc-setup.sh"
+        # Jesli brew bash jest dostepny — uruchom przez niego i zakoncz
+        for _newbash in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+            if [[ -x "$_newbash" && "$("$_newbash" -c 'echo ${BASH_VERSINFO[0]}')" -ge 4 ]]; then
+                exec "$_newbash" "$0" "$@"
+            fi
+        done
+    fi
+    echo "Aborted: bash 4.0+ is required."
+    exit 1
+fi
+
 # ── Colors ────────────────────────────────────────────────────────────────────
 
 CYAN='\033[0;36m'
@@ -125,35 +153,50 @@ if ! docker info &>/dev/null; then
     fail "Docker daemon is not running or not accessible without sudo."
     if [[ "$OS" == "macos" ]]; then
         info "Launch Docker Desktop from the Applications folder."
+        info "(Menu bar → Docker Desktop icon → Open Docker Desktop)"
         echo ""
-        read -rp "  Press Enter once Docker is running..."
+        read -rp "  Press Enter once Docker Desktop is running..."
+        # Re-check — user moglby nie uruchomic Docker Desktop
+        if ! docker info &>/dev/null; then
+            fail "Docker still unavailable after waiting. Aborting."
+            info "Make sure Docker Desktop is running (green icon in menu bar)."
+            exit 1
+        fi
     else
         # Linux: sprawdz czy to kwestia grupy docker czy daemon nie dziala
-        if sudo docker info &>/dev/null 2>&1; then
+        if [[ $SKIP_GROUP_FIX -eq 0 ]] && sudo docker info &>/dev/null 2>&1; then
             warn "Docker requires sudo — your user is not in the 'docker' group."
             echo ""
-            read -rp "  Add user '$USER' to the docker group? [Y/n]: " FIX_DOCKER_GROUP
-            if [[ "${FIX_DOCKER_GROUP,,}" != "n" ]]; then
+            read -rp "  Add user '$USER' to the docker group? [Y/n]: " _FIX_GRP
+            _FIX_GRP="$(echo "$_FIX_GRP" | tr '[:upper:]' '[:lower:]')"
+            if [[ "$_FIX_GRP" != "n" ]]; then
                 sudo usermod -aG docker "$USER"
                 ok "User '$USER' added to 'docker' group."
                 warn "Group change takes effect in a new shell session."
-                info "Continuing with 'newgrp docker' for this session..."
-                # Uruchom resztę skryptu w nowej sesji grupy docker
-                exec sg docker -c "bash '$0' --skip-group-fix"
-                # exec nie wraca — jesli sg zawiedzie, kontynuuj z sudo
+                info "Continuing with 'sg docker' for this session..."
+                # exec sg uruchamia nowa sesje z grupa docker — nie wracamy
+                exec sg docker -c "bash '$BASH_SOURCE' --skip-group-fix"
             fi
-            # Fallback: uzyj sudo dla pozostalych komend docker
+            # Uzytkownik odmowil lub sg nie wrocil — kontynuuj z sudo
             export DOCKER_CMD="sudo docker"
+        elif [[ $SKIP_GROUP_FIX -eq 1 ]]; then
+            # Jestesmy juz po exec sg docker — docker powinien dzialac
+            if ! docker info &>/dev/null; then
+                export DOCKER_CMD="sudo docker"
+            fi
         else
-            info "Run: sudo systemctl start docker"
-            info "Enable on boot: sudo systemctl enable docker"
+            # sudo docker tez nie dziala — daemon zatrzymany
+            info "Start Docker daemon:"
+            info "  sudo systemctl start docker"
+            info "  sudo systemctl enable docker   # autostart on boot"
             echo ""
             read -rp "  Press Enter once Docker is running..."
             if ! docker info &>/dev/null 2>&1 && ! sudo docker info &>/dev/null 2>&1; then
                 fail "Docker daemon is still unavailable. Aborting."
                 exit 1
             fi
-            export DOCKER_CMD="sudo docker"
+            # Uzyj sudo jesli docker bez sudo nadal nie dziala
+            docker info &>/dev/null || export DOCKER_CMD="sudo docker"
         fi
     fi
 fi
@@ -186,8 +229,20 @@ else
             exit 1
         fi
     elif [[ "$PKG_MANAGER" == "dnf" ]]; then
-        sudo dnf install -y docker-compose-plugin || exit 1
+        # docker-compose-plugin wymaga oficjalnego repo Dockera (nie Fedora default)
+        info "Adding Docker official repository for Fedora/RHEL..."
+        sudo dnf -y install dnf-plugins-core 2>/dev/null || true
+        sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo 2>/dev/null \
+            || sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo 2>/dev/null \
+            || true
+        sudo dnf install -y docker-compose-plugin 2>/dev/null \
+            || { fail "docker-compose-plugin install failed — add Docker repo manually."; exit 1; }
+    elif [[ "$PKG_MANAGER" == "pacman" ]]; then
+        # Arch Linux: docker-compose jako oddzielny pakiet (v2 CLI)
+        sudo pacman -S --noconfirm docker-compose 2>/dev/null \
+            || { fail "docker-compose install failed."; exit 1; }
     else
+        fail "Install Docker Compose v2 manually: https://docs.docker.com/compose/install/"
         exit 1
     fi
     # Weryfikacja po instalacji
@@ -217,9 +272,22 @@ if [[ -z "$PYTHON_CMD" ]]; then
     warn "Python 3.10+ not found — attempting to install..."
     if [[ "$OS" == "macos" ]]; then
         if command -v brew &>/dev/null; then
-            brew install python@3.12 && PYTHON_CMD="python3.12"
+            brew install python@3.12
+            # Homebrew nie linkuje python@3.12 automatycznie — uzyj absolutnej sciezki
+            # Apple Silicon: /opt/homebrew, Intel: /usr/local
+            BREW_PREFIX="$(brew --prefix python@3.12 2>/dev/null || echo "")"
+            if [[ -n "$BREW_PREFIX" && -x "$BREW_PREFIX/bin/python3.12" ]]; then
+                PYTHON_CMD="$BREW_PREFIX/bin/python3.12"
+                ok "Python 3.12 at: $PYTHON_CMD"
+            elif command -v python3.12 &>/dev/null; then
+                PYTHON_CMD="python3.12"
+            else
+                fail "python3.12 not found after brew install — try: brew link python@3.12"
+                exit 1
+            fi
         else
-            fail "Install Python 3.10+ from https://python.org"
+            fail "Homebrew is not installed. Install it from https://brew.sh"
+            info "Then re-run this script."
             exit 1
         fi
     elif [[ "$PKG_MANAGER" == "apt" ]]; then
@@ -319,7 +387,14 @@ if ! "$PYTHON_CMD" -m venv --help &>/dev/null 2>&1; then
             sudo apt-get install -y python3-venv
         fi
     elif [[ "$PKG_MANAGER" == "dnf" ]]; then
-        sudo dnf install -y python3-venv
+        # Na Fedorze venv jest wbudowane w python3 — osobny pakiet zwykle nie istnieje
+        sudo dnf install -y python3 2>/dev/null || true
+    elif [[ "$PKG_MANAGER" == "yum" ]]; then
+        sudo yum install -y python3 2>/dev/null || true
+    elif [[ "$PKG_MANAGER" == "pacman" ]]; then
+        sudo pacman -S --noconfirm python 2>/dev/null || true
+    elif [[ "$PKG_MANAGER" == "zypper" ]]; then
+        sudo zypper install -y python3-venv 2>/dev/null || true
     fi
 fi
 
@@ -348,11 +423,19 @@ fi
 
 # Playwright — wymaga oddzielnej instalacji przegladarki i bibliotek systemowych
 # Bez tego screenshots (hover preview) nie beda dzialac (brak chromium / brakujace .so)
-step "Installing Playwright browser (chromium) + system deps..."
+step "Installing Playwright browser (chromium)..."
 if "$VENV_PYTHON" -c "import playwright" 2>/dev/null; then
-    "$VENV_PYTHON" -m playwright install chromium --with-deps 2>/dev/null \
-        && ok "Playwright chromium installed" \
-        || warn "Playwright install failed — screenshot preview will be unavailable."
+    # --with-deps instaluje biblioteki systemowe (apt-get) — tylko na Linuxie
+    # Na macOS system deps sa zarzadzane przez macOS, --with-deps nie jest potrzebne
+    if [[ "$OS" == "linux" ]]; then
+        "$VENV_PYTHON" -m playwright install chromium --with-deps 2>/dev/null \
+            && ok "Playwright chromium + system deps installed" \
+            || warn "Playwright install failed — screenshot preview will be unavailable."
+    else
+        "$VENV_PYTHON" -m playwright install chromium 2>/dev/null \
+            && ok "Playwright chromium installed" \
+            || warn "Playwright install failed — screenshot preview will be unavailable."
+    fi
 else
     warn "Playwright not in requirements — skipping browser install."
 fi
@@ -387,7 +470,7 @@ if [[ -n "$OLD_CONTAINERS" || -n "$OLD_VOLUMES" ]]; then
     echo ""
 
     read -rp "  Remove old data and perform a clean install? [Y/n]: " CLEAN_UP
-    CLEAN_UP="${CLEAN_UP,,}"
+    CLEAN_UP="$(echo "$CLEAN_UP" | tr '[:upper:]' '[:lower:]')"
 
     if [[ "$CLEAN_UP" == "y" ]]; then
         info "Removing old containers and volumes..."
@@ -475,7 +558,8 @@ if command -v crontab &>/dev/null; then
     else
         echo ""
         read -rp "  Add scanner autostart to crontab (every 5 minutes)? [Y/n]: " ADD_CRON
-        if [[ "${ADD_CRON,,}" != "n" ]]; then
+        _ADD_CRON_LC="$(echo "$ADD_CRON" | tr '[:upper:]' '[:lower:]')"
+        if [[ "$_ADD_CRON_LC" != "n" ]]; then
             (echo "$CURRENT_CRON"; echo "$CRON_CMD") | grep -v "^$" | crontab -
             ok "Cron job added (every 5 minutes)"
         else
