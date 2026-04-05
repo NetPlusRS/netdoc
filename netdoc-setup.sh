@@ -122,45 +122,77 @@ ok "$DOCKER_VER"
 
 # Check whether the Docker daemon is running
 if ! docker info &>/dev/null; then
-    fail "Docker daemon is not running."
+    fail "Docker daemon is not running or not accessible without sudo."
     if [[ "$OS" == "macos" ]]; then
         info "Launch Docker Desktop from the Applications folder."
+        echo ""
+        read -rp "  Press Enter once Docker is running..."
     else
-        info "Run: sudo systemctl start docker"
-        info "Enable on boot: sudo systemctl enable docker"
-    fi
-    echo ""
-    read -rp "  Press Enter once Docker is running..."
-    if ! docker info &>/dev/null; then
-        # Last chance — try with sudo
+        # Linux: sprawdz czy to kwestia grupy docker czy daemon nie dziala
         if sudo docker info &>/dev/null 2>&1; then
-            warn "Docker works only with sudo. Add your user to the docker group:"
-            info "  sudo usermod -aG docker \$USER  && newgrp docker"
+            warn "Docker requires sudo — your user is not in the 'docker' group."
+            echo ""
+            read -rp "  Add user '$USER' to the docker group? [Y/n]: " FIX_DOCKER_GROUP
+            if [[ "${FIX_DOCKER_GROUP,,}" != "n" ]]; then
+                sudo usermod -aG docker "$USER"
+                ok "User '$USER' added to 'docker' group."
+                warn "Group change takes effect in a new shell session."
+                info "Continuing with 'newgrp docker' for this session..."
+                # Uruchom resztę skryptu w nowej sesji grupy docker
+                exec sg docker -c "bash '$0' --skip-group-fix"
+                # exec nie wraca — jesli sg zawiedzie, kontynuuj z sudo
+            fi
+            # Fallback: uzyj sudo dla pozostalych komend docker
+            export DOCKER_CMD="sudo docker"
         else
-            fail "Docker daemon is still unavailable. Aborting."
-            exit 1
+            info "Run: sudo systemctl start docker"
+            info "Enable on boot: sudo systemctl enable docker"
+            echo ""
+            read -rp "  Press Enter once Docker is running..."
+            if ! docker info &>/dev/null 2>&1 && ! sudo docker info &>/dev/null 2>&1; then
+                fail "Docker daemon is still unavailable. Aborting."
+                exit 1
+            fi
+            export DOCKER_CMD="sudo docker"
         fi
     fi
 fi
+DOCKER_CMD="${DOCKER_CMD:-docker}"
 
 ok "Docker daemon is running"
 
 # Check Docker Compose (v2 — 'docker compose')
 step "Checking Docker Compose..."
 
-if docker compose version &>/dev/null 2>&1; then
-    COMPOSE_VER=$(docker compose version 2>&1 | head -1)
+if $DOCKER_CMD compose version &>/dev/null 2>&1; then
+    COMPOSE_VER=$($DOCKER_CMD compose version 2>&1 | head -1)
     ok "$COMPOSE_VER"
 else
-    fail "Docker Compose v2 is not available ('docker compose' instead of 'docker-compose')."
+    fail "Docker Compose v2 is not available ('docker compose' plugin missing)."
     if [[ "$OS" == "macos" ]]; then
         info "Update Docker Desktop to the latest version."
+    elif [[ "$PKG_MANAGER" == "apt" ]]; then
+        # docker-compose-plugin jest w oficjalnym repo Docker (nie Ubuntu default).
+        # Jesli Docker byl instalowany przez get.docker.com — plugin juz powinien byc.
+        # Jesli przez apt install docker.io — potrzeba repo Docker.
+        info "Attempting to install docker-compose-plugin..."
+        if sudo apt-get install -y docker-compose-plugin 2>/dev/null; then
+            ok "docker-compose-plugin installed"
+        else
+            info "If the above failed, add the Docker official apt repository first:"
+            info "  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg"
+            info "  echo \"deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \$(lsb_release -cs) stable\" | sudo tee /etc/apt/sources.list.d/docker.list"
+            info "  sudo apt-get update && sudo apt-get install -y docker-compose-plugin"
+            exit 1
+        fi
+    elif [[ "$PKG_MANAGER" == "dnf" ]]; then
+        sudo dnf install -y docker-compose-plugin || exit 1
     else
-        info "Install docker-compose-plugin:"
-        info "  sudo apt-get install docker-compose-plugin   # Ubuntu/Debian"
-        info "  sudo dnf install docker-compose-plugin       # Fedora"
+        exit 1
     fi
-    exit 1
+    # Weryfikacja po instalacji
+    $DOCKER_CMD compose version &>/dev/null 2>&1 || { fail "docker compose still not available"; exit 1; }
+    ok "$($DOCKER_CMD compose version 2>&1 | head -1)"
 fi
 
 # ── Python ────────────────────────────────────────────────────────────────────
@@ -182,18 +214,30 @@ for cmd in python3.12 python3.11 python3.10 python3 python; do
 done
 
 if [[ -z "$PYTHON_CMD" ]]; then
-    warn "Python 3.10+ not found."
+    warn "Python 3.10+ not found — attempting to install..."
     if [[ "$OS" == "macos" ]]; then
         if command -v brew &>/dev/null; then
-            brew install python@3.12 && PYTHON_CMD="python3"
+            brew install python@3.12 && PYTHON_CMD="python3.12"
         else
             fail "Install Python 3.10+ from https://python.org"
             exit 1
         fi
     elif [[ "$PKG_MANAGER" == "apt" ]]; then
-        sudo apt-get update -qq && sudo apt-get install -y python3 python3-pip && PYTHON_CMD="python3"
+        # Ubuntu 20.04: domyslny python3 = 3.8 (za stary). Proba python3.12 z deadsnakes PPA.
+        sudo apt-get update -qq
+        if sudo apt-get install -y python3.12 python3.12-venv 2>/dev/null; then
+            PYTHON_CMD="python3.12"
+            ok "Python 3.12 installed from system packages"
+        else
+            # Fallback: deadsnakes PPA (Ubuntu 20.04)
+            info "Trying deadsnakes PPA for Python 3.12..."
+            sudo apt-get install -y software-properties-common -qq
+            sudo add-apt-repository ppa:deadsnakes/ppa -y
+            sudo apt-get update -qq
+            sudo apt-get install -y python3.12 python3.12-venv && PYTHON_CMD="python3.12"
+        fi
     elif [[ "$PKG_MANAGER" == "dnf" ]]; then
-        sudo dnf install -y python3 python3-pip && PYTHON_CMD="python3"
+        sudo dnf install -y python3.12 python3.12-venv && PYTHON_CMD="python3.12"
     else
         fail "Install Python 3.10+ manually: https://python.org"
         exit 1
@@ -212,6 +256,16 @@ else
         warn "nmap unavailable — discovery scanner will not work."
         info "Install manually: https://nmap.org/download.html"
     }
+fi
+
+# ── curl (wymagany do sprawdzania panelu webowego) ────────────────────────────
+
+step "Checking curl..."
+
+if command -v curl &>/dev/null; then
+    ok "$(curl --version 2>&1 | head -1)"
+else
+    install_pkg "curl" "curl" "curl" && ok "curl installed"
 fi
 
 # ── git ───────────────────────────────────────────────────────────────────────
@@ -244,25 +298,74 @@ else
     fi
 fi
 
-# ── Python dependencies ────────────────────────────────────────────────────────
+# ── Python dependencies (virtualenv) ──────────────────────────────────────────
+# Uzywamy virtualenv zamiast bezposredniego pip install, bo:
+# - Ubuntu 22.04+: PEP 668 "externally managed environment" blokuje pip install
+# - --break-system-packages nie istnieje w pip < 23.1 (Ubuntu 22.04 ma pip 22.x)
+# - venv izoluje zaleznosci i dziala wszedie bez sudo
+
+step "Setting up Python virtual environment (.venv)..."
+
+# Upewnij sie ze python3-venv/python3.X-venv jest zainstalowany
+if ! "$PYTHON_CMD" -m venv --help &>/dev/null 2>&1; then
+    warn "venv module not available — installing..."
+    if [[ "$PKG_MANAGER" == "apt" ]]; then
+        PY_MINOR=$("$PYTHON_CMD" -c "import sys; print(sys.version_info.minor)" 2>/dev/null || echo "")
+        PY_MAJOR=$("$PYTHON_CMD" -c "import sys; print(sys.version_info.major)" 2>/dev/null || echo "3")
+        if [[ -n "$PY_MINOR" ]]; then
+            sudo apt-get install -y "python${PY_MAJOR}.${PY_MINOR}-venv" 2>/dev/null \
+                || sudo apt-get install -y python3-venv
+        else
+            sudo apt-get install -y python3-venv
+        fi
+    elif [[ "$PKG_MANAGER" == "dnf" ]]; then
+        sudo dnf install -y python3-venv
+    fi
+fi
+
+VENV_DIR="$SCRIPT_DIR/.venv"
+if [[ ! -d "$VENV_DIR" ]]; then
+    "$PYTHON_CMD" -m venv "$VENV_DIR" || { fail "Failed to create virtualenv at $VENV_DIR"; exit 1; }
+    ok "Virtualenv created: $VENV_DIR"
+else
+    ok "Virtualenv already exists: $VENV_DIR"
+fi
+
+# Uzyj Pythona z venv do instalacji zaleznosci
+VENV_PYTHON="$VENV_DIR/bin/python"
+[[ "$OS" == "macos" ]] && VENV_PYTHON="$VENV_DIR/bin/python3"
 
 step "Installing Python dependencies (requirements.txt)..."
 
 if [[ -f "requirements.txt" ]]; then
-    "$PYTHON_CMD" -m pip install -r requirements.txt -q --break-system-packages 2>/dev/null \
-        || "$PYTHON_CMD" -m pip install -r requirements.txt -q \
-        || warn "Some dependencies may not have installed — please check manually."
+    "$VENV_PYTHON" -m pip install --upgrade pip -q
+    "$VENV_PYTHON" -m pip install -r requirements.txt -q \
+        || { fail "pip install failed — check requirements.txt and network access."; exit 1; }
     ok "Python dependencies installed"
 else
     warn "requirements.txt not found — skipping"
 fi
 
+# Playwright — wymaga oddzielnej instalacji przegladarki i bibliotek systemowych
+# Bez tego screenshots (hover preview) nie beda dzialac (brak chromium / brakujace .so)
+step "Installing Playwright browser (chromium) + system deps..."
+if "$VENV_PYTHON" -c "import playwright" 2>/dev/null; then
+    "$VENV_PYTHON" -m playwright install chromium --with-deps 2>/dev/null \
+        && ok "Playwright chromium installed" \
+        || warn "Playwright install failed — screenshot preview will be unavailable."
+else
+    warn "Playwright not in requirements — skipping browser install."
+fi
+
+# Od teraz uzywamy VENV_PYTHON zamiast PYTHON_CMD
+PYTHON_CMD="$VENV_PYTHON"
+
 # ── Detect previous installation ─────────────────────────────────────────────
 
 step "Checking for a previous NetDoc installation..."
 
-OLD_CONTAINERS=$(docker ps -a --filter "name=netdoc" --format "{{.Names}}" 2>/dev/null | grep -v "^$" || true)
-OLD_VOLUMES=$(docker volume ls --filter "name=netdoc" --format "{{.Name}}" 2>/dev/null | grep -v "^$" || true)
+OLD_CONTAINERS=$($DOCKER_CMD ps -a --filter "name=netdoc" --format "{{.Names}}" 2>/dev/null | grep -v "^$" || true)
+OLD_VOLUMES=$($DOCKER_CMD volume ls --filter "name=netdoc" --format "{{.Name}}" 2>/dev/null | grep -v "^$" || true)
 
 if [[ -n "$OLD_CONTAINERS" || -n "$OLD_VOLUMES" ]]; then
     warn "A previous NetDoc installation was found:"
@@ -288,11 +391,11 @@ if [[ -n "$OLD_CONTAINERS" || -n "$OLD_VOLUMES" ]]; then
 
     if [[ "$CLEAN_UP" == "y" ]]; then
         info "Removing old containers and volumes..."
-        docker compose down --volumes --remove-orphans || true
+        $DOCKER_CMD compose down --volumes --remove-orphans || true
         ok "Old containers and data removed — clean install."
     else
         info "Stopping old containers (data preserved)..."
-        docker compose down --remove-orphans || true
+        $DOCKER_CMD compose down --remove-orphans || true
         ok "Old containers stopped — volume data preserved."
     fi
 else
@@ -313,7 +416,7 @@ if [[ "$OS" == "linux" ]]; then
     fi
 fi
 
-docker compose up -d
+$DOCKER_CMD compose up -d
 ok "Containers started"
 
 # ── Wait for the web panel ───────────────────────────────────────────────────
@@ -341,6 +444,8 @@ fi
 
 step "Running initial network scan..."
 
+mkdir -p logs  # upewnij sie ze katalog logów istnieje
+
 if [[ -f "run_scanner.py" ]]; then
     if command -v nmap &>/dev/null; then
         info "Scan may take 2–5 minutes. Starting in the background..."
@@ -360,7 +465,8 @@ fi
 
 step "Configuring scanner autostart..."
 
-CRON_CMD="*/5 * * * * cd $SCRIPT_DIR && $PYTHON_CMD run_scanner.py --once >> $SCRIPT_DIR/logs/scanner.log 2>&1"
+# Cron musi uzywac absolutnej sciezki do python z venv (nie 'python3' z PATH)
+CRON_CMD="*/5 * * * * cd $SCRIPT_DIR && $SCRIPT_DIR/.venv/bin/python run_scanner.py --once >> $SCRIPT_DIR/logs/scanner.log 2>&1"
 
 if command -v crontab &>/dev/null; then
     CURRENT_CRON=$(crontab -l 2>/dev/null || echo "")
