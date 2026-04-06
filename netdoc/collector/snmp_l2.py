@@ -33,10 +33,19 @@ _OID_FDB_STATUS    = "1.3.6.1.2.1.17.4.3.1.3"  # dot1dTpFdbStatus: 3=learned,5=s
 _OID_BASE_PORT_IFINDEX = "1.3.6.1.2.1.17.1.4.1.2"  # dot1dBasePortIfIndex
 
 # Q-BRIDGE MIB (IEEE 802.1Q) — VLAN membership
+# Static VLAN table (standard, dziala na wiekszosci urzadzen)
 _OID_VLAN_STATIC_EGRESS = "1.3.6.1.2.1.17.7.1.4.3.1.2"   # dot1qVlanStaticEgressPorts (bitstring)
 _OID_VLAN_STATIC_UNTAG  = "1.3.6.1.2.1.17.7.1.4.3.1.4"   # dot1qVlanStaticUntaggedPorts (bitstring)
 _OID_VLAN_STATIC_NAME   = "1.3.6.1.2.1.17.7.1.4.3.1.1"   # dot1qVlanStaticName
-_OID_PVID               = "1.3.6.1.2.1.17.7.1.4.5.1.1"   # dot1qPvid: PVID per port ifIndex
+# Current VLAN table (fallback — Cisco SG300, HP, inne ktore nie maja static table)
+# Index: <TimeMark>.<VlanIndex> — ostatni element = VLAN ID
+_OID_VLAN_CURR_EGRESS   = "1.3.6.1.2.1.17.7.1.4.2.1.3"   # dot1qVlanCurrentEgressPorts (bitstring)
+_OID_VLAN_CURR_UNTAG    = "1.3.6.1.2.1.17.7.1.4.2.1.4"   # dot1qVlanCurrentUntaggedPorts (bitstring)
+# Per-port VLAN assignment (dziala niezaleznie od bitstring VLAN tables)
+_OID_PVID               = "1.3.6.1.2.1.17.7.1.4.5.1.1"   # dot1qPvid: access VLAN per bridge port
+# Cisco IOS — ciscoVlanMembership MIB (dostepny bez community@vlanId)
+_OID_CISCO_VM_VLAN      = "1.3.6.1.4.1.9.9.68.1.2.2.1.2"  # vmVlan: access VLAN per ifIndex
+_OID_CISCO_VTP_NAME     = "1.3.6.1.4.1.9.9.46.1.3.1.1.4.1" # vtpVlanName per VLAN (domain 1)
 
 # STP MIB (RFC 1493) — Spanning Tree
 _OID_STP_PORT_STATE     = "1.3.6.1.2.1.17.2.15.1.3"   # dot1dStpPortState: 1-6
@@ -72,6 +81,22 @@ def _oid_suffix_int(full_oid: str, prefix: str) -> Optional[int]:
     try:
         return int(full_oid.strip(".").rsplit(".", 1)[-1])
     except (ValueError, IndexError):
+        return None
+
+
+def _int_from_raw(raw) -> Optional[int]:
+    """Konwertuje surową wartość SNMP (bytes lub str) na int.
+
+    snmp_walk zwraca bytes z BER — int(bytes) rzuca TypeError.
+    Używamy big-endian decode, tak jak _int_val w snmp_sensors.py.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, (bytes, bytearray)):
+        return int.from_bytes(raw, "big") if raw else 0
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
         return None
 
 
@@ -145,7 +170,7 @@ def collect_fdb(ip: str, community: str, timeout: int = 2) -> list[dict]:
             bp = _oid_suffix_int(full_oid, _OID_BASE_PORT_IFINDEX)
             if bp is not None:
                 try:
-                    port_to_ifindex[bp] = int(raw_val)
+                    port_to_ifindex[bp] = _int_from_raw(raw_val)
                 except (ValueError, TypeError):
                     pass
     except Exception as exc:
@@ -166,7 +191,7 @@ def collect_fdb(ip: str, community: str, timeout: int = 2) -> list[dict]:
                 parts  = suffix.strip(".").split(".")
                 if len(parts) == 6:
                     mac = ":".join(f"{int(p):02x}" for p in parts)
-                    mac_to_port[mac] = int(raw_val)
+                    mac_to_port[mac] = _int_from_raw(raw_val)
             except Exception:
                 pass
     except Exception as exc:
@@ -182,7 +207,7 @@ def collect_fdb(ip: str, community: str, timeout: int = 2) -> list[dict]:
                 parts  = suffix.strip(".").split(".")
                 if len(parts) == 6:
                     mac = ":".join(f"{int(p):02x}" for p in parts)
-                    mac_to_status[mac] = int(raw_val)
+                    mac_to_status[mac] = _int_from_raw(raw_val)
             except Exception:
                 pass
     except Exception as exc:
@@ -223,102 +248,173 @@ def collect_vlan_port(ip: str, community: str, timeout: int = 2) -> list[dict]:
         port_mode (str)     — 'access' (untagged) lub 'trunk' (tagged)
         is_pvid (bool)      — True jezeli to PVID portu
 
-    Metoda: egress ports bitstring → lista portow w VLAN.
-    Untagged bitstring sluzy do rozroznienia access/trunk.
+    Strategia (3-etapowa):
+    1. dot1qVlanStaticTable — standard, dziala na Juniper, HP ProCurve, Extreme
+    2. dot1qVlanCurrentTable — fallback dla urzadzen bez static table (Cisco SG300, Ubiquiti)
+    3. PVID per bridge port — ostateczny fallback: znamy tylko access VLAN per port
+       Cisco IOS (2960X, 3750) wymaga community@vlanId dla pelnego dot1q — PVID jest
+       dostepne bez tego i daje minimalnie uzyteczne dane (access VLAN per port).
     """
     from netdoc.collector.snmp_walk import snmp_walk
 
-    # Pobierz nazwy VLAN-ow
-    vlan_names: dict[int, str] = {}
-    try:
-        rows = snmp_walk(ip, _OID_VLAN_STATIC_NAME, community, timeout=timeout, max_iter=512)
-        for full_oid, raw_val, _ in rows:
-            vlan_id = _oid_suffix_int(full_oid, _OID_VLAN_STATIC_NAME)
-            if vlan_id is not None:
-                try:
-                    name = raw_val.decode("utf-8", errors="replace").strip() if isinstance(raw_val, bytes) else str(raw_val).strip()
-                    vlan_names[vlan_id] = name
-                except Exception:
-                    pass
-    except Exception as exc:
-        logger.debug("collect_vlan_port %s: vlan names error: %s", ip, exc)
+    def _walk_safe(oid, max_iter=512):
+        try:
+            return list(snmp_walk(ip, oid, community, timeout=timeout, max_iter=max_iter))
+        except Exception as exc:
+            logger.debug("collect_vlan_port %s walk %s: %s", ip, oid, exc)
+            return []
 
-    # Pobierz egress ports per VLAN
-    vlan_egress: dict[int, list[int]] = {}
-    try:
-        rows = snmp_walk(ip, _OID_VLAN_STATIC_EGRESS, community, timeout=timeout, max_iter=512)
-        for full_oid, raw_val, _ in rows:
-            vlan_id = _oid_suffix_int(full_oid, _OID_VLAN_STATIC_EGRESS)
-            if vlan_id is not None:
-                vlan_egress[vlan_id] = _parse_bitstring(raw_val)
-    except Exception as exc:
-        logger.debug("collect_vlan_port %s: egress walk error: %s", ip, exc)
-
-    # Pobierz untagged ports per VLAN
-    vlan_untagged: dict[int, set[int]] = {}
-    try:
-        rows = snmp_walk(ip, _OID_VLAN_STATIC_UNTAG, community, timeout=timeout, max_iter=512)
-        for full_oid, raw_val, _ in rows:
-            vlan_id = _oid_suffix_int(full_oid, _OID_VLAN_STATIC_UNTAG)
-            if vlan_id is not None:
-                vlan_untagged[vlan_id] = set(_parse_bitstring(raw_val))
-    except Exception as exc:
-        logger.debug("collect_vlan_port %s: untagged walk error: %s", ip, exc)
-
-    # Pobierz PVID per ifIndex
-    pvid_map: dict[int, int] = {}  # ifIndex → vlan_id
-    try:
-        rows = snmp_walk(ip, _OID_PVID, community, timeout=timeout, max_iter=512)
-        for full_oid, raw_val, _ in rows:
-            if_index = _oid_suffix_int(full_oid, _OID_PVID)
-            if if_index is not None:
-                try:
-                    pvid_map[if_index] = int(raw_val)
-                except (ValueError, TypeError):
-                    pass
-    except Exception as exc:
-        logger.debug("collect_vlan_port %s: pvid walk error: %s", ip, exc)
-
-    # Mapowanie bridge port (1-based z bitstring) → ifIndex
-    # Uwaga: w Q-BRIDGE bitstring indeksy sa bridge ports, nie ifIndex
-    # Potrzebujemy mapowania bridge_port → ifIndex
+    # ── Mapowanie bridge port → ifIndex (potrzebne dla bitstring i PVID) ──────
     port_to_ifindex: dict[int, int] = {}
-    try:
-        from netdoc.collector.snmp_walk import snmp_walk as _walk
-        rows = _walk(ip, _OID_BASE_PORT_IFINDEX, community, timeout=timeout, max_iter=512)
-        for full_oid, raw_val, _ in rows:
-            bp = _oid_suffix_int(full_oid, _OID_BASE_PORT_IFINDEX)
-            if bp is not None:
-                try:
-                    port_to_ifindex[bp] = int(raw_val)
-                except (ValueError, TypeError):
-                    pass
-    except Exception as exc:
-        logger.debug("collect_vlan_port %s: port-ifindex map error: %s", ip, exc)
+    for full_oid, raw_val, _ in _walk_safe(_OID_BASE_PORT_IFINDEX):
+        bp = _oid_suffix_int(full_oid, _OID_BASE_PORT_IFINDEX)
+        if bp is not None:
+            v = _int_from_raw(raw_val)
+            if v:
+                port_to_ifindex[bp] = v
 
-    # Złożenie wyniku
+    # ── PVID per bridge port (dot1qPvid) — zawsze zbieramy, niezaleznie od metody
+    pvid_by_bp: dict[int, int] = {}   # bridgePort → vlan_id
+    for full_oid, raw_val, _ in _walk_safe(_OID_PVID):
+        bp = _oid_suffix_int(full_oid, _OID_PVID)
+        if bp is not None:
+            v = _int_from_raw(raw_val)
+            if v and 1 <= v <= 4094:
+                pvid_by_bp[bp] = v
+
+    # ── VLAN nazwy (static table — nie ma w current table) ────────────────────
+    vlan_names: dict[int, str] = {}
+    for full_oid, raw_val, _ in _walk_safe(_OID_VLAN_STATIC_NAME):
+        vlan_id = _oid_suffix_int(full_oid, _OID_VLAN_STATIC_NAME)
+        if vlan_id is not None:
+            try:
+                name = raw_val.decode("utf-8", errors="replace").strip() if isinstance(raw_val, (bytes, bytearray)) else str(raw_val).strip()
+                if name:
+                    vlan_names[vlan_id] = name
+            except Exception:
+                pass
+
+    # ── Strategia 1: dot1qVlanStaticEgressPorts (bitstring per VLAN) ──────────
+    vlan_egress:   dict[int, list[int]] = {}
+    vlan_untagged: dict[int, set[int]]  = {}
+
+    for full_oid, raw_val, _ in _walk_safe(_OID_VLAN_STATIC_EGRESS):
+        vlan_id = _oid_suffix_int(full_oid, _OID_VLAN_STATIC_EGRESS)
+        if vlan_id is not None:
+            vlan_egress[vlan_id] = _parse_bitstring(raw_val)
+
+    for full_oid, raw_val, _ in _walk_safe(_OID_VLAN_STATIC_UNTAG):
+        vlan_id = _oid_suffix_int(full_oid, _OID_VLAN_STATIC_UNTAG)
+        if vlan_id is not None:
+            vlan_untagged[vlan_id] = set(_parse_bitstring(raw_val))
+
+    # ── Strategia 2: dot1qVlanCurrentEgressPorts (jesli static puste) ─────────
+    if not vlan_egress:
+        for full_oid, raw_val, _ in _walk_safe(_OID_VLAN_CURR_EGRESS):
+            # Index: <TimeMark>.<VlanIndex> — ostatni element = VLAN ID
+            vlan_id = _oid_suffix_int(full_oid, _OID_VLAN_CURR_EGRESS)
+            if vlan_id is not None and 1 <= vlan_id <= 4094:
+                vlan_egress[vlan_id] = _parse_bitstring(raw_val)
+        for full_oid, raw_val, _ in _walk_safe(_OID_VLAN_CURR_UNTAG):
+            vlan_id = _oid_suffix_int(full_oid, _OID_VLAN_CURR_UNTAG)
+            if vlan_id is not None and 1 <= vlan_id <= 4094:
+                vlan_untagged[vlan_id] = set(_parse_bitstring(raw_val))
+        if vlan_egress:
+            logger.debug("collect_vlan_port %s: uzywam dot1qVlanCurrentTable (static puste)", ip)
+
+    # ── Zlozenie wyniku z bitstring (strategia 1 lub 2) ───────────────────────
     result = []
-    for vlan_id, bridge_ports in vlan_egress.items():
-        if vlan_id < 1 or vlan_id > 4094:
-            continue
-        untagged_ports = vlan_untagged.get(vlan_id, set())
-        vlan_name = vlan_names.get(vlan_id)
-        for bp in bridge_ports:
+    seen: set[tuple] = set()  # (vlan_id, if_index) — deduplikacja
+
+    if vlan_egress:
+        for vlan_id, bridge_ports in vlan_egress.items():
+            if vlan_id < 1 or vlan_id > 4094:
+                continue
+            untagged_set = vlan_untagged.get(vlan_id, set())
+            vlan_name = vlan_names.get(vlan_id)
+            for bp in bridge_ports:
+                if_index = port_to_ifindex.get(bp)
+                if if_index is None:
+                    continue
+                key = (vlan_id, if_index)
+                if key in seen:
+                    continue
+                seen.add(key)
+                is_untagged = bp in untagged_set
+                port_mode   = "access" if is_untagged else "trunk"
+                is_pvid     = pvid_by_bp.get(bp) == vlan_id
+                result.append({
+                    "vlan_id":   vlan_id,
+                    "vlan_name": vlan_name,
+                    "if_index":  if_index,
+                    "port_mode": port_mode,
+                    "is_pvid":   is_pvid,
+                })
+
+    # ── Strategia 3 (fallback): PVID per port — gdy bitstring nie dal danych ──
+    # Daje tylko access VLAN per port, bez trunk VLAN membership.
+    # Cisco IOS bez community@vlanId najczesciej laduje tutaj.
+    if not result and pvid_by_bp:
+        logger.debug("collect_vlan_port %s: fallback do PVID-only (brak danych z bitstring)", ip)
+        for bp, vlan_id in pvid_by_bp.items():
             if_index = port_to_ifindex.get(bp)
             if if_index is None:
                 continue
-            is_untagged = bp in untagged_ports
-            port_mode   = "access" if is_untagged else "trunk"
-            is_pvid     = pvid_map.get(if_index) == vlan_id
+            key = (vlan_id, if_index)
+            if key in seen:
+                continue
+            seen.add(key)
             result.append({
                 "vlan_id":   vlan_id,
-                "vlan_name": vlan_name,
+                "vlan_name": vlan_names.get(vlan_id),
                 "if_index":  if_index,
-                "port_mode": port_mode,
-                "is_pvid":   is_pvid,
+                "port_mode": "access",
+                "is_pvid":   True,
             })
 
-    logger.debug("collect_vlan_port %s: %d vlan-port entries (vlans: %d)", ip, len(result), len(vlan_egress))
+    # ── Strategia 4 (Cisco IOS): ciscoVlanMembership MIB — vmVlan per ifIndex ─
+    # Dostepny na Cisco IOS bez community@vlanId. Dziala gdy Q-BRIDGE MIB jest zablokowane.
+    # Probujemy zawsze jesli wciaz nie mamy danych.
+    if not result:
+        cisco_vlan_by_if: dict[int, int] = {}  # ifIndex → vlan_id
+        for full_oid, raw_val, _ in _walk_safe(_OID_CISCO_VM_VLAN, max_iter=300):
+            if_idx = _oid_suffix_int(full_oid, _OID_CISCO_VM_VLAN)
+            if if_idx is not None:
+                v = _int_from_raw(raw_val)
+                if v and 1 <= v <= 4094:
+                    cisco_vlan_by_if[if_idx] = v
+
+        if cisco_vlan_by_if:
+            # Pobierz nazwy VLAN z VTP (jesli dostepne)
+            for full_oid, raw_val, _ in _walk_safe(_OID_CISCO_VTP_NAME, max_iter=512):
+                vlan_id = _oid_suffix_int(full_oid, _OID_CISCO_VTP_NAME)
+                if vlan_id is not None and vlan_id not in vlan_names:
+                    try:
+                        name = raw_val.decode("utf-8", errors="replace").strip() if isinstance(raw_val, (bytes, bytearray)) else str(raw_val).strip()
+                        if name:
+                            vlan_names[vlan_id] = name
+                    except Exception:
+                        pass
+
+            logger.debug("collect_vlan_port %s: uzywam ciscoVlanMembership MIB (%d porty)", ip, len(cisco_vlan_by_if))
+            for if_idx, vlan_id in cisco_vlan_by_if.items():
+                key = (vlan_id, if_idx)
+                if key in seen:
+                    continue
+                seen.add(key)
+                result.append({
+                    "vlan_id":   vlan_id,
+                    "vlan_name": vlan_names.get(vlan_id),
+                    "if_index":  if_idx,
+                    "port_mode": "access",
+                    "is_pvid":   True,
+                })
+
+    method = ("bitstring" if vlan_egress else
+              ("pvid" if pvid_by_bp and any(r["is_pvid"] for r in result) else
+               ("cisco_vm" if result else "none")))
+    logger.debug("collect_vlan_port %s: %d vlan-port entries (vlans: %d, method: %s)",
+                 ip, len(result), len({r["vlan_id"] for r in result}), method)
     return result
 
 
@@ -349,7 +445,7 @@ def collect_stp_ports(ip: str, community: str, timeout: int = 2) -> tuple[list[d
             bp = _oid_suffix_int(full_oid, _OID_BASE_PORT_IFINDEX)
             if bp is not None:
                 try:
-                    port_to_ifindex[bp] = int(raw_val)
+                    port_to_ifindex[bp] = _int_from_raw(raw_val)
                 except (ValueError, TypeError):
                     pass
     except Exception as exc:
@@ -363,7 +459,7 @@ def collect_stp_ports(ip: str, community: str, timeout: int = 2) -> tuple[list[d
             bp = _oid_suffix_int(full_oid, _OID_STP_PORT_STATE)
             if bp is not None:
                 try:
-                    port_state[bp] = int(raw_val)
+                    port_state[bp] = _int_from_raw(raw_val)
                 except (ValueError, TypeError):
                     pass
     except Exception as exc:
@@ -377,7 +473,7 @@ def collect_stp_ports(ip: str, community: str, timeout: int = 2) -> tuple[list[d
             bp = _oid_suffix_int(full_oid, _OID_STP_PORT_PATH_COST)
             if bp is not None:
                 try:
-                    port_cost[bp] = int(raw_val)
+                    port_cost[bp] = _int_from_raw(raw_val)
                 except (ValueError, TypeError):
                     pass
     except Exception as exc:
@@ -391,8 +487,10 @@ def collect_stp_ports(ip: str, community: str, timeout: int = 2) -> tuple[list[d
             bp = _oid_suffix_int(full_oid, _OID_STP_PORT_ROLE)
             if bp is not None:
                 try:
-                    role_int = int(raw_val)
-                    port_role[bp] = _STP_ROLE_NAMES.get(role_int, str(role_int))
+                    role_int = _int_from_raw(raw_val)
+                    # Wartości 1-5 = valid enum; większe = OCTET STRING (Bridge ID) — ignoruj
+                    if role_int is not None and 1 <= role_int <= 5:
+                        port_role[bp] = _STP_ROLE_NAMES.get(role_int, str(role_int))
                 except (ValueError, TypeError):
                     pass
     except Exception as exc:

@@ -355,6 +355,16 @@ _CISCO_VOLT    = "1.3.6.1.4.1.9.9.13.1.2.1"
 _CISCO_FAN     = "1.3.6.1.4.1.9.9.13.1.4.1"
 _CISCO_SUPPLY  = "1.3.6.1.4.1.9.9.13.1.5.1"
 _CISCO_CPU     = "1.3.6.1.4.1.9.9.109.1.1.1.1"
+# CISCO-MEMORY-POOL-MIB: ciscoMemoryPoolTable (bardziej niezawodne niż cpmCPUMemory)
+# .2 = ciscoMemoryPoolName (string)
+# .5 = ciscoMemoryPoolUsed (bytes, Gauge32)
+# .6 = ciscoMemoryPoolFree (bytes, Gauge32)
+_CISCO_MEM_POOL = "1.3.6.1.4.1.9.9.48.1.1.1"
+# CISCO-FLASH-MIB: ciscoFlashPartitionTable
+# .4.deviceIdx.partIdx = ciscoFlashPartitionSize (KB)
+# .5.deviceIdx.partIdx = ciscoFlashPartitionSizeFree (KB)
+# .11.deviceIdx.partIdx = ciscoFlashPartitionName (string)
+_CISCO_FLASH_PART = "1.3.6.1.4.1.9.9.10.1.1.3.1"
 
 
 def _cisco_envmon(ip: str, community: str, timeout: float) -> list[dict]:
@@ -423,7 +433,9 @@ def _cisco_envmon(ip: str, community: str, timeout: float) -> list[dict]:
                                    ok_val, "", "cisco_envmon",
                                    raw={1:"normal",2:"warning",3:"critical",4:"shutdown",6:"notFunctioning"}.get(state,str(state))))
 
-    # CPU (5-min average)
+    # CPU (5-min average) — tylko pole 6 (cpmCPUTotal5minRev), bez pól pamięci
+    # Pola 8/9 (cpmCPUMemoryUsed/Free) są na wielu urządzeniach Cisco niedostępne
+    # lub zwracają błędne wartości — pamięć zbieramy z ciscoMemoryPoolTable.
     cpu: dict[str, dict] = {}
     for oid_str, raw_val, _tag in _walk(ip, _CISCO_CPU, community, timeout, max_iter=100):
         suffix = oid_str[len(_CISCO_CPU):].lstrip(".")
@@ -431,18 +443,67 @@ def _cisco_envmon(ip: str, community: str, timeout: float) -> list[dict]:
         if len(parts) < 2: continue
         field, idx = int(parts[0]), parts[1]
         entry = cpu.setdefault(idx, {})
-        if field == 6:  entry["cpu5m"]    = _int_val(raw_val)
-        elif field == 8: entry["mem_used"] = _int_val(raw_val)
-        elif field == 9: entry["mem_free"] = _int_val(raw_val)
+        if field == 6: entry["cpu5m"] = _int_val(raw_val)
 
     for i, (idx, c) in enumerate(cpu.items(), 1):
         sfx = f"_{i}" if i > 1 else ""
         if c.get("cpu5m") is not None:
             results.append(_sensor(f"cpu_load_5m{sfx}", c["cpu5m"], "%", "cisco_process"))
-        mu, mf = c.get("mem_used"), c.get("mem_free")
-        if mu is not None and mf is not None and (mu + mf) > 0:
-            pct = round(mu / (mu + mf) * 100, 1)
-            results.append(_sensor(f"mem_used_pct{sfx}", pct, "%", "cisco_process"))
+
+    # RAM — CISCO-MEMORY-POOL-MIB (ciscoMemoryPoolTable)
+    # Indeks: 1=Processor, 2=I/O, pozostałe pomijamy
+    # Pool "Processor" to główna pamięć systemu IOS
+    mem_pools: dict[str, dict] = {}
+    for oid_str, raw_val, _tag in _walk(ip, _CISCO_MEM_POOL, community, timeout, max_iter=200):
+        suffix = oid_str[len(_CISCO_MEM_POOL):].lstrip(".")
+        parts = suffix.split(".")
+        if len(parts) < 2: continue
+        field, idx = int(parts[0]), parts[1]
+        entry = mem_pools.setdefault(idx, {})
+        if field == 2:   entry["name"] = _str_val(raw_val)
+        elif field == 5: entry["used"] = _int_val(raw_val)   # bytes
+        elif field == 6: entry["free"] = _int_val(raw_val)   # bytes
+
+    for idx, pool in mem_pools.items():
+        name = pool.get("name", "")
+        used = pool.get("used")
+        free = pool.get("free")
+        if used is None or free is None or (used + free) <= 0:
+            continue
+        total = used + free
+        pct = round(used / total * 100, 1)
+        if name.lower() in ("processor", ""):
+            # Główna pamięć — bez sufiksu (wyświetlana jako główna)
+            results.append(_sensor("mem_used_pct", pct, "%", "cisco_process"))
+            results.append(_sensor("mem_used_mb", round(used / 1048576, 1), "MB", "cisco_process"))
+            results.append(_sensor("mem_total_mb", round(total / 1048576, 1), "MB", "cisco_process"))
+        elif name.lower() in ("i/o", "io"):
+            results.append(_sensor("mem_io_used_pct", pct, "%", "cisco_process"))
+
+    # Flash — CISCO-FLASH-MIB ciscoFlashPartitionTable
+    # OID: _CISCO_FLASH_PART.field.deviceIdx.partIdx
+    flash_parts: dict[str, dict] = {}
+    for oid_str, raw_val, _tag in _walk(ip, _CISCO_FLASH_PART, community, timeout, max_iter=100):
+        suffix = oid_str[len(_CISCO_FLASH_PART):].lstrip(".")
+        parts = suffix.split(".")
+        if len(parts) < 3: continue
+        field = int(parts[0])
+        key = f"{parts[1]}.{parts[2]}"  # deviceIdx.partIdx
+        entry = flash_parts.setdefault(key, {})
+        if field == 4:   entry["size_kb"]  = _int_val(raw_val)   # KB
+        elif field == 5: entry["free_kb"]  = _int_val(raw_val)   # KB
+        elif field == 11: entry["name"]    = _str_val(raw_val)
+
+    for i, (key, fp) in enumerate(flash_parts.items(), 1):
+        size_kb = fp.get("size_kb")
+        free_kb = fp.get("free_kb")
+        if size_kb is None or size_kb <= 0:
+            continue
+        used_kb = size_kb - (free_kb or 0)
+        pct = round(used_kb / size_kb * 100, 1) if size_kb > 0 else 0
+        sfx = f"_{i}" if i > 1 else ""
+        results.append(_sensor(f"flash_used_pct{sfx}", pct, "%", "cisco_flash"))
+        results.append(_sensor(f"flash_total_mb{sfx}", round(size_kb / 1024, 1), "MB", "cisco_flash"))
 
     return results
 

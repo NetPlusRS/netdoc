@@ -57,6 +57,7 @@ playwright>=1.40.0
 
 # ClickHouse (syslog storage)
 clickhouse-connect>=0.7.0
+numpy>=1.26.0               # clickhouse-connect batch insert performance (order of magnitude faster)
 
 # Dev
 python-dotenv==1.0.1

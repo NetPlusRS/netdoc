@@ -89,21 +89,36 @@ def _enrich_lldp(ip: str, community: str, timeout: int = 2) -> list[dict]:
 
             entry = rows.setdefault(key, {"local_port": local_port})
 
-            if   field_id == 5:   # lldpRemChassisId — moze byc MAC
-                if len(raw_val) == 6 if isinstance(raw_val, (bytes, bytearray)) else False:
+            if   field_id == 4:   # lldpRemChassisIdSubtype
+                try:
+                    sub = int.from_bytes(raw_val, "big") if isinstance(raw_val, (bytes, bytearray)) else int(raw_val)
+                    entry["chassis_subtype"] = sub
+                except (TypeError, ValueError):
+                    pass
+            elif field_id == 5:   # lldpRemChassisId
+                # Subtype 4 = MAC address (6 binary bytes)
+                # Subtype 5 = network address, subtype 7 = locally assigned (text string)
+                if isinstance(raw_val, (bytes, bytearray)) and len(raw_val) == 6:
                     mac = normalize_mac("".join(f"{b:02x}" for b in raw_val))
                     if mac:
                         entry["mac"] = mac
+                    else:
+                        entry.setdefault("chassis_id", val)
                 else:
                     entry.setdefault("chassis_id", val)
+            elif field_id == 7:   # lldpRemPortId — moze byc MAC (subtype 3) lub ifName (subtype 5)
+                if isinstance(raw_val, (bytes, bytearray)) and len(raw_val) == 6:
+                    mac = normalize_mac("".join(f"{b:02x}" for b in raw_val))
+                    if mac:
+                        entry.setdefault("mac", mac)
+                else:
+                    entry["remote_port"] = val
+            elif field_id == 8:   # lldpRemPortDesc
+                entry.setdefault("remote_port", val)
             elif field_id == 9:   # lldpRemSysName
                 entry["hostname"] = val
             elif field_id == 10:  # lldpRemSysDesc (sysDescr sasiada = firmware/model)
                 entry["sys_desc"] = val
-            elif field_id == 7:   # lldpRemPortId
-                entry["remote_port"] = val
-            elif field_id == 8:   # lldpRemPortDesc
-                entry.setdefault("remote_port_desc", val)
 
     except Exception as exc:
         logger.debug("LLDP walk %s: %s", ip, exc)
@@ -113,53 +128,119 @@ def _enrich_lldp(ip: str, community: str, timeout: int = 2) -> list[dict]:
 
 
 def _save_lldp_neighbors(db, src_device_id: int, src_ip: str, neighbors: list[dict], proto: str = "LLDP") -> int:
-    """Upsertuje sasiadow LLDP jako Device w bazie. Zwraca liczbe zapisanych."""
+    """Upsertuje sasiadow LLDP/CDP/EDP jako Device w bazie i tworzy TopologyLink.
+
+    Zwraca liczbe zapisanych/zaktualizowanych sasiadi.
+    """
     from netdoc.collector.discovery import upsert_device
     from netdoc.collector.normalizer import DeviceData, normalize_mac
+    from netdoc.storage.models import TopologyLink, TopologyProtocol, Interface
+
+    proto_enum = {
+        "LLDP": TopologyProtocol.lldp,
+        "CDP":  TopologyProtocol.cdp,
+        "EDP":  TopologyProtocol.lldp,  # EDP (Extreme) — nie ma osobnego enum, traktuj jak LLDP
+    }.get(proto, TopologyProtocol.lldp)
 
     saved = 0
     for n in neighbors:
         ip = n.get("chassis_id")  # moze byc IP jako chassis ID
+        mac_raw = n.get("mac")
         hostname = n.get("hostname", "").strip()
+        local_port_idx = n.get("local_port")    # ifIndex z CDP/LLDP (string)
+        remote_port    = n.get("remote_port")
 
-        # Jesli chassis_id nie wyglada jak IP — szukamy urzadzenia po hostname
-        if not ip or not _is_ip(ip):
-            # Sprobuj znalezc po hostname
-            if hostname:
-                existing = db.query(Device).filter(Device.hostname == hostname).first()
-                if existing:
-                    # Uzupelnij dane jesli puste
-                    changed = False
-                    sys_desc = n.get("sys_desc", "")
-                    if sys_desc and not existing.os_version:
-                        existing.os_version = sys_desc[:120]
-                        changed = True
-                    if n.get("mac") and not existing.mac:
-                        existing.mac = normalize_mac(n["mac"])
-                        changed = True
-                    if changed:
+        # Znajdz lub stworz urzadzenie sasiada
+        remote_device = None
+
+        if ip and _is_ip(str(ip)):
+            # Mamy IP — upsert przez IP
+            os_ver = (n.get("sys_desc") or n.get("software") or "")[:120] or None
+            vendor_hint = n.get("platform") or None
+            data = DeviceData(
+                ip         = str(ip),
+                mac        = normalize_mac(mac_raw),
+                hostname   = hostname or None,
+                os_version = os_ver,
+                vendor     = vendor_hint,
+            )
+            try:
+                remote_device = upsert_device(db, data)
+                db.commit()
+                logger.info("%s neighbor: %-18s hostname=%-28s via %s port=%s",
+                            proto, ip, hostname or "-", src_ip, local_port_idx or "?")
+            except Exception as exc:
+                logger.debug("LLDP upsert error %s: %s", ip, exc)
+                db.rollback()
+        else:
+            # Brak IP — szukaj po MAC lub hostname w bazie
+            mac_norm = normalize_mac(mac_raw) if mac_raw else None
+            if mac_norm:
+                remote_device = db.query(Device).filter(Device.mac == mac_norm).first()
+            if remote_device is None and hostname:
+                remote_device = db.query(Device).filter(Device.hostname == hostname).first()
+            if remote_device is not None:
+                # Uzupelnij dane jesli puste
+                changed = False
+                sys_desc = n.get("sys_desc", "")
+                if sys_desc and not remote_device.os_version:
+                    remote_device.os_version = sys_desc[:120]
+                    changed = True
+                if mac_norm and not remote_device.mac:
+                    remote_device.mac = mac_norm
+                    changed = True
+                if changed:
+                    try:
                         db.commit()
-                        saved += 1
-            continue  # nie mamy IP → nie mozemy zrobic upsert
+                    except Exception:
+                        db.rollback()
 
-        # CDP uses "software"+"platform", LLDP uses "sys_desc", EDP uses "software"
-        os_ver = (n.get("sys_desc") or n.get("software") or "")[:120] or None
-        vendor_hint = n.get("platform") or None  # CDP platform e.g. "cisco WS-C3750X-48P"
-        data = DeviceData(
-            ip         = ip,
-            mac        = normalize_mac(n.get("mac")),
-            hostname   = hostname or None,
-            os_version = os_ver,
-            vendor     = vendor_hint,
+        if remote_device is None:
+            continue  # nie znaleziono sasiada — pominij
+
+        # Rozwiaz lokalny port (ifIndex → Interface.id)
+        src_iface_id = None
+        if local_port_idx:
+            try:
+                src_iface = (
+                    db.query(Interface)
+                    .filter(Interface.device_id == src_device_id,
+                            Interface.if_index == int(local_port_idx))
+                    .first()
+                )
+                if src_iface:
+                    src_iface_id = src_iface.id
+            except (ValueError, TypeError):
+                pass
+
+        # Upsert TopologyLink — jeden link na pare (src, dst, src_port)
+        existing_link = (
+            db.query(TopologyLink)
+            .filter(
+                TopologyLink.src_device_id == src_device_id,
+                TopologyLink.dst_device_id == remote_device.id,
+            )
+            .first()
         )
         try:
-            upsert_device(db, data)
+            if existing_link:
+                existing_link.last_seen = datetime.utcnow()
+                if src_iface_id and not existing_link.src_interface_id:
+                    existing_link.src_interface_id = src_iface_id
+            else:
+                db.add(TopologyLink(
+                    src_device_id    = src_device_id,
+                    dst_device_id    = remote_device.id,
+                    src_interface_id = src_iface_id,
+                    protocol         = proto_enum,
+                ))
+                saved += 1
+                logger.info("%s link: %s → %s (via port %s)",
+                            proto, src_ip, remote_device.ip or remote_device.hostname,
+                            local_port_idx or "?")
             db.commit()
-            saved += 1
-            logger.info("%s neighbor: %-18s hostname=%-28s via %s port=%s",
-                        proto, ip, hostname or "-", src_ip, n.get("local_port", "?"))
         except Exception as exc:
-            logger.debug("LLDP save error %s: %s", ip, exc)
+            logger.debug("TopologyLink save error %s→%s: %s", src_device_id, remote_device.id, exc)
             db.rollback()
 
     return saved
@@ -376,11 +457,23 @@ _UBNT_ROUTER_PFX = ("udm", "usg", "udr", "unifi dream", "unifi gateway")
 _NAS_OS_HINTS    = ("diskstation", "synology", "dsm ", "qts ", "qnap",
                     "readynas", "freenas", "truenas", "nas4free", "openmediavault")
 
+# Cisco — słowa kluczowe w modelu/sysDescr identyfikujące switch vs router
+_CISCO_SWITCH_KEYWORDS = (
+    "catalyst", "ws-c", "c9300", "c9200", "c9100", "c9500", "c9600",
+    "c3750", "c3850", "c3560", "c2960", "c2950", "me-3", "ie-", "sg-",
+    "nexus", "nx-os",
+)
+_CISCO_ROUTER_KEYWORDS = (
+    "isr", "asr", "csr", "c8000", "c1000", "c1100", "c1900", "c2900",
+    "c3900", "c4000", "c7200", "c7600", "ncs", "crs",
+)
+
 
 def _reclassify_from_snmp(device) -> None:
     """Re-klasyfikuje urządzenie na podstawie danych SNMP (hostname, vendor, os_version).
 
     Koryguje błędne typy nadane przez discovery gdy SNMP dostarcza dokładniejszych danych.
+    Cisco: switch/router/firewall/ap po profilu SNMP + modelu/sysDescr.
     Ubiquiti: AP/switch/router po hostname. NAS: Synology/QNAP po vendor lub os_version.
     Zapis do device.device_type jeśli się zmieni.
     """
@@ -388,6 +481,7 @@ def _reclassify_from_snmp(device) -> None:
     hn  = (device.hostname  or "").lower()
     vn  = (device.vendor    or "").lower()
     osv = (device.os_version or "").lower()
+    mdl = (device.model     or "").lower()
 
     # NAS — vendor lub sysDescr wskazuje jednoznacznie
     if any(k in vn for k in ("synology", "qnap", "western digital", "buffalo")):
@@ -397,6 +491,47 @@ def _reclassify_from_snmp(device) -> None:
     if any(k in osv for k in _NAS_OS_HINTS):
         if device.device_type != DT.nas:
             device.device_type = DT.nas
+        return
+
+    # Cisco — reklasyfikacja na podstawie profilu SNMP i słów kluczowych w modelu/sysDescr
+    # Discovery zawsze zwraca router dla "cisco" w OS fingerprint — korygujemy po SNMP.
+    if any(k in vn for k in ("cisco",)) or any(k in osv for k in ("cisco ios", "cisco nx", "cisco asa", "cisco adaptive")):
+        _cisco_hint = osv + " " + mdl
+        try:
+            from netdoc.collector.snmp_profiles import detect_vendor_profile
+            _profile = detect_vendor_profile(
+                getattr(device, "snmp_sys_object_id", None), osv
+            )
+        except Exception:
+            _profile = "generic"
+
+        # Firewall — ASA ma priorytet
+        if _profile == "cisco_asa" or "adaptive security" in _cisco_hint or " asa" in _cisco_hint:
+            new_type = DT.firewall
+        # WLC / Access Point controller
+        elif _profile == "cisco_wlc" or "wireless lan controller" in _cisco_hint or "aireos" in _cisco_hint:
+            new_type = DT.ap
+        # IOS-XR = backbone router (brak L2)
+        elif _profile == "cisco_ios_xr" or "ios-xr" in _cisco_hint or "ios xr" in _cisco_hint:
+            new_type = DT.router
+        # Switch — po słowach kluczowych w modelu/sysDescr lub profilu z L2 (FDB/VLAN)
+        elif any(k in _cisco_hint for k in _CISCO_SWITCH_KEYWORDS):
+            new_type = DT.switch
+        # Router — po słowach kluczowych
+        elif any(k in _cisco_hint for k in _CISCO_ROUTER_KEYWORDS):
+            new_type = DT.router
+        # Fallback: profil z FDB → switch; pozostałe → router
+        elif _profile in ("cisco_ios", "cisco_ios_xe", "cisco_nxos"):
+            new_type = DT.switch
+        else:
+            return  # nie zmieniaj — za mało danych
+
+        if device.device_type != new_type:
+            logger.info("Reclassify Cisco %s: %s → %s (profile=%s model=%r)",
+                        device.ip,
+                        device.device_type.value if device.device_type else "?",
+                        new_type.value, _profile, device.model)
+            device.device_type = new_type
         return
 
     # Ubiquiti — tylko gdy vendor = ubiquiti (nie nadpisuj innych)
@@ -678,16 +813,20 @@ def _enrich_arp(ip: str, community: str, timeout: int = 2) -> list[dict]:
 
 # ---------------------------------------------------------------------------
 # Interface walk — zbiera ifDescr, ifOperStatus, ifAdminStatus, ifSpeed z ifTable
-# oraz ifAlias i ifHighSpeed z ifXTable
+# oraz ifAlias i ifHighSpeed z ifXTable, ifPhysAddress (MAC), ifMauType (duplex)
 # ---------------------------------------------------------------------------
 _IF_TABLE_OID     = "1.3.6.1.2.1.2.2.1"    # ifEntry (IF-MIB)
 _IF_DESCR_ID      = 2    # ifDescr
+_IF_PHYSADDR_ID   = 6    # ifPhysAddress (MAC — 6 bytes)
 _IF_ADMINSTATUS_ID= 7    # ifAdminStatus: 1=up, 2=down, 3=testing
 _IF_OPERSTATUS_ID = 8    # ifOperStatus:  1=up, 2=down, 3=testing, ...
 _IF_SPEED_ID      = 5    # ifSpeed (bps, max 4Gbps — powyżej trzeba ifHighSpeed)
 _IFX_TABLE_OID    = "1.3.6.1.2.1.31.1.1.1" # ifXEntry (IF-MIB extensions)
 _IFX_HIGHSPEED_ID = 15   # ifHighSpeed (Mbps)
 _IFX_ALIAS_ID     = 18   # ifAlias (human description, np. "Uplink serwer")
+# dot3 MIB — duplex status
+_DOT3_STATS_OID   = "1.3.6.1.2.1.10.7.2.1" # dot3StatsEntry
+_DOT3_DUPLEX_ID   = 19   # dot3StatsDuplexStatus: 1=unknown, 2=half, 3=full
 
 
 def _decode_str(raw_val) -> str:
@@ -729,6 +868,9 @@ def _enrich_interfaces(ip: str, community: str, timeout: int = 2) -> list[dict]:
                 if base_oid == _IF_TABLE_OID:
                     if field_id == _IF_DESCR_ID:
                         entry["name"] = _decode_str(raw_val)
+                    elif field_id == _IF_PHYSADDR_ID:
+                        if isinstance(raw_val, (bytes, bytearray)) and len(raw_val) == 6:
+                            entry["mac"] = ":".join(f"{b:02x}" for b in raw_val)
                     elif field_id == _IF_ADMINSTATUS_ID:
                         try:
                             v = int.from_bytes(raw_val, "big") if isinstance(raw_val, (bytes, bytearray)) else int(raw_val)
@@ -748,7 +890,7 @@ def _enrich_interfaces(ip: str, community: str, timeout: int = 2) -> list[dict]:
                             entry["speed_mbps_low"] = v // 1_000_000 if v else 0
                         except (TypeError, ValueError):
                             pass
-                else:  # ifXTable
+                elif base_oid == _IFX_TABLE_OID:
                     if field_id == _IFX_HIGHSPEED_ID:
                         try:
                             v = int.from_bytes(raw_val, "big") if isinstance(raw_val, (bytes, bytearray)) else int(raw_val)
@@ -759,11 +901,19 @@ def _enrich_interfaces(ip: str, community: str, timeout: int = 2) -> list[dict]:
                         alias = _decode_str(raw_val)
                         if alias:
                             entry["alias"] = alias
+                else:  # dot3StatsEntry
+                    if field_id == _DOT3_DUPLEX_ID:
+                        try:
+                            v = int.from_bytes(raw_val, "big") if isinstance(raw_val, (bytes, bytearray)) else int(raw_val)
+                            entry["duplex"] = {2: "half", 3: "full"}.get(v)
+                        except (TypeError, ValueError):
+                            pass
         except Exception as exc:
             logger.debug("IF walk %s %s: %s", ip, base_oid, exc)
 
     _walk_table(_IF_TABLE_OID)
     _walk_table(_IFX_TABLE_OID)
+    _walk_table(_DOT3_STATS_OID)
 
     result = []
     for v in ifaces.values():
@@ -779,9 +929,11 @@ def _enrich_interfaces(ip: str, community: str, timeout: int = 2) -> list[dict]:
             "if_index":     int(v["if_index"]) if v["if_index"].isdigit() else None,
             "name":         name,
             "alias":        v.get("alias"),
+            "mac":          v.get("mac"),
             "admin_status": v.get("admin_status"),
             "oper_status":  v.get("oper_status"),
             "speed_mbps":   spd,
+            "duplex":       v.get("duplex"),
         })
     return result
 
@@ -791,15 +943,15 @@ def _save_interface_history(db, device_id: int, ifaces: list[dict]) -> int:
 
     Model InterfaceHistory:
       event_type: "discovered" | "up" | "down" | "speed_change"
-      old_speed:  poprzednia prędkość (bps), None przy "discovered"/"up"/"down"
-      new_speed:  nowa prędkość (bps), None przy "up"/"down"
+      old_speed:  prędkość w Mbps (Integer 32-bit), None przy "discovered"/"up"/"down"
+      new_speed:  prędkość w Mbps (Integer 32-bit), None przy "up"/"down"
     Zwraca liczbę zapisanych wpisów.
     """
     saved = 0
     for iface in ifaces:
         name    = iface["name"]
         new_st  = iface.get("oper_status")   # 1=up, 2=down, inne=unknown
-        new_spd = iface.get("speed_bps")
+        new_spd = iface.get("speed_mbps")
 
         # Ostatni wpis per interfejs = aktualny znany stan
         last = (
@@ -948,9 +1100,11 @@ def _save_interfaces(db, device_id: int, ifaces: list[dict]) -> int:
             "if_index":     if_index,
             "name":         iface.get("name", ""),
             "alias":        iface.get("alias"),
+            "mac":          iface.get("mac"),
             "admin_status": iface.get("admin_status"),
             "oper_status":  iface.get("oper_status"),
             "speed":        iface.get("speed_mbps"),
+            "duplex":       iface.get("duplex"),
             "polled_at":    now,
         })
     if not rows:
@@ -962,9 +1116,11 @@ def _save_interfaces(db, device_id: int, ifaces: list[dict]) -> int:
             set_={
                 "name":         stmt.excluded.name,
                 "alias":        stmt.excluded.alias,
+                "mac":          stmt.excluded.mac,
                 "admin_status": stmt.excluded.admin_status,
                 "oper_status":  stmt.excluded.oper_status,
                 "speed":        stmt.excluded.speed,
+                "duplex":       stmt.excluded.duplex,
                 "polled_at":    stmt.excluded.polled_at,
             },
         )
@@ -1323,12 +1479,12 @@ def scan_once() -> None:
                 if_saved += n_saved
                 logger.info("IF   %-18s: %d port(s)", d.ip, len(ifaces))
                 # Historia zmian (up/down/speed_change)
-                # Przekazujemy w starym formacie: {name, oper_status(int), speed_bps}
+                # speed_mbps: Mbps (kolumna Integer 32-bit, max 2G — nie przekraczamy)
                 old_fmt = [
                     {
                         "name":        i["name"],
                         "oper_status": 1 if i.get("oper_status") else 2,
-                        "speed_bps":   (i.get("speed_mbps") or 0) * 1_000_000,
+                        "speed_mbps":  i.get("speed_mbps") or 0,
                     }
                     for i in ifaces
                 ]
@@ -1446,7 +1602,7 @@ def scan_once() -> None:
         from netdoc.storage.clickhouse import insert_if_metrics, _ensure_metrics_table
         from datetime import datetime as _dt
         _ensure_metrics_table()
-        now_ts = _dt.utcnow()
+        now_ts = _dt.now()  # lokalny czas — ClickHouse (Europe/Warsaw) interpretuje naive datetime jako localtime
         metrics_batch: list[tuple] = []
         snmp_devs = [d for d in devices if d.snmp_community]
 
@@ -1509,7 +1665,12 @@ def _collect_if_metrics(ip: str, community: str, timeout: int = 2) -> list[tuple
                 try:
                     # ifIndex jest ostatnim elementem OID: 1.3.6.1.2.1.2.2.1.10.5 → 5
                     if_index = int(full_oid.rstrip(".").rsplit(".", 1)[-1])
-                    value    = float(raw_val)
+                    # raw_val to bytes z BER — dekoduj big-endian (Counter32/64/Gauge32)
+                    if isinstance(raw_val, (bytes, bytearray)):
+                        int_v = int.from_bytes(raw_val, "big") if raw_val else 0
+                    else:
+                        int_v = int(raw_val)
+                    value = float(int_v)
                 except (ValueError, TypeError, IndexError):
                     continue
                 if is_hc:

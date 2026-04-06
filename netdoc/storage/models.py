@@ -111,6 +111,8 @@ class VulnType(str, enum.Enum):
     xmeye_dvr_exposed    = "xmeye_dvr_exposed"   # XMEye/generyczny DVR na porcie 34567
     unauth_reboot        = "unauth_reboot"        # Endpoint restartu dostepny bez uwierzytelnienia
     tftp_exposed         = "tftp_exposed"         # TFTP (UDP 69) dostepny bez uwierzytelnienia
+    cisco_smart_install  = "cisco_smart_install"  # Cisco Smart Install TCP 4786 (CVE-2018-0171)
+    cisco_web_exec       = "cisco_web_exec"        # Cisco IOS HTTP exec /level/15/exec/-
 
 
 

@@ -19,10 +19,19 @@ method = "newline_delimited"
 [sources.rsyslog_in.decoding]
 codec = "json"
 
+# ─── Filter: odrzuć puste ramki (pusta linia przy TCP reconnect) ─────────────
+# Vector loguje ERROR "Failed deserializing frame" gdy rsyslog wyśle pustą linię
+# podczas reconnectu TCP. Filtr nie jest możliwy przed decode, ale możemy
+# odrzucić zdarzenia gdzie src_ip jest puste (failed parse → brakujące pola).
+[transforms.drop_empty]
+type = "filter"
+inputs = ["rsyslog_in"]
+condition = 'exists(.src_ip) && exists(.message)'
+
 # ─── Transform: normalizacja i sanityzacja pól ───────────────────────────────
 [transforms.normalize]
 type = "remap"
-inputs = ["rsyslog_in"]
+inputs = ["drop_empty"]
 source = '''
   # Timestamp — parsuj z JSON lub użyj "teraz"
   .received_at = now()

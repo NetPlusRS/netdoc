@@ -1530,6 +1530,131 @@ def check_tftp(ip: str) -> Optional[dict]:
     }
 
 
+def check_cisco_smart_install(ip: str) -> Optional[dict]:
+    """Cisco Smart Install (vstack) — TCP 4786 dostępny bez uwierzytelnienia.
+
+    CVE-2018-0171 (CVSS 9.8 CRITICAL): protokół Smart Install działa domyślnie
+    na switchach Cisco IOS i IOS-XE bez żadnego uwierzytelnienia. Atakujący może:
+    - nadpisać konfigurację startową i running-config urządzenia,
+    - skopiować konfigurację (z hasłami) na zewnętrzny serwer TFTP,
+    - wymusić reload urządzenia (DoS),
+    - załadować zmodyfikowany obraz systemu (pełne przejęcie).
+
+    Port 4786 TCP jest używany wyłącznie przez Cisco Smart Install (vstack).
+    Jego obecność oznacza aktywną usługę. Cisco zaleca wyłączenie Smart Install
+    komendą 'no vstack' i użycie Cisco DNA Center lub APIC-EM do zarządzania.
+    Jeśli Smart Install jest wymagane — ogranicz dostęp ACL tylko do dyrektora.
+    """
+    if not _tcp_open(ip, 4786, timeout=2):
+        return None
+    # Probe: minimalna wiadomość vstack HELLO (4 bajty type + padding)
+    _PROBE = b'\x00\x00\x00\x01' + b'\x00' * 20
+    try:
+        with socket.create_connection((ip, 4786), timeout=_TCP_TIMEOUT) as s:
+            s.sendall(_PROBE)
+            s.settimeout(_TCP_TIMEOUT)
+            try:
+                data = s.recv(64)
+                evidence = f"TCP 4786 open, response {len(data)} B — Smart Install vstack aktywny"
+            except socket.timeout:
+                evidence = "TCP 4786 open — port Smart Install dostępny (brak odpowiedzi na probe)"
+            return {
+                "vuln_type": VulnType.cisco_smart_install,
+                "severity": VulnSeverity.critical,
+                "title": "Cisco Smart Install dostępny bez auth (CVE-2018-0171)",
+                "port": 4786,
+                "evidence": evidence,
+                "description": (
+                    "Cisco Smart Install (vstack) działa bez uwierzytelnienia. "
+                    "CVE-2018-0171 (CVSS 9.8): atakujący może odczytać/nadpisać konfigurację "
+                    "urządzenia (z hasłami), wymusić reload lub załadować złośliwy firmware IOS. "
+                    "Fix: 'no vstack' lub ACL ograniczający dostęp do IP dyrektora Smart Install."
+                ),
+            }
+    except Exception:
+        return None
+
+
+def check_cisco_web_exec(ip: str, device_type) -> Optional[dict]:
+    """Cisco IOS HTTP Server — dostęp do exec przez URL /level/15/exec/-.
+
+    Cisco IOS HTTP Server udostępnia interfejs CLI przez HTTP na ścieżkach
+    /level/1/exec/ do /level/15/exec/ gdzie poziom odpowiada uprawnieniom IOS.
+    Poziom 15 = pełne uprawnienia administratora (odpowiednik 'enable mode').
+
+    Zagrożenia:
+    - HTTP 200 bez auth: atakujący wykonuje dowolne polecenia IOS bez logowania
+      (show running-config, configure terminal, reload — pełne przejęcie urządzenia).
+    - HTTP 401 z Cisco realm: interfejs exec istnieje i jest dostępny przez sieć —
+      podatny na brute-force i ataki na protokół HTTP Basic Auth (hasło w Base64).
+
+    Cisco zaleca: wyłącz HTTP server ('no ip http server'), używaj HTTPS z ACL
+    ('ip http access-class'), lub zarządzaj przez SSH/RESTCONF/NETCONF.
+    Interfejs HTTP exec jest przestarzały — nie jest potrzebny w nowoczesnych
+    środowiskach.
+    """
+    network_types = {DeviceType.router, DeviceType.switch, DeviceType.firewall}
+    if device_type not in network_types:
+        return None
+    paths = ["/level/15/exec/-/show/version/CR", "/level/15/exec/-"]
+    for port in (80, 8080):
+        if not _tcp_open(ip, port, timeout=2):
+            continue
+        for path in paths:
+            try:
+                r = httpx.get(
+                    f"http://{ip}:{port}{path}",
+                    timeout=_HTTP_TIMEOUT,
+                    follow_redirects=False,
+                    verify=False,
+                )
+                body_lower = r.text.lower()
+                www_auth = r.headers.get("www-authenticate", "").lower()
+                # Unauthenticated access — pełne przejęcie
+                if r.status_code == 200 and (
+                    "cisco" in body_lower or "ios" in body_lower
+                    or "router" in body_lower or "switch" in body_lower
+                    or "exec" in body_lower
+                ):
+                    return {
+                        "vuln_type": VulnType.cisco_web_exec,
+                        "severity": VulnSeverity.critical,
+                        "title": "Cisco IOS HTTP exec — pełny dostęp bez uwierzytelnienia",
+                        "port": port,
+                        "evidence": f"HTTP 200 na {path} — exec interface dostępny bez auth",
+                        "description": (
+                            "Cisco IOS HTTP Server udostępnia exec CLI na /level/15/exec/- "
+                            "bez logowania (poziom 15 = pełny enable). Atakujący może wykonać "
+                            "show running-config, configure terminal, reload. "
+                            "Fix: 'no ip http server' lub 'ip http access-class'."
+                        ),
+                    }
+                # Auth required but Cisco exec interface exposed — brute-force / HTTP Basic risk
+                if r.status_code == 401 and (
+                    "level" in www_auth or "cisco" in www_auth
+                    or "ios" in www_auth or "exec" in www_auth
+                ):
+                    return {
+                        "vuln_type": VulnType.cisco_web_exec,
+                        "severity": VulnSeverity.high,
+                        "title": "Cisco IOS HTTP exec dostępny przez sieć (wymagane auth)",
+                        "port": port,
+                        "evidence": (
+                            f"HTTP 401 na {path} — "
+                            f"WWW-Auth: {r.headers.get('www-authenticate', '')[:80]}"
+                        ),
+                        "description": (
+                            "Cisco IOS HTTP Server exec interface dostępny z sieci. "
+                            "Wymaga auth, ale HTTP Basic Auth przesyła hasło w Base64 — "
+                            "podatne na sniffing i brute-force. "
+                            "Fix: 'no ip http server', zarządzaj przez SSH/HTTPS."
+                        ),
+                    }
+            except Exception:
+                pass
+    return None
+
+
 def _upsert_vuln(db, device_id: int, v: dict) -> tuple:
     now = datetime.utcnow()
     port_val = v.get("port")
@@ -1610,6 +1735,8 @@ def _scan_device(device_id: int, ip: str, device_type, close_after: int = 3,
         lambda: check_xmeye_dvr_exposed(ip),
         lambda: check_unauth_reboot(ip),
         lambda: check_tftp(ip),
+        lambda: check_cisco_smart_install(ip),
+        lambda: check_cisco_web_exec(ip, device_type),
     ):
         try:
             r = chk()

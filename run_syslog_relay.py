@@ -126,19 +126,22 @@ def make_relay_msg(raw: bytes, real_ip: str) -> bytes | None:
 
 # ── Stats ──────────────────────────────────────────────────────────────────────
 
-_lock        = threading.Lock()
-_forwarded   = 0
-_dropped     = 0
-_errors      = 0
+_lock         = threading.Lock()
+_forwarded    = 0
+_dropped      = 0
+_errors       = 0
+_drop_by_ip: dict[str, int] = {}   # IP → liczba odrzuconych garbage pakietów
 
 
-def _inc(key: str) -> None:
+def _inc(key: str, ip: str = "") -> None:
     global _forwarded, _dropped, _errors
     with _lock:
         if key == 'f':
             _forwarded += 1
         elif key == 'd':
             _dropped += 1
+            if ip:
+                _drop_by_ip[ip] = _drop_by_ip.get(ip, 0) + 1
         else:
             _errors += 1
 
@@ -166,7 +169,7 @@ class _UDPHandler(socketserver.BaseRequestHandler):
         real_ip = self.client_address[0]
         msg = make_relay_msg(data, real_ip)
         if msg is None:
-            _inc('d')
+            _inc('d', real_ip)
             return
         _forward(msg, real_ip)
 
@@ -205,7 +208,7 @@ class _TCPHandler(socketserver.BaseRequestHandler):
                         line = decoded[space_pos + 1:].encode('utf-8', errors='replace')
                     msg = make_relay_msg(line, real_ip)
                     if msg is None:
-                        _inc('d')
+                        _inc('d', real_ip)
                     else:
                         _forward(msg, real_ip)
         except OSError:
@@ -313,7 +316,12 @@ def _stats_loop() -> None:
         time.sleep(LOG_INTERVAL)
         with _lock:
             f, d, e = _forwarded, _dropped, _errors
+            # Top 5 IPs wysyłających garbage (sortuj malejąco po liczbie dropów)
+            top_drops = sorted(_drop_by_ip.items(), key=lambda x: -x[1])[:5]
         logger.info("stats: forwarded=%d dropped=%d errors=%d", f, d, e)
+        if top_drops:
+            summary = ", ".join(f"{ip}:{cnt}" for ip, cnt in top_drops)
+            logger.info("dropped by IP (top): %s", summary)
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────

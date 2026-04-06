@@ -702,10 +702,10 @@
                   </td>
                   <td class="small">
                     {% if h.event_type == 'speed_change' %}
-                      {{ (h.old_speed // 1000000) if h.old_speed else '?' }} →
-                      {{ (h.new_speed // 1000000) if h.new_speed else '?' }} Mbps
+                      {{ h.old_speed if h.old_speed else '?' }} →
+                      {{ h.new_speed if h.new_speed else '?' }} Mbps
                     {% elif h.new_speed %}
-                      {{ h.new_speed // 1000000 }} Mbps
+                      {{ h.new_speed }} Mbps
                     {% else %}—{% endif %}
                   </td>
                 </tr>
@@ -860,45 +860,57 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
   }
 
   // ── Traffic chart ───────────────────────────────────────────────────────
+  function _renderTrafficChart(inData, outData) {
+    const msg     = document.getElementById('if-traffic-msg');
+    const buckets = inData.buckets || [];
+    if (buckets.length === 0) {
+      msg.style.display = '';
+      if (_chart) { _chart.destroy(); _chart = null; }
+      return;
+    }
+    msg.style.display = 'none';
+    const labels  = buckets.map(b => b.bucket ? b.bucket.substring(11,16) : '');
+    const inVals  = buckets.map(b => (b.avg_value || 0) * 8);   // bytes/s → bps
+    const outVals = (outData.buckets || []).map(b => (b.avg_value || 0) * 8);
+    const ctx = document.getElementById('ifTrafficChart').getContext('2d');
+    if (_chart) _chart.destroy();
+    _chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'In (bps)',  data: inVals,  borderColor:'rgba(13,110,253,0.8)',  backgroundColor:'rgba(13,110,253,0.1)', pointRadius:0, tension:0.2, fill:true },
+          { label: 'Out (bps)', data: outVals, borderColor:'rgba(220,53,69,0.8)',   backgroundColor:'rgba(220,53,69,0.1)',  pointRadius:0, tension:0.2, fill:true },
+        ],
+      },
+      options: {
+        animation: false,
+        plugins: { legend: { position:'bottom' } },
+        scales: {
+          y: { beginAtZero:true, ticks: { callback: v => fmtBps(v) } },
+          x: { ticks: { maxTicksLimit:12, maxRotation:0 } },
+        },
+      },
+    });
+  }
+
   function loadTrafficChart() {
     const ifIndex = document.getElementById('if-select')?.value;
     const hours   = document.getElementById('if-hours')?.value || 24;
     if (!ifIndex) return;
+    const base = API+'/if-metrics?if_index='+ifIndex+'&hours='+hours+'&step_minutes=5';
     Promise.all([
-      apiFetch(API+'/if-metrics?if_index='+ifIndex+'&metric=in_octets_hc&hours='+hours+'&step_minutes=5'),
-      apiFetch(API+'/if-metrics?if_index='+ifIndex+'&metric=out_octets_hc&hours='+hours+'&step_minutes=5'),
-    ]).then(([inData, outData]) => {
-      const msg = document.getElementById('if-traffic-msg');
-      const buckets = inData.buckets || [];
-      if (buckets.length === 0) {
-        msg.style.display = '';
-        if (_chart) { _chart.destroy(); _chart = null; }
-        return;
-      }
-      msg.style.display = 'none';
-      const labels  = buckets.map(b => b.bucket ? b.bucket.substring(11,16) : '');
-      const inVals  = buckets.map(b => (b.avg_value || 0) * 8);   // bytes/s → bps
-      const outVals = (outData.buckets || []).map(b => (b.avg_value || 0) * 8);
-      const ctx = document.getElementById('ifTrafficChart').getContext('2d');
-      if (_chart) _chart.destroy();
-      _chart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels,
-          datasets: [
-            { label: 'In (bps)',  data: inVals,  borderColor:'rgba(13,110,253,0.8)',  backgroundColor:'rgba(13,110,253,0.1)', pointRadius:0, tension:0.2, fill:true },
-            { label: 'Out (bps)', data: outVals, borderColor:'rgba(220,53,69,0.8)',   backgroundColor:'rgba(220,53,69,0.1)',  pointRadius:0, tension:0.2, fill:true },
-          ],
-        },
-        options: {
-          animation: false,
-          plugins: { legend: { position:'bottom' } },
-          scales: {
-            y: { beginAtZero:true, ticks: { callback: v => fmtBps(v) } },
-            x: { ticks: { maxTicksLimit:12, maxRotation:0 } },
-          },
-        },
-      });
+      apiFetch(base+'&metric=in_octets_hc'),
+      apiFetch(base+'&metric=out_octets_hc'),
+    ]).then(([inHC, outHC]) => {
+      if ((inHC.buckets || []).length > 0) return [inHC, outHC];
+      // Fallback: urzadzenie nie obsluguje 64-bit HC — probuj 32-bit
+      return Promise.all([
+        apiFetch(base+'&metric=in_octets'),
+        apiFetch(base+'&metric=out_octets'),
+      ]);
+    }).then(([inData, outData]) => {
+      _renderTrafficChart(inData, outData);
     }).catch(()=>{ const msg = document.getElementById('if-traffic-msg'); if(msg) msg.style.display=''; });
   }
 
@@ -911,8 +923,8 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
       tbody.innerHTML = ifaces.sort((a,b)=>a.if_index-b.if_index).map(r=>
         '<tr><td><code>'+esc(r.interface_name||'ifIndex '+r.if_index)+'</code></td>'
         +'<td>'+fmtBps(r.in_bps)+'</td><td>'+fmtBps(r.out_bps)+'</td>'
-        +'<td class="'+(r.in_errors>0?'text-danger':'')+'">'+Math.round(r.in_errors||0)+'</td>'
-        +'<td class="'+(r.out_errors>0?'text-danger':'')+'">'+Math.round(r.out_errors||0)+'</td></tr>'
+        +'<td class="'+(r.in_errors>0?'text-danger':'')+'">'+Math.round((r.in_errors||0)*600)+'</td>'
+        +'<td class="'+(r.out_errors>0?'text-danger':'')+'">'+Math.round((r.out_errors||0)*600)+'</td></tr>'
       ).join('');
     }).catch(()=>{});
   }

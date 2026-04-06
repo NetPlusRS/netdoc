@@ -696,6 +696,19 @@ PORT_KB = [
                    "Ogranicz dostęp do sieci zarządzania i NMS. "
                    "Używaj dedykowanych kluczy SSH dla automatyzacji.", ot=False),
 
+    dict(port=4786, proto="tcp", service="Cisco Smart Install", category="mgmt",
+         desc="Cisco Smart Install (vstack) — protokół auto-konfiguracji nowych przełączników "
+              "Cisco IOS/IOS-XE. Dyrektor Smart Install zarządza przez TCP 4786 zestawem klientów "
+              "(nowe switche), wysyłając im konfigurację i obraz IOS przez TFTP.",
+         vendors=["Cisco IOS", "Cisco IOS-XE", "Cisco Catalyst", "Cisco 2960/3750/3850"],
+         risk="critical",
+         risk_note="KRYTYCZNE. CVE-2018-0171 (CVSS 9.8) — protokół bez uwierzytelnienia. "
+                   "Atakujący może odczytać i nadpisać konfigurację, skopiować ją na TFTP "
+                   "(z hasłami enable/VTY), wymusić reload lub załadować złośliwy obraz IOS. "
+                   "Port 4786 open = pełne przejęcie urządzenia bez żadnych credentiali. "
+                   "Cisco zaleca wyłączenie: 'no vstack'. Jeśli wymagane — ogranicz ACL "
+                   "tylko do IP dyrektora Smart Install.", ot=False),
+
     dict(port=623,  proto="udp", service="IPMI/IPMB",    category="mgmt",
          desc="Intelligent Platform Management Interface — zarządzanie serwerem "
               "sprzętowo (poza systemem operacyjnym). Używany przez iDRAC (Dell), "

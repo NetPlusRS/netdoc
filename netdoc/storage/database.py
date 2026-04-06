@@ -269,10 +269,13 @@ def _migrate_columns() -> None:
         """,
     ]
     # Każda migracja w osobnej transakcji — błąd jednego kroku nie blokuje pozostałych.
+    # lock_timeout=5s: DDL nie będzie czekać w nieskończoność na blokadę tabeli
+    # (może się zdarzyć gdy inne workery mają otwarte transakcje).
     errors = []
     for sql in migrations:
         try:
             with engine.begin() as conn:
+                conn.execute(text("SET LOCAL lock_timeout = '5s'"))
                 conn.execute(text(sql))
         except Exception as exc:
             short = str(exc)[:120].replace("\n", " ")
