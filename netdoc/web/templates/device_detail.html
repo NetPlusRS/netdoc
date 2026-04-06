@@ -511,9 +511,13 @@
         <div class="card-footer py-2">
           <table class="table table-sm mb-0" style="font-size:.82rem" id="if-rates-table">
             <thead class="table-light"><tr>
-              <th>Interface</th><th>In (bps)</th><th>Out (bps)</th><th>In Errors</th><th>Out Errors</th>
+              <th>Interface</th><th>In (bps)</th><th>Out (bps)</th>
+              <th title="Błędy wejściowe — uszkodzony kabel/złącze lub FCS/CRC">In Err</th>
+              <th title="Błędy wyjściowe">Out Err</th>
+              <th title="Porzucone pakiety wejściowe — przeciążenie bufora">In Drop</th>
+              <th title="Porzucone pakiety wyjściowe">Out Drop</th>
             </tr></thead>
-            <tbody id="if-rates-body"><tr><td colspan="5" class="text-muted text-center">Ladowanie...</td></tr></tbody>
+            <tbody id="if-rates-body"><tr><td colspan="7" class="text-muted text-center">Ladowanie...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -959,7 +963,21 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
   }
 
   // ── Traffic chart ───────────────────────────────────────────────────────
-  function _renderTrafficChart(inData, outData) {
+  function _fmtBucket(raw, hours) {
+    if (!raw) return '';
+    // FastAPI serializes datetime as ISO: "2026-04-06T23:45:00+02:00"
+    // T jest na pozycji 10, więc HH:MM zaczyna się od 11
+    const s = String(raw);
+    const hhmm = s.substring(11, 16);   // "23:45"
+    if (parseInt(hours) <= 24) {
+      return hhmm;
+    } else {
+      // Pokaż dzień + czas: "04-06 23:45"
+      return s.substring(5, 10) + ' ' + hhmm;
+    }
+  }
+
+  function _renderTrafficChart(inData, outData, hours) {
     const msg     = document.getElementById('if-traffic-msg');
     const buckets = inData.buckets || [];
     if (buckets.length === 0) {
@@ -968,7 +986,7 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
       return;
     }
     msg.style.display = 'none';
-    const labels  = buckets.map(b => b.bucket ? b.bucket.substring(11,16) : '');
+    const labels  = buckets.map(b => _fmtBucket(b.bucket, hours));
     const inVals  = buckets.map(b => (b.avg_value || 0) * 8);   // bytes/s → bps
     const outVals = (outData.buckets || []).map(b => (b.avg_value || 0) * 8);
     const ctx = document.getElementById('ifTrafficChart').getContext('2d');
@@ -987,7 +1005,7 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
         plugins: { legend: { position:'bottom' } },
         scales: {
           y: { beginAtZero:true, ticks: { callback: v => fmtBps(v) } },
-          x: { ticks: { maxTicksLimit:12, maxRotation:0 } },
+          x: { ticks: { maxTicksLimit: parseInt(hours) <= 24 ? 12 : 14, maxRotation:0 } },
         },
       },
     });
@@ -995,9 +1013,11 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
 
   function loadTrafficChart() {
     const ifIndex = document.getElementById('if-select')?.value;
-    const hours   = document.getElementById('if-hours')?.value || 24;
+    const hours   = parseInt(document.getElementById('if-hours')?.value || 24);
     if (!ifIndex) return;
-    const base = API+'/if-metrics?if_index='+ifIndex+'&hours='+hours+'&step_minutes=5';
+    // Dopasuj granulację do okresu: im dłuższy okres tym większy krok → stała liczba punktów (~150-200)
+    const step = hours <= 6 ? 5 : (hours <= 24 ? 10 : (hours <= 72 ? 30 : 60));
+    const base = API+'/if-metrics?if_index='+ifIndex+'&hours='+hours+'&step_minutes='+step;
     Promise.all([
       apiFetch(base+'&metric=in_octets_hc'),
       apiFetch(base+'&metric=out_octets_hc'),
@@ -1009,7 +1029,7 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
         apiFetch(base+'&metric=out_octets'),
       ]);
     }).then(([inData, outData]) => {
-      _renderTrafficChart(inData, outData);
+      _renderTrafficChart(inData, outData, hours);
     }).catch(()=>{ const msg = document.getElementById('if-traffic-msg'); if(msg) msg.style.display=''; });
   }
 
@@ -1018,13 +1038,23 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
       const tbody = document.getElementById('if-rates-body');
       if (!tbody) return;
       const ifaces = data.interfaces || [];
-      if (ifaces.length === 0) { tbody.innerHTML='<tr><td colspan="5" class="text-muted text-center">Brak danych</td></tr>'; return; }
-      tbody.innerHTML = ifaces.sort((a,b)=>a.if_index-b.if_index).map(r=>
-        '<tr><td><code>'+esc(r.interface_name||'ifIndex '+r.if_index)+'</code></td>'
-        +'<td>'+fmtBps(r.in_bps)+'</td><td>'+fmtBps(r.out_bps)+'</td>'
-        +'<td class="'+(r.in_errors>0?'text-danger':'')+'">'+Math.round((r.in_errors||0)*600)+'</td>'
-        +'<td class="'+(r.out_errors>0?'text-danger':'')+'">'+Math.round((r.out_errors||0)*600)+'</td></tr>'
-      ).join('');
+      if (ifaces.length === 0) { tbody.innerHTML='<tr><td colspan="7" class="text-muted text-center">Brak danych</td></tr>'; return; }
+      tbody.innerHTML = ifaces.sort((a,b)=>a.if_index-b.if_index).map(r=>{
+        const inErr  = Math.round((r.in_errors   ||0)*600);
+        const outErr = Math.round((r.out_errors  ||0)*600);
+        const inDsc  = Math.round((r.in_discards ||0)*600);
+        const outDsc = Math.round((r.out_discards||0)*600);
+        const errBadge = (v, cls) => v > 0
+          ? '<span class="badge '+cls+'">'+v+'</span>'
+          : '<span class="text-muted">0</span>';
+        return '<tr><td><code>'+esc(r.interface_name||'ifIndex '+r.if_index)+'</code></td>'
+          +'<td>'+fmtBps(r.in_bps)+'</td><td>'+fmtBps(r.out_bps)+'</td>'
+          +'<td>'+errBadge(inErr,  'bg-danger')+'</td>'
+          +'<td>'+errBadge(outErr, 'bg-danger')+'</td>'
+          +'<td>'+errBadge(inDsc,  'bg-warning text-dark')+'</td>'
+          +'<td>'+errBadge(outDsc, 'bg-warning text-dark')+'</td>'
+          +'</tr>';
+      }).join('');
     }).catch(()=>{});
   }
 
