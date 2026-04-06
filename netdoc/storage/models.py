@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy import (
-    Column, Integer, String, Boolean, DateTime, Float,
+    Column, Integer, BigInteger, String, Boolean, DateTime, Float,
     ForeignKey, Text, JSON, Enum as SAEnum, LargeBinary,
     Numeric, Date, UniqueConstraint, Index,
 )
@@ -479,6 +479,32 @@ class DeviceFieldHistory(Base):
     new_value   = Column(Text,        nullable=True)
     changed_at  = Column(DateTime,    default=datetime.utcnow, nullable=False)
     source      = Column(String(20),  nullable=False, default="snmp")  # "snmp","discovery","manual"
+
+    device = relationship("Device", foreign_keys=[device_id])
+
+
+class DeviceVap(Base):
+    """VAP (Virtual Access Point) — dane per SSID/BSSID z AP Ubiquiti UniFi.
+
+    Zbierane przez SNMP z ubntUnifiVapTable (1.3.6.1.4.1.41112.1.6.1.2.1).
+    Jeden wiersz = jeden SSID na jednym radiu (BSSID unikalny).
+    """
+    __tablename__ = "device_vap"
+    __table_args__ = (
+        UniqueConstraint("device_id", "bssid", name="uq_vap_device_bssid"),
+        Index("ix_vap_device_id", "device_id"),
+    )
+
+    id           = Column(Integer, primary_key=True)
+    device_id    = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    bssid        = Column(String(17), nullable=False)        # XX:XX:XX:XX:XX:XX
+    ssid         = Column(String(64), nullable=True)         # nazwa sieci WiFi
+    ifname       = Column(String(30), nullable=True)         # wifi0ap1, wifi1ap2...
+    radio_band   = Column(String(10), nullable=True)         # ng=2.4GHz, na=5GHz
+    sta_count    = Column(Integer,    nullable=True)         # podłączeni klienci
+    tx_bytes     = Column(BigInteger, nullable=True)         # Counter32 (reset przy overflow)
+    rx_bytes     = Column(BigInteger, nullable=True)
+    polled_at    = Column(DateTime,   nullable=True)
 
     device = relationship("Device", foreign_keys=[device_id])
 

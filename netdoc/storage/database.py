@@ -233,6 +233,21 @@ def _migrate_columns() -> None:
             CONSTRAINT uq_stp_dev_port UNIQUE (device_id, stp_port_num)
         )""",
         "CREATE INDEX IF NOT EXISTS ix_stp_port_device_id ON device_stp_port (device_id)",
+        # VAP (Virtual Access Point) — dane WiFi per SSID/BSSID z AP Ubiquiti UniFi
+        """CREATE TABLE IF NOT EXISTS device_vap (
+            id         SERIAL PRIMARY KEY,
+            device_id  INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+            bssid      VARCHAR(17) NOT NULL,
+            ssid       VARCHAR(64),
+            ifname     VARCHAR(30),
+            radio_band VARCHAR(10),
+            sta_count  INTEGER,
+            tx_bytes   BIGINT,
+            rx_bytes   BIGINT,
+            polled_at  TIMESTAMP,
+            CONSTRAINT uq_vap_device_bssid UNIQUE (device_id, bssid)
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_vap_device_id ON device_vap (device_id)",
         # Usun stary constraint (za wazki — blokuje wiele hasel dla jednego usera)
         """
         DO $$ BEGIN

@@ -915,21 +915,41 @@ def _enrich_interfaces(ip: str, community: str, timeout: int = 2) -> list[dict]:
     _walk_table(_IFX_TABLE_OID)
     _walk_table(_DOT3_STATS_OID)
 
+    # IP per interface — ipAddrTable (RFC 1213)
+    # OID: 1.3.6.1.2.1.4.20.1.2.<ip_addr> → ifIndex
+    _IP_ADDR_IFINDEX = "1.3.6.1.2.1.4.20.1.2"
+    ifindex_to_ip: dict[str, str] = {}
+    try:
+        for oid_str, raw_val, _tag in snmp_walk(
+            ip, _IP_ADDR_IFINDEX, community=community, timeout=timeout, max_iter=200
+        ):
+            # suffix = ostatni element = IP adres (w OID: 192.168.5.1 → .192.168.5.1)
+            suffix = oid_str[len(_IP_ADDR_IFINDEX):].lstrip(".")
+            ip_addr = suffix  # np. "192.168.5.1"
+            try:
+                if_idx_val = int.from_bytes(raw_val, "big") if isinstance(raw_val, (bytes, bytearray)) else int(raw_val)
+                if if_idx_val > 0:
+                    ifindex_to_ip[str(if_idx_val)] = ip_addr
+            except (TypeError, ValueError):
+                pass
+    except Exception as exc:
+        logger.debug("IP addr walk %s: %s", ip, exc)
+
     result = []
     for v in ifaces.values():
         name = v.get("name", "")
         if not name or name.lower() in _SKIP_NAMES:
             continue
-        # Preferuj ifHighSpeed (obsługuje >4Gbps, 10G/40G/100G)
-        # Fallback do ifSpeed/1e6 gdy brak lub zero
         spd = v.get("speed_mbps") or v.get("speed_mbps_low") or None
         if spd == 0:
             spd = None
+        if_idx_str = v["if_index"]
         result.append({
-            "if_index":     int(v["if_index"]) if v["if_index"].isdigit() else None,
+            "if_index":     int(if_idx_str) if if_idx_str.isdigit() else None,
             "name":         name,
             "alias":        v.get("alias"),
             "mac":          v.get("mac"),
+            "ip":           ifindex_to_ip.get(if_idx_str),
             "admin_status": v.get("admin_status"),
             "oper_status":  v.get("oper_status"),
             "speed_mbps":   spd,
@@ -1101,6 +1121,7 @@ def _save_interfaces(db, device_id: int, ifaces: list[dict]) -> int:
             "name":         iface.get("name", ""),
             "alias":        iface.get("alias"),
             "mac":          iface.get("mac"),
+            "ip":           iface.get("ip"),
             "admin_status": iface.get("admin_status"),
             "oper_status":  iface.get("oper_status"),
             "speed":        iface.get("speed_mbps"),
@@ -1117,6 +1138,7 @@ def _save_interfaces(db, device_id: int, ifaces: list[dict]) -> int:
                 "name":         stmt.excluded.name,
                 "alias":        stmt.excluded.alias,
                 "mac":          stmt.excluded.mac,
+                "ip":           stmt.excluded.ip,
                 "admin_status": stmt.excluded.admin_status,
                 "oper_status":  stmt.excluded.oper_status,
                 "speed":        stmt.excluded.speed,
@@ -1136,6 +1158,133 @@ def _save_interfaces(db, device_id: int, ifaces: list[dict]) -> int:
         return len(rows)
     except Exception as exc:
         logger.warning("interface save error device_id=%s: %s", device_id, exc)
+        db.rollback()
+        return 0
+
+
+def _collect_ubnt_wireless(ip: str, community: str, timeout: int = 2) -> dict:
+    """Pobiera dane WiFi z AP Ubiquiti UniFi przez SNMP (ubntUnifiVapTable).
+
+    Zwraca dict:
+        vaps  — lista dict per SSID/BSSID:
+                  bssid, ssid, ifname, radio_band, sta_count, tx_bytes, rx_bytes
+        total_clients — łączna liczba klientów
+    """
+    from netdoc.collector.snmp_walk import snmp_walk
+
+    _VAP_OID = "1.3.6.1.4.1.41112.1.6.1.2.1"
+
+    def _iv(v) -> int:
+        if isinstance(v, (bytes, bytearray)):
+            return int.from_bytes(v, "big") if v else 0
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return 0
+
+    def _sv(v) -> str:
+        if isinstance(v, (bytes, bytearray)):
+            return v.decode("utf-8", errors="replace").strip()
+        return str(v).strip()
+
+    # Indeks: .field.vapIdx (prosty int) — każde pole w osobnym wierszu
+    # field 2 = bssid (MAC hex string)
+    # field 6 = ssid (nazwa sieci)
+    # field 7 = ifname (wifi0ap1, wifi0ap2...)
+    # field 8 = sta_count (klienci)
+    # field 9 = radio_band (ng=2.4GHz, na=5GHz)
+    # field 10 = tx_bytes (Counter32)
+    # field 13 = rx_bytes (Counter32)
+    _VAP_FIELDS = {"2": "bssid", "6": "ssid", "7": "ifname", "8": "sta_count",
+                   "9": "radio_band", "10": "tx_bytes", "13": "rx_bytes"}
+
+    by_idx: dict[str, dict] = {}
+    try:
+        rows = snmp_walk(ip, _VAP_OID, community=community, timeout=timeout, max_iter=1000)
+        for oid, raw_val, _tag in rows:
+            sub = oid[len(_VAP_OID):].lstrip(".")
+            parts = sub.split(".")
+            if len(parts) != 2:
+                continue
+            field, vidx = parts
+            if field not in _VAP_FIELDS:
+                continue
+            entry = by_idx.setdefault(vidx, {})
+            fname = _VAP_FIELDS[field]
+            entry[fname] = _sv(raw_val) if fname in ("bssid", "ssid", "ifname", "radio_band") else _iv(raw_val)
+    except Exception as exc:
+        logger.debug("UBNT VAP walk %s: %s", ip, exc)
+        return {"vaps": [], "total_clients": 0}
+
+    vaps = []
+    for vidx, e in sorted(by_idx.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 0):
+        bssid = e.get("bssid", "")
+        ssid  = e.get("ssid", "")
+        if not bssid or not ssid:
+            continue
+        vaps.append({
+            "bssid":      bssid,
+            "ssid":       ssid,
+            "ifname":     e.get("ifname"),
+            "radio_band": e.get("radio_band"),
+            "sta_count":  e.get("sta_count", 0),
+            "tx_bytes":   e.get("tx_bytes", 0) or None,
+            "rx_bytes":   e.get("rx_bytes", 0) or None,
+        })
+
+    total_clients = sum(v["sta_count"] for v in vaps)
+    return {"vaps": vaps, "total_clients": total_clients}
+
+
+def _save_vap_data(db, device_id: int, vaps: list[dict]) -> int:
+    """Upsertuje dane VAP (SSID/klienci) do tabeli device_vap."""
+    if not vaps:
+        return 0
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from netdoc.storage.models import DeviceVap
+
+    now = datetime.utcnow()
+    rows = [
+        {
+            "device_id":  device_id,
+            "bssid":      v["bssid"],
+            "ssid":       v.get("ssid"),
+            "ifname":     v.get("ifname"),
+            "radio_band": v.get("radio_band"),
+            "sta_count":  v.get("sta_count"),
+            "tx_bytes":   v.get("tx_bytes"),
+            "rx_bytes":   v.get("rx_bytes"),
+            "polled_at":  now,
+        }
+        for v in vaps if v.get("bssid")
+    ]
+    if not rows:
+        return 0
+    try:
+        stmt = pg_insert(DeviceVap.__table__).values(rows)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_vap_device_bssid",
+            set_={
+                "ssid":       stmt.excluded.ssid,
+                "ifname":     stmt.excluded.ifname,
+                "radio_band": stmt.excluded.radio_band,
+                "sta_count":  stmt.excluded.sta_count,
+                "tx_bytes":   stmt.excluded.tx_bytes,
+                "rx_bytes":   stmt.excluded.rx_bytes,
+                "polled_at":  stmt.excluded.polled_at,
+            },
+        )
+        db.execute(stmt)
+        # Usuń VAP które zniknęły z AP (np. SSID wyłączony)
+        current_bssids = [r["bssid"] for r in rows]
+        db.query(DeviceVap).filter(
+            DeviceVap.device_id == device_id,
+            DeviceVap.bssid.notin_(current_bssids),
+        ).delete(synchronize_session=False)
+        db.commit()
+        return len(rows)
+    except Exception as exc:
+        logger.warning("VAP save error device_id=%s: %s", device_id, exc)
         db.rollback()
         return 0
 
@@ -1530,6 +1679,35 @@ def scan_once() -> None:
         db_sens.close()
     if sensor_total:
         logger.info("Sensor upserts total: %d", sensor_total)
+
+    # WiFi VAP data — Ubiquiti UniFi APs (ubntUnifiVapTable)
+    ap_candidates = [d for d in devices if d.snmp_community and d.device_type == DeviceType.ap]
+    if ap_candidates:
+        vap_total = 0
+        db_vap = SessionLocal()
+        try:
+            for d in ap_candidates:
+                try:
+                    result = _collect_ubnt_wireless(str(d.ip), d.snmp_community, timeout=snmp_timeout)
+                    vaps = result["vaps"]
+                    if vaps:
+                        n = _save_vap_data(db_vap, d.id, vaps)
+                        vap_total += n
+                        logger.info("WiFi %-18s: %d VAP(s), %d clients total",
+                                    d.ip, len(vaps), result["total_clients"])
+                        # Zapisz total_clients jako sensor (widoczny na karcie urządzenia)
+                        _save_sensors(db_vap, d.id, [{
+                            "name":   "wifi_clients_total",
+                            "value":  float(result["total_clients"]),
+                            "unit":   "clients",
+                            "source": "ubnt_vap",
+                        }])
+                except Exception as exc:
+                    logger.debug("WiFi VAP %s: %s", d.ip, exc)
+        except Exception as exc:
+            logger.warning("WiFi VAP collection error: %s", exc)
+        finally:
+            db_vap.close()
 
     # L2 data — FDB, VLAN, STP (tylko switche; co 15 minut — nie co 5 min)
     _L2_TYPES = {DeviceType.switch}

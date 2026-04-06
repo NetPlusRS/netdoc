@@ -1426,7 +1426,7 @@ def create_app():
         """Strona szczegółów urządzenia: parametry, historia pingów, zmiany pól, interfejsy, syslog."""
         from netdoc.storage.models import (
             DeviceFieldHistory, InterfaceHistory, Interface, ScanResult,
-            Vulnerability, TopologyLink, DeviceSensor,
+            Vulnerability, TopologyLink, DeviceSensor, DeviceVap,
         )
         from netdoc.storage.clickhouse import query_ping_history, query_ping_stats, query_syslog
         db = SessionLocal()
@@ -1536,6 +1536,14 @@ def create_app():
                 .all()
             )
 
+            # WiFi VAP data (Ubiquiti UniFi APs)
+            vap_data = (
+                db.query(DeviceVap)
+                .filter(DeviceVap.device_id == device_id)
+                .order_by(DeviceVap.radio_band, DeviceVap.ssid)
+                .all()
+            )
+
             # Passports already generated for this device
             from netdoc.storage.models import DevicePassport
             passports = (
@@ -1560,6 +1568,7 @@ def create_app():
                 syslog_rows=syslog_rows,
                 broadcast_info=broadcast_info,
                 sensors=sensors,
+                vap_data=vap_data,
                 passports=passports,
                 pro_passport=PRO_PASSPORT,
             )
