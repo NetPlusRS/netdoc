@@ -553,7 +553,7 @@
             <div class="table-responsive" style="max-height:320px;overflow-y:auto">
               <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
                 <thead class="table-light sticky-top"><tr>
-                  <th>VLAN</th><th>Nazwa</th><th>Porty (ifIndex)</th><th>Tryb</th>
+                  <th style="width:3rem">VLAN</th><th style="width:8rem">Nazwa</th><th>Porty (ifIndex) — <span class="text-muted fw-normal">* = native/PVID, T: = trunk</span></th><th style="width:10rem">Tryb</th>
                 </tr></thead>
                 <tbody id="vlan-tbody"><tr><td colspan="4" class="text-muted text-center py-3">Ladowanie...</td></tr></tbody>
               </table>
@@ -1147,11 +1147,24 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
       if (vlans.length === 0) { tbody.innerHTML='<tr><td colspan="4" class="text-muted text-center py-3">Brak danych VLAN</td></tr>'; return; }
       tbody.innerHTML = vlans.map(v => {
         const ports = v.ports || [];
-        const access = ports.filter(p=>p.port_mode==='access').map(p=>'<code>'+esc(p.if_index)+(p.is_pvid?'*':'')+'</code>').join(' ');
-        const trunk  = ports.filter(p=>p.port_mode==='trunk').map(p=>'<code>'+esc(p.if_index)+'</code>').join(' ');
+        const nAccess = ports.filter(p=>p.port_mode==='access').length;
+        const nTrunk  = ports.filter(p=>p.port_mode==='trunk').length;
+        const nOther  = ports.length - nAccess - nTrunk;
+        // Porty access — szary tekst, * przy PVID
+        const accessPorts = ports.filter(p=>p.port_mode==='access')
+          .map(p=>'<span class="text-secondary">'+ esc(p.if_index)+(p.is_pvid?'<sup>*</sup>':'')+'</span>').join(' ');
+        // Porty trunk — niebieski badge z T:
+        const trunkPorts  = ports.filter(p=>p.port_mode==='trunk')
+          .map(p=>'<span class="badge bg-primary" style="font-size:.7rem">T:'+esc(p.if_index)+'</span>').join(' ');
+        // Tryb: badges z licznikami
+        let modeHtml = '';
+        if (nAccess) modeHtml += '<span class="badge bg-secondary me-1">access ×'+nAccess+'</span>';
+        if (nTrunk)  modeHtml += '<span class="badge bg-primary me-1">trunk ×'+nTrunk+'</span>';
+        if (nOther)  modeHtml += '<span class="badge bg-light text-dark me-1">other ×'+nOther+'</span>';
+        if (!modeHtml) modeHtml = '<span class="text-muted small">—</span>';
         return '<tr><td><strong>'+esc(v.vlan_id)+'</strong></td><td>'+esc(v.vlan_name||'—')+'</td>'
-          +'<td>'+access+' '+(trunk?'<span class="text-muted">T:'+trunk+'</span>':'')+'</td>'
-          +'<td><small class="text-muted">'+ports.length+' portow</small></td></tr>';
+          +'<td style="word-break:break-word">'+accessPorts+' '+trunkPorts+'</td>'
+          +'<td>'+modeHtml+'</td></tr>';
       }).join('');
     }).catch(()=>{ const b=document.getElementById('vlan-tbody'); if(b) b.innerHTML='<tr><td colspan="4" class="text-danger text-center">Blad ladowania</td></tr>'; });
   }
