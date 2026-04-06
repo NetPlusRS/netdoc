@@ -52,6 +52,8 @@ class DeviceOut(BaseModel):
     ram_total_mb: Optional[int] = None
     stp_root_mac: Optional[str] = None
     stp_root_cost: Optional[int] = None
+    skip_cred_scan: bool = False
+    skip_port_scan: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -102,6 +104,11 @@ class IpTypeUpdate(BaseModel):
         if v not in IP_TYPES:
             raise ValueError(f"Niedozwolony typ IP. Dozwolone: {', '.join(IP_TYPES)}")
         return v
+
+
+class ScanSkipUpdate(BaseModel):
+    skip_cred_scan: Optional[bool] = None
+    skip_port_scan: Optional[bool] = None
 
 
 # --- Endpointy ---
@@ -258,6 +265,21 @@ def set_ip_type(device_id: int, payload: IpTypeUpdate, db: Session = Depends(get
     if not device:
         raise HTTPException(status_code=404, detail="Urzadzenie nie znalezione")
     device.ip_type = payload.ip_type
+    db.commit()
+    db.refresh(device)
+    return device
+
+
+@router.patch("/{device_id}/scan-skip", response_model=DeviceOut)
+def set_scan_skip(device_id: int, payload: ScanSkipUpdate, db: Session = Depends(get_db)):
+    """Wlacza lub wylacza pomijanie skanowania hasel / portow dla urzadzenia."""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Urzadzenie nie znalezione")
+    if payload.skip_cred_scan is not None:
+        device.skip_cred_scan = payload.skip_cred_scan
+    if payload.skip_port_scan is not None:
+        device.skip_port_scan = payload.skip_port_scan
     db.commit()
     db.refresh(device)
     return device

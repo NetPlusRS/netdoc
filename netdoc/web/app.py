@@ -1768,6 +1768,54 @@ def create_app():
             db.close()
         return redirect(url_for("device_detail", device_id=device_id))
 
+    @app.route("/devices/<int:device_id>/toggle-cred-scan", methods=["POST"])
+    def device_toggle_cred_scan(device_id):
+        """Włącza lub wyłącza testowanie haseł dla urządzenia."""
+        db = SessionLocal()
+        try:
+            dev = db.query(Device).filter_by(id=device_id).first()
+            if not dev:
+                flash("Urządzenie nie znalezione.", "danger")
+                return redirect(url_for("devices"))
+            new_val = not dev.skip_cred_scan
+            dev.skip_cred_scan = new_val
+            ip = str(dev.ip)
+            db.commit()
+            if new_val:
+                flash(f"Testowanie haseł zatrzymane dla {ip}.", "warning")
+            else:
+                flash(f"Testowanie haseł wznowione dla {ip}.", "success")
+        except Exception as exc:
+            db.rollback()
+            flash(f"Błąd zapisu: {exc}", "danger")
+        finally:
+            db.close()
+        return redirect(url_for("device_detail", device_id=device_id))
+
+    @app.route("/devices/<int:device_id>/toggle-port-scan", methods=["POST"])
+    def device_toggle_port_scan(device_id):
+        """Włącza lub wyłącza skanowanie portów dla urządzenia."""
+        db = SessionLocal()
+        try:
+            dev = db.query(Device).filter_by(id=device_id).first()
+            if not dev:
+                flash("Urządzenie nie znalezione.", "danger")
+                return redirect(url_for("devices"))
+            new_val = not dev.skip_port_scan
+            dev.skip_port_scan = new_val
+            ip = str(dev.ip)
+            db.commit()
+            if new_val:
+                flash(f"Skanowanie portów zatrzymane dla {ip}.", "warning")
+            else:
+                flash(f"Skanowanie portów wznowione dla {ip}.", "success")
+        except Exception as exc:
+            db.rollback()
+            flash(f"Błąd zapisu: {exc}", "danger")
+        finally:
+            db.close()
+        return redirect(url_for("device_detail", device_id=device_id))
+
     @app.route("/devices/<int:device_id>/set-ip-type", methods=["POST"])
     def device_set_ip_type(device_id):
         """Ustawia typ adresacji IP urzadzenia."""

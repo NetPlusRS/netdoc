@@ -2294,6 +2294,7 @@ def scan_once() -> None:
             (d.id, d.ip) for d in db.query(Device).filter(
                 Device.is_active == True,
                 Device.last_seen >= recent_seen,
+                Device.skip_cred_scan == False,
                 (Device.last_credential_ok_at.is_(None)) |
                 (Device.last_credential_ok_at < threshold),
             ).all()

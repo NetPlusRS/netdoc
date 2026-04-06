@@ -186,6 +186,9 @@ def _migrate_columns() -> None:
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS ram_total_mb INTEGER",
         # Flaga wyłączenia automatycznego full scan 1-65535 (2026-03-30)
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS no_full_scan BOOLEAN NOT NULL DEFAULT FALSE",
+        # Flagi pomijania skanów (2026-04-06)
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS skip_cred_scan BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS skip_port_scan BOOLEAN NOT NULL DEFAULT FALSE",
         # SNMP sysObjectID — OID producenta do wykrywania vendor profile (2026-04-04)
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS snmp_sys_object_id VARCHAR(100)",
         # STP — informacje o root bridge (2026-04-04)

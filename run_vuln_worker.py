@@ -1864,7 +1864,10 @@ def scan_once() -> None:
     db = SessionLocal()
     try:
         dev_list = [(d.id, d.ip, d.device_type)
-                    for d in db.query(Device).filter(Device.is_active == True).all()]
+                    for d in db.query(Device).filter(
+                        Device.is_active == True,
+                        Device.skip_port_scan == False,
+                    ).all()]
         _global_creds_cache = _preload_global_creds(db)
     finally:
         db.close()

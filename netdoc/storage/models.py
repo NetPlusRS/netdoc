@@ -172,6 +172,8 @@ class Device(Base):
     snmp_uptime        = Column(String(64),     nullable=True)   # sysUpTime z SNMP (czytelny string, np. "10d 5h 23m")
     ram_total_mb       = Column(Integer,        nullable=True)   # całkowita RAM z UCD-SNMP memTotalReal (w MB)
     no_full_scan       = Column(Boolean,        nullable=False, default=False)  # wyłącz automatyczny full scan 1-65535
+    skip_cred_scan     = Column(Boolean,        nullable=False, default=False)  # wyłącz testowanie haseł dla tego urządzenia
+    skip_port_scan     = Column(Boolean,        nullable=False, default=False)  # wyłącz skan portów (vuln worker + nmap)
     # SNMP vendor detection + STP (2026-04-04)
     snmp_sys_object_id = Column(String(100),    nullable=True)   # sysObjectID np. "1.3.6.1.4.1.9.1.1"
     stp_root_mac       = Column(String(17),     nullable=True)   # MAC root bridge z STP
