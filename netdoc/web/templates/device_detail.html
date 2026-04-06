@@ -226,7 +226,7 @@
             {% for v in vap_data %}
             <tr>
               <td class="fw-semibold">{{ v.ssid or '—' }}</td>
-              <td><code class="small">{{ v.bssid }}</code></td>
+              <td><code class="small">{{ v.bssid or '—' }}</code></td>
               <td>
                 {% if v.radio_band == 'ng' %}<span class="badge bg-info text-dark">2.4 GHz</span>
                 {% elif v.radio_band == 'na' %}<span class="badge bg-primary">5 GHz</span>

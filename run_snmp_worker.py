@@ -1187,10 +1187,19 @@ def _collect_ubnt_wireless(ip: str, community: str, timeout: int = 2) -> dict:
             return v.decode("utf-8", errors="replace").strip()
         return str(v).strip()
 
+    def _mac(v) -> str:
+        """Formatuje surowe 6 bajtów jako XX:XX:XX:XX:XX:XX."""
+        if isinstance(v, (bytes, bytearray)) and len(v) == 6:
+            return ":".join(f"{b:02X}" for b in v)
+        s = _sv(v)
+        if len(s) == 17 and s.count(":") == 5:
+            return s.upper()
+        return s  # fallback — zostaw jak jest
+
     # Indeks: .field.vapIdx (prosty int) — każde pole w osobnym wierszu
-    # field 2 = bssid (MAC hex string)
+    # field 2 = bssid (6 bajtów MAC — może być taki sam dla wielu SSIDów na tym samym radiu)
     # field 6 = ssid (nazwa sieci)
-    # field 7 = ifname (wifi0ap1, wifi0ap2...)
+    # field 7 = ifname (wifi0ap1, wifi0ap2... — unikalny per VAP)
     # field 8 = sta_count (klienci)
     # field 9 = radio_band (ng=2.4GHz, na=5GHz)
     # field 10 = tx_bytes (Counter32)
@@ -1211,21 +1220,26 @@ def _collect_ubnt_wireless(ip: str, community: str, timeout: int = 2) -> dict:
                 continue
             entry = by_idx.setdefault(vidx, {})
             fname = _VAP_FIELDS[field]
-            entry[fname] = _sv(raw_val) if fname in ("bssid", "ssid", "ifname", "radio_band") else _iv(raw_val)
+            if fname == "bssid":
+                entry[fname] = _mac(raw_val)
+            elif fname in ("ssid", "ifname", "radio_band"):
+                entry[fname] = _sv(raw_val)
+            else:
+                entry[fname] = _iv(raw_val)
     except Exception as exc:
         logger.debug("UBNT VAP walk %s: %s", ip, exc)
         return {"vaps": [], "total_clients": 0}
 
     vaps = []
     for vidx, e in sorted(by_idx.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 0):
-        bssid = e.get("bssid", "")
-        ssid  = e.get("ssid", "")
-        if not bssid or not ssid:
+        ifname = e.get("ifname", "")
+        ssid   = e.get("ssid", "")
+        if not ifname or not ssid:
             continue
         vaps.append({
-            "bssid":      bssid,
+            "bssid":      e.get("bssid"),
             "ssid":       ssid,
-            "ifname":     e.get("ifname"),
+            "ifname":     ifname,
             "radio_band": e.get("radio_band"),
             "sta_count":  e.get("sta_count", 0),
             "tx_bytes":   e.get("tx_bytes", 0) or None,
@@ -1247,26 +1261,26 @@ def _save_vap_data(db, device_id: int, vaps: list[dict]) -> int:
     rows = [
         {
             "device_id":  device_id,
-            "bssid":      v["bssid"],
+            "bssid":      v.get("bssid"),
             "ssid":       v.get("ssid"),
-            "ifname":     v.get("ifname"),
+            "ifname":     v["ifname"],
             "radio_band": v.get("radio_band"),
             "sta_count":  v.get("sta_count"),
             "tx_bytes":   v.get("tx_bytes"),
             "rx_bytes":   v.get("rx_bytes"),
             "polled_at":  now,
         }
-        for v in vaps if v.get("bssid")
+        for v in vaps if v.get("ifname")
     ]
     if not rows:
         return 0
     try:
         stmt = pg_insert(DeviceVap.__table__).values(rows)
         stmt = stmt.on_conflict_do_update(
-            constraint="uq_vap_device_bssid",
+            constraint="uq_vap_device_ifname",
             set_={
+                "bssid":      stmt.excluded.bssid,
                 "ssid":       stmt.excluded.ssid,
-                "ifname":     stmt.excluded.ifname,
                 "radio_band": stmt.excluded.radio_band,
                 "sta_count":  stmt.excluded.sta_count,
                 "tx_bytes":   stmt.excluded.tx_bytes,
@@ -1276,10 +1290,10 @@ def _save_vap_data(db, device_id: int, vaps: list[dict]) -> int:
         )
         db.execute(stmt)
         # Usuń VAP które zniknęły z AP (np. SSID wyłączony)
-        current_bssids = [r["bssid"] for r in rows]
+        current_ifnames = [r["ifname"] for r in rows]
         db.query(DeviceVap).filter(
             DeviceVap.device_id == device_id,
-            DeviceVap.bssid.notin_(current_bssids),
+            DeviceVap.ifname.notin_(current_ifnames),
         ).delete(synchronize_session=False)
         db.commit()
         return len(rows)

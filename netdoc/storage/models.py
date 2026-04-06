@@ -224,10 +224,10 @@ class TopologyLink(Base):
     __tablename__ = "topology_links"
 
     id = Column(Integer, primary_key=True, index=True)
-    src_device_id = Column(Integer, ForeignKey("devices.id"), nullable=False)
-    src_interface_id = Column(Integer, ForeignKey("interfaces.id"), nullable=True)
-    dst_device_id = Column(Integer, ForeignKey("devices.id"), nullable=False)
-    dst_interface_id = Column(Integer, ForeignKey("interfaces.id"), nullable=True)
+    src_device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    src_interface_id = Column(Integer, ForeignKey("interfaces.id", ondelete="SET NULL"), nullable=True)
+    dst_device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    dst_interface_id = Column(Integer, ForeignKey("interfaces.id", ondelete="SET NULL"), nullable=True)
     protocol = Column(SAEnum(TopologyProtocol), default=TopologyProtocol.lldp)
     confidence = Column(SAEnum(Confidence), default=Confidence.auto)
     first_seen = Column(DateTime, default=datetime.utcnow)
@@ -486,22 +486,23 @@ class DeviceFieldHistory(Base):
 
 
 class DeviceVap(Base):
-    """VAP (Virtual Access Point) — dane per SSID/BSSID z AP Ubiquiti UniFi.
+    """VAP (Virtual Access Point) — dane per SSID/ifname z AP Ubiquiti UniFi.
 
     Zbierane przez SNMP z ubntUnifiVapTable (1.3.6.1.4.1.41112.1.6.1.2.1).
-    Jeden wiersz = jeden SSID na jednym radiu (BSSID unikalny).
+    Jeden wiersz = jeden VAP (unikalny: device_id + ifname).
+    BSSID może się powtarzać na tym samym radiu dla różnych SSIDów.
     """
     __tablename__ = "device_vap"
     __table_args__ = (
-        UniqueConstraint("device_id", "bssid", name="uq_vap_device_bssid"),
+        UniqueConstraint("device_id", "ifname", name="uq_vap_device_ifname"),
         Index("ix_vap_device_id", "device_id"),
     )
 
     id           = Column(Integer, primary_key=True)
     device_id    = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
-    bssid        = Column(String(17), nullable=False)        # XX:XX:XX:XX:XX:XX
+    bssid        = Column(String(17), nullable=True)         # XX:XX:XX:XX:XX:XX (może być NULL lub zduplikowany)
     ssid         = Column(String(64), nullable=True)         # nazwa sieci WiFi
-    ifname       = Column(String(30), nullable=True)         # wifi0ap1, wifi1ap2...
+    ifname       = Column(String(30), nullable=False)        # wifi0ap1, wifi1ap2... — klucz unikatu
     radio_band   = Column(String(10), nullable=True)         # ng=2.4GHz, na=5GHz
     sta_count    = Column(Integer,    nullable=True)         # podłączeni klienci
     tx_bytes     = Column(BigInteger, nullable=True)         # Counter32 (reset przy overflow)

@@ -189,6 +189,41 @@ def _migrate_columns() -> None:
         # Flagi pomijania skanów (2026-04-06)
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS skip_cred_scan BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS skip_port_scan BOOLEAN NOT NULL DEFAULT FALSE",
+        # topology_links: naprawa FK CASCADE — brak CASCADE blokował usuwanie urządzeń (2026-04-06)
+        """DO $$ BEGIN
+          ALTER TABLE topology_links DROP CONSTRAINT IF EXISTS topology_links_src_device_id_fkey;
+          ALTER TABLE topology_links ADD CONSTRAINT topology_links_src_device_id_fkey
+            FOREIGN KEY (src_device_id) REFERENCES devices(id) ON DELETE CASCADE;
+        EXCEPTION WHEN OTHERS THEN NULL; END $$""",
+        """DO $$ BEGIN
+          ALTER TABLE topology_links DROP CONSTRAINT IF EXISTS topology_links_dst_device_id_fkey;
+          ALTER TABLE topology_links ADD CONSTRAINT topology_links_dst_device_id_fkey
+            FOREIGN KEY (dst_device_id) REFERENCES devices(id) ON DELETE CASCADE;
+        EXCEPTION WHEN OTHERS THEN NULL; END $$""",
+        """DO $$ BEGIN
+          ALTER TABLE topology_links DROP CONSTRAINT IF EXISTS topology_links_src_interface_id_fkey;
+          ALTER TABLE topology_links ADD CONSTRAINT topology_links_src_interface_id_fkey
+            FOREIGN KEY (src_interface_id) REFERENCES interfaces(id) ON DELETE SET NULL;
+        EXCEPTION WHEN OTHERS THEN NULL; END $$""",
+        """DO $$ BEGIN
+          ALTER TABLE topology_links DROP CONSTRAINT IF EXISTS topology_links_dst_interface_id_fkey;
+          ALTER TABLE topology_links ADD CONSTRAINT topology_links_dst_interface_id_fkey
+            FOREIGN KEY (dst_interface_id) REFERENCES interfaces(id) ON DELETE SET NULL;
+        EXCEPTION WHEN OTHERS THEN NULL; END $$""",
+        # device_vap: zmiana unique z bssid → ifname (BSSID może być ten sam dla wielu SSIDów) (2026-04-06)
+        """DO $$ BEGIN
+          ALTER TABLE device_vap DROP CONSTRAINT IF EXISTS uq_vap_device_bssid;
+          ALTER TABLE device_vap ALTER COLUMN ifname SET NOT NULL;
+          ALTER TABLE device_vap ALTER COLUMN bssid DROP NOT NULL;
+        EXCEPTION WHEN OTHERS THEN NULL; END $$""",
+        """DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'uq_vap_device_ifname'
+          ) THEN
+            ALTER TABLE device_vap
+              ADD CONSTRAINT uq_vap_device_ifname UNIQUE (device_id, ifname);
+          END IF;
+        EXCEPTION WHEN OTHERS THEN NULL; END $$""",
         # SNMP sysObjectID — OID producenta do wykrywania vendor profile (2026-04-04)
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS snmp_sys_object_id VARCHAR(100)",
         # STP — informacje o root bridge (2026-04-04)
