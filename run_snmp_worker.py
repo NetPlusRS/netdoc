@@ -1489,6 +1489,34 @@ def _save_stp_ports(db, device_id: int, ports: list[dict],
         return 0
 
 
+def _save_trunk_info(db, device_id: int, trunk_data: dict) -> int:
+    """Zapisuje tryb portu (access/trunk) i dane trunk do tabeli interfaces.
+
+    trunk_data: {if_index: {'port_mode', 'native_vlan', 'trunk_encap', 'trunk_vlans'}}
+    Aktualizuje istniejące wiersze interfaces przez UPDATE (nie insert — interfejs musi istnieć).
+    Zwraca liczbę zaktualizowanych wierszy.
+    """
+    if not trunk_data:
+        return 0
+    from netdoc.storage.models import Interface
+
+    updated = 0
+    try:
+        for if_index, info in trunk_data.items():
+            rows = db.query(Interface).filter_by(device_id=device_id, if_index=if_index).all()
+            for iface in rows:
+                iface.port_mode   = info.get("port_mode")
+                iface.native_vlan = info.get("native_vlan")
+                iface.trunk_encap = info.get("trunk_encap")
+                iface.trunk_vlans = info.get("trunk_vlans")
+                updated += 1
+        db.commit()
+    except Exception as exc:
+        logger.warning("_save_trunk_info device_id=%s: %s", device_id, exc)
+        db.rollback()
+    return updated
+
+
 _DEFAULT_SNMP_TIMEOUT = int(os.getenv("SNMP_TIMEOUT_S", "2"))
 
 
@@ -1741,7 +1769,7 @@ def scan_once() -> None:
             db_l2 = SessionLocal()
             try:
                 import threading as _threading
-                from netdoc.collector.snmp_l2 import collect_fdb, collect_vlan_port, collect_stp_ports
+                from netdoc.collector.snmp_l2 import collect_fdb, collect_vlan_port, collect_stp_ports, collect_trunk_info
                 _L2_PER_DEVICE_TIMEOUT = 60  # BUG-WRK2: daemon thread — zabezpiecza przed zawieszonym walkiem
 
                 def _collect_l2_device(d_arg, prof_arg, ip_arg, comm_arg):
@@ -1769,6 +1797,15 @@ def scan_once() -> None:
                                 logger.info("STP  %-18s: %d ports, root=%s", ip_arg, n, root_mac or "-")
                         except Exception as exc:
                             logger.debug("STP %s: %s", ip_arg, exc)
+                    # Cisco trunk port mode (VTP MIB) — access/trunk, native VLAN, encap, allowed VLANs
+                    try:
+                        trunk_data = collect_trunk_info(ip_arg, comm_arg, snmp_timeout)
+                        if trunk_data:
+                            n = _save_trunk_info(db_l2, d_arg.id, trunk_data)
+                            trunk_count = sum(1 for v in trunk_data.values() if v["port_mode"] == "trunk")
+                            logger.info("TRNK %-18s: %d ports (%d trunk)", ip_arg, n, trunk_count)
+                    except Exception as exc:
+                        logger.debug("TRUNK %s: %s", ip_arg, exc)
 
                 for d in l2_candidates:
                     _prof = get_profile(d.snmp_sys_object_id, d.os_version)

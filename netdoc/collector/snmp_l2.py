@@ -542,3 +542,99 @@ def collect_stp_ports(ip: str, community: str, timeout: int = 2) -> tuple[list[d
 
     logger.debug("collect_stp_ports %s: %d ports, root_mac=%s", ip, len(ports), root_mac)
     return ports, root_mac, root_cost
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cisco VTP MIB — tryb portu (trunk/access) i dane trunk
+# ─────────────────────────────────────────────────────────────────────────────
+
+# CISCO-VTP-MIB (1.3.6.1.4.1.9.9.46.1.6.1.1.*)
+_OID_TRUNK_ENCAP          = "1.3.6.1.4.1.9.9.46.1.6.1.1.3"   # vlanTrunkPortEncapsulationType
+_OID_TRUNK_VLANS_ENABLED  = "1.3.6.1.4.1.9.9.46.1.6.1.1.4"   # vlanTrunkPortVlansEnabled (bitstring 128B)
+_OID_TRUNK_NATIVE_VLAN    = "1.3.6.1.4.1.9.9.46.1.6.1.1.5"   # vlanTrunkPortNativeVlan
+_OID_TRUNK_STATUS         = "1.3.6.1.4.1.9.9.46.1.6.1.1.13"  # vlanTrunkPortDynamicStatus
+
+_TRUNK_ENCAP_NAMES = {1: "none", 2: "isl", 3: "isl", 4: "dot1q", 5: "negotiate"}
+# vlanTrunkPortDynamicStatus: 1=trunking, 2=notTrunking, 3=negotiating, 4=dot1q, 5=other
+_TRUNK_STATUS_TRUNKING = 1
+
+
+def collect_trunk_info(ip: str, community: str, timeout: int = 2) -> dict[int, dict]:
+    """Zbiera tryb portu trunk/access z Cisco VTP MIB.
+
+    Dostępne tylko na urządzeniach Cisco z CISCO-VTP-MIB.
+    Zwraca {if_index: {'port_mode', 'native_vlan', 'trunk_encap', 'trunk_vlans'}}
+
+    port_mode:   'trunk'  — port jest trunk (aktywnie trunking)
+                 'access' — port nie jest trunk
+    native_vlan: VLAN ID native (trunk) lub None
+    trunk_encap: 'dot1q' | 'isl' | 'none' | None
+    trunk_vlans: liczba VLANów dozwolonych na trunk (z bitstringa 128B)
+    """
+    from netdoc.collector.snmp_walk import snmp_walk
+
+    encap:       dict[int, str] = {}
+    native:      dict[int, int] = {}
+    status:      dict[int, int] = {}
+    vlans_bits:  dict[int, bytes] = {}
+
+    def _walk_int(oid: str, dest: dict) -> None:
+        try:
+            rows = snmp_walk(ip, oid, community, timeout=timeout, max_iter=256)
+            for full_oid, raw_val, _ in rows:
+                ifidx = _oid_suffix_int(full_oid, oid)
+                if ifidx is not None:
+                    v = _int_from_raw(raw_val)
+                    if v is not None:
+                        dest[ifidx] = v
+        except Exception as exc:
+            logger.debug("collect_trunk_info %s %s: %s", ip, oid, exc)
+
+    _walk_int(_OID_TRUNK_NATIVE_VLAN, native)
+    _walk_int(_OID_TRUNK_STATUS,      status)
+
+    # Encap — zwraca int, mapujemy na string
+    try:
+        rows = snmp_walk(ip, _OID_TRUNK_ENCAP, community, timeout=timeout, max_iter=256)
+        for full_oid, raw_val, _ in rows:
+            ifidx = _oid_suffix_int(full_oid, _OID_TRUNK_ENCAP)
+            if ifidx is not None:
+                v = _int_from_raw(raw_val)
+                if v is not None:
+                    encap[ifidx] = _TRUNK_ENCAP_NAMES.get(v, "none")
+    except Exception as exc:
+        logger.debug("collect_trunk_info %s encap: %s", ip, exc)
+
+    # Allowed VLANs bitstring (128 bajtów = 1024 bity = VLAN 1-1024)
+    try:
+        rows = snmp_walk(ip, _OID_TRUNK_VLANS_ENABLED, community, timeout=timeout, max_iter=256)
+        for full_oid, raw_val, _ in rows:
+            ifidx = _oid_suffix_int(full_oid, _OID_TRUNK_VLANS_ENABLED)
+            if ifidx is not None and isinstance(raw_val, (bytes, bytearray)):
+                vlans_bits[ifidx] = bytes(raw_val)
+    except Exception as exc:
+        logger.debug("collect_trunk_info %s vlans: %s", ip, exc)
+
+    if not status:
+        # Urządzenie nie obsługuje VTP MIB
+        logger.debug("collect_trunk_info %s: no VTP MIB data", ip)
+        return {}
+
+    result: dict[int, dict] = {}
+    for ifidx in status:
+        is_trunk   = (status[ifidx] == _TRUNK_STATUS_TRUNKING)
+        enc        = encap.get(ifidx)
+        nat        = native.get(ifidx)
+        bits       = vlans_bits.get(ifidx, b"")
+        vlan_count = bin(int.from_bytes(bits, "big")).count("1") if bits else None
+
+        result[ifidx] = {
+            "port_mode":   "trunk" if is_trunk else "access",
+            "native_vlan": nat if is_trunk else None,
+            "trunk_encap": enc if is_trunk else None,
+            "trunk_vlans": vlan_count if is_trunk else None,
+        }
+
+    logger.debug("collect_trunk_info %s: %d ports (%d trunk)",
+                 ip, len(result), sum(1 for v in result.values() if v["port_mode"] == "trunk"))
+    return result

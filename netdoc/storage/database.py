@@ -189,6 +189,11 @@ def _migrate_columns() -> None:
         # Flagi pomijania skanów (2026-04-06)
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS skip_cred_scan BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS skip_port_scan BOOLEAN NOT NULL DEFAULT FALSE",
+        # interfaces: dane o trybie portu z Cisco VTP MIB (2026-04-07)
+        "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS port_mode   VARCHAR(10)",
+        "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS native_vlan INTEGER",
+        "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS trunk_encap VARCHAR(8)",
+        "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS trunk_vlans INTEGER",
         # topology_links: naprawa FK CASCADE — brak CASCADE blokował usuwanie urządzeń (2026-04-06)
         """DO $$ BEGIN
           ALTER TABLE topology_links DROP CONSTRAINT IF EXISTS topology_links_src_device_id_fkey;

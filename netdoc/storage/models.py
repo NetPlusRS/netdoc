@@ -213,6 +213,10 @@ class Interface(Base):
     admin_status = Column(Boolean,     nullable=True)   # True=up, False=down (ifAdminStatus)
     oper_status  = Column(Boolean,     nullable=True)   # True=up, False=down (ifOperStatus)
     description  = Column(String(255), nullable=True)   # dodatkowy opis (np. z CDP/LLDP)
+    port_mode    = Column(String(10),  nullable=True)   # "access" | "trunk" | "routed" (Cisco VTP MIB)
+    native_vlan  = Column(Integer,     nullable=True)   # native VLAN (trunk) lub access VLAN
+    trunk_encap  = Column(String(8),   nullable=True)   # "dot1q" | "isl" | "none"
+    trunk_vlans  = Column(Integer,     nullable=True)   # liczba dozwolonych VLANów na trunk
     polled_at    = Column(DateTime,    nullable=True)   # ostatni SNMP poll
 
     device = relationship("Device", back_populates="interfaces")

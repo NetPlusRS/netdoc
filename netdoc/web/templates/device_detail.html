@@ -482,6 +482,36 @@
       </div>
       {% endif %}
 
+      {# ── Port Assessment ──────────────────────────────────────────────── #}
+      {% if interfaces and dev.snmp_community %}
+      <div class="card mb-3" id="card-port-summary">
+        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-diagram-3 me-1"></i>Port Assessment</span>
+          <span class="badge bg-secondary" id="port-summary-count">...</span>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive" style="max-height:420px;overflow-y:auto">
+            <table class="table table-sm table-hover mb-0" style="font-size:.8rem" id="port-summary-table">
+              <thead class="table-light sticky-top">
+                <tr>
+                  <th style="min-width:9rem">Port</th>
+                  <th style="width:5rem">Speed</th>
+                  <th style="width:5rem">Status</th>
+                  <th style="width:7rem">Tryb</th>
+                  <th style="width:9rem">VLAN</th>
+                  <th style="width:7rem">STP</th>
+                  <th>Sąsiad (LLDP/CDP)</th>
+                </tr>
+              </thead>
+              <tbody id="port-summary-body">
+                <tr><td colspan="7" class="text-muted text-center py-3">Ładowanie...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
       {# ── Interface Traffic Chart ──────────────────────────────────────── #}
       {% if interfaces and dev.snmp_community %}
       <div class="card mb-3" id="card-if-traffic">
@@ -1061,11 +1091,105 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
   document.getElementById('if-select')?.addEventListener('change', loadTrafficChart);
   document.getElementById('if-hours')?.addEventListener('change', loadTrafficChart);
 
-  // Zaladuj po zaladowaniu strony
-  if (document.getElementById('ifTrafficChart')) {
-    // Chart.js moze byc jeszcze niezaladowany — poczekaj
-    window.addEventListener('load', function() { loadTrafficChart(); loadRatesTable(); });
+  // ── Port Assessment ───────────────────────────────────────────────────────
+  function loadPortSummary() {
+    apiFetch(API+'/port-summary').then(data => {
+      const ports = data.ports || [];
+      const tbody  = document.getElementById('port-summary-body');
+      const badge  = document.getElementById('port-summary-count');
+      if (!tbody) return;
+      if (badge) badge.textContent = ports.length;
+
+      if (ports.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-muted text-center py-3">Brak danych interfejsów</td></tr>';
+        return;
+      }
+
+      function fmtSpeed(mbps) {
+        if (!mbps) return '<span class="text-muted">—</span>';
+        if (mbps >= 10000) return '<span class="badge bg-success">'+mbps/1000+'G</span>';
+        if (mbps >= 1000)  return '<span class="badge bg-primary">1G</span>';
+        if (mbps >= 100)   return '<span class="badge bg-secondary">100M</span>';
+        return '<span class="badge bg-light text-dark">'+mbps+'M</span>';
+      }
+
+      function fmtStatus(admin, oper) {
+        if (admin === false) return '<span class="badge bg-secondary">shutdown</span>';
+        if (oper  === true)  return '<span class="badge bg-success">up</span>';
+        if (oper  === false) return '<span class="badge bg-danger">down</span>';
+        return '<span class="text-muted">—</span>';
+      }
+
+      function fmtMode(p) {
+        if (p.port_mode === 'trunk') {
+          const enc = p.trunk_encap ? ' '+p.trunk_encap.toUpperCase() : '';
+          const cnt = p.trunk_vlans ? ' ('+p.trunk_vlans+' VLANs)' : '';
+          return '<span class="badge bg-primary">trunk'+enc+'</span>'+
+                 (cnt ? '<br><small class="text-muted">'+cnt+'</small>' : '');
+        }
+        if (p.port_mode === 'access') return '<span class="badge bg-secondary">access</span>';
+        if (p.port_mode === 'routed') return '<span class="badge bg-warning text-dark">routed</span>';
+        if (!p.port_mode && p.access_vlans && p.access_vlans.length)
+          return '<span class="badge bg-secondary">access</span>';
+        return '<span class="text-muted small">—</span>';
+      }
+
+      function fmtVlan(p) {
+        if (p.port_mode === 'trunk') {
+          const nat = p.native_vlan ? 'native: <strong>'+p.native_vlan+'</strong>' : '';
+          const all = p.access_vlans && p.access_vlans.length
+            ? '<br><span class="text-muted" style="font-size:.75em">'+p.access_vlans.slice(0,8).join(', ')+(p.access_vlans.length>8?'…':'')+'</span>'
+            : '';
+          return nat + all;
+        }
+        if (p.native_vlan) return 'VLAN <strong>'+p.native_vlan+'</strong>';
+        if (p.access_vlans && p.access_vlans.length) return 'VLAN <strong>'+p.access_vlans[0]+'</strong>';
+        return '<span class="text-muted">—</span>';
+      }
+
+      function fmtStp(p) {
+        if (!p.stp_role && !p.stp_state) return '<span class="text-muted">—</span>';
+        const roleColors = {root:'bg-success', designated:'bg-primary', alternate:'bg-warning text-dark', backup:'bg-secondary', disabled:'bg-light text-dark'};
+        const cls = roleColors[p.stp_role] || 'bg-secondary';
+        const role = p.stp_role ? '<span class="badge '+cls+'">'+p.stp_role+'</span>' : '';
+        const st   = p.stp_state && p.stp_state !== 'forwarding' ? '<br><small class="text-muted">'+p.stp_state+'</small>' : '';
+        const cost = p.stp_path_cost ? '<br><small class="text-muted">cost '+p.stp_path_cost+'</small>' : '';
+        return role + st + cost;
+      }
+
+      function fmtNeighbor(p) {
+        if (!p.neighbor_ip && !p.neighbor_hostname) return '<span class="text-muted">—</span>';
+        const proto = p.neighbor_protocol ? '<span class="badge bg-light text-dark me-1" style="font-size:.7rem">'+p.neighbor_protocol.toUpperCase()+'</span>' : '';
+        const host  = esc(p.neighbor_hostname || p.neighbor_ip);
+        const port  = p.neighbor_port ? '<br><small class="text-muted">'+esc(p.neighbor_port)+(p.neighbor_alias?' — '+esc(p.neighbor_alias):'')+'</small>' : '';
+        return proto+'<strong>'+host+'</strong>'+port;
+      }
+
+      tbody.innerHTML = ports.map(p => {
+        const nameEl = '<strong>'+esc(p.name)+'</strong>'+(p.alias?'<br><small class="text-muted">'+esc(p.alias)+'</small>':'');
+        // Wiersze nieaktywne (admin down lub brak prędkości i brak sąsiada) — przyszarzone
+        const rowClass = (p.admin_up === false) ? 'table-secondary' : (p.oper_up === false && !p.neighbor_ip ? 'opacity-50' : '');
+        return '<tr class="'+rowClass+'">'
+          +'<td style="white-space:nowrap">'+nameEl+'</td>'
+          +'<td>'+fmtSpeed(p.speed_mbps)+'</td>'
+          +'<td>'+fmtStatus(p.admin_up, p.oper_up)+'</td>'
+          +'<td>'+fmtMode(p)+'</td>'
+          +'<td>'+fmtVlan(p)+'</td>'
+          +'<td>'+fmtStp(p)+'</td>'
+          +'<td>'+fmtNeighbor(p)+'</td>'
+          +'</tr>';
+      }).join('');
+    }).catch(() => {
+      const b = document.getElementById('port-summary-body');
+      if (b) b.innerHTML = '<tr><td colspan="7" class="text-danger text-center">Błąd ładowania</td></tr>';
+    });
   }
+
+  // Zaladuj po zaladowaniu strony
+  window.addEventListener('load', function() {
+    if (document.getElementById('ifTrafficChart')) { loadTrafficChart(); loadRatesTable(); }
+    if (document.getElementById('port-summary-body')) { loadPortSummary(); }
+  });
 })();
 </script>
 {% endif %}

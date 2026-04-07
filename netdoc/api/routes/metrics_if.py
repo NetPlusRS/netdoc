@@ -3,6 +3,7 @@
 Endpointy:
     GET /api/devices/{id}/if-metrics         — historia metryki interfejsu z ClickHouse
     GET /api/devices/{id}/if-metrics/rates   — biezace predkosci in/out per interfejs
+    GET /api/devices/{id}/port-summary       — zestawienie portow (tryb, VLAN, STP, sasiad, predkosc)
     GET /api/devices/{id}/fdb                — tablica MAC-port (FDB)
     GET /api/devices/{id}/vlan-ports         — przynaleznosc portow do VLAN-ow
     GET /api/devices/{id}/stp                — stan STP + root bridge
@@ -14,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from netdoc.storage.database import get_db
-from netdoc.storage.models import Device, DeviceFdbEntry, DeviceVlanPort, DeviceStpPort, Interface
+from netdoc.storage.models import Device, DeviceFdbEntry, DeviceVlanPort, DeviceStpPort, Interface, TopologyLink
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,158 @@ def get_if_current_rates(
         "since_minutes": since_minutes,
         "interfaces":    rates,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Port Summary — zestawienie portów do oceny sieci
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/{device_id}/port-summary")
+def get_port_summary(device_id: int, db: Session = Depends(get_db)):
+    """Zestawienie wszystkich portów urządzenia do oceny architektury sieci.
+
+    Łączy dane z tabel: interfaces, device_vlan_port, device_stp_port, topology_links.
+    Każdy port zawiera:
+      - name, alias, speed_mbps, duplex, admin_up, oper_up
+      - port_mode (access/trunk/routed), native_vlan, trunk_encap, trunk_vlans
+      - stp_role, stp_state
+      - neighbor_ip, neighbor_hostname, neighbor_port (LLDP/CDP)
+      - vlan_id (dla access), access_vlans (lista dla trunk)
+    Użyteczne do planowania migracji do collapsed core / 3-tier.
+    """
+    _get_device_or_404(device_id, db)
+
+    # Interfejsy
+    ifaces = (
+        db.query(Interface)
+        .filter_by(device_id=device_id)
+        .order_by(Interface.if_index)
+        .all()
+    )
+
+    # VLAN-port: {if_index → [{'vlan_id', 'port_mode', 'is_pvid'}]}
+    vlan_rows = db.query(DeviceVlanPort).filter_by(device_id=device_id).all()
+    vlan_by_ifidx: dict[int, list[dict]] = {}
+    for vr in vlan_rows:
+        vlan_by_ifidx.setdefault(vr.if_index, []).append({
+            "vlan_id":   vr.vlan_id,
+            "vlan_name": vr.vlan_name,
+            "port_mode": vr.port_mode,
+            "is_pvid":   vr.is_pvid,
+        })
+
+    # STP: {if_index → {'role', 'state', 'path_cost'}}
+    stp_rows = db.query(DeviceStpPort).filter_by(device_id=device_id).all()
+    stp_by_ifidx: dict[int, dict] = {}
+    for sr in stp_rows:
+        if sr.if_index is not None:
+            stp_by_ifidx[sr.if_index] = {
+                "stp_role":  sr.stp_role,
+                "stp_state": sr.stp_state,
+                "path_cost": sr.path_cost,
+            }
+
+    # Topology links — sąsiedzi (LLDP/CDP)
+    # src_device = ten device → dst = sąsiad; lub odwrotnie
+    links_src = (
+        db.query(TopologyLink)
+        .filter(TopologyLink.src_device_id == device_id)
+        .all()
+    )
+    links_dst = (
+        db.query(TopologyLink)
+        .filter(TopologyLink.dst_device_id == device_id)
+        .all()
+    )
+
+    # neighbor: {interface_id → {'neighbor_ip', 'neighbor_hostname', 'neighbor_port', 'protocol'}}
+    neighbor_by_iface_id: dict[int, dict] = {}
+
+    for lnk in links_src:
+        # src = nasz interfejs, dst = sąsiad
+        if lnk.src_interface_id is None:
+            continue
+        nb_dev = db.query(Device).filter_by(id=lnk.dst_device_id).first()
+        nb_iface = db.query(Interface).filter_by(id=lnk.dst_interface_id).first() if lnk.dst_interface_id else None
+        neighbor_by_iface_id[lnk.src_interface_id] = {
+            "neighbor_ip":       str(nb_dev.ip) if nb_dev else None,
+            "neighbor_hostname": nb_dev.hostname or (str(nb_dev.ip) if nb_dev else None),
+            "neighbor_port":     nb_iface.name if nb_iface else None,
+            "neighbor_alias":    nb_iface.alias if nb_iface else None,
+            "protocol":          lnk.protocol.value if lnk.protocol else None,
+        }
+
+    for lnk in links_dst:
+        # dst = nasz interfejs, src = sąsiad
+        if lnk.dst_interface_id is None:
+            continue
+        if lnk.dst_interface_id in neighbor_by_iface_id:
+            continue  # już mamy
+        nb_dev = db.query(Device).filter_by(id=lnk.src_device_id).first()
+        nb_iface = db.query(Interface).filter_by(id=lnk.src_interface_id).first() if lnk.src_interface_id else None
+        neighbor_by_iface_id[lnk.dst_interface_id] = {
+            "neighbor_ip":       str(nb_dev.ip) if nb_dev else None,
+            "neighbor_hostname": nb_dev.hostname or (str(nb_dev.ip) if nb_dev else None),
+            "neighbor_port":     nb_iface.name if nb_iface else None,
+            "neighbor_alias":    nb_iface.alias if nb_iface else None,
+            "protocol":          lnk.protocol.value if lnk.protocol else None,
+        }
+
+    _STP_STATE_LABELS = {
+        1: "disabled", 2: "blocking", 3: "listening",
+        4: "learning", 5: "forwarding", 6: "broken",
+    }
+
+    ports = []
+    for iface in ifaces:
+        vlans = vlan_by_ifidx.get(iface.if_index, [])
+        stp   = stp_by_ifidx.get(iface.if_index, {})
+        nb    = neighbor_by_iface_id.get(iface.id, {})
+
+        # Tryb portu: priorytet danych z Cisco VTP MIB (iface.port_mode),
+        # fallback do device_vlan_port (access/trunk z bitstringa)
+        port_mode = iface.port_mode
+        if not port_mode and vlans:
+            modes = {v["port_mode"] for v in vlans if v["port_mode"]}
+            if "trunk" in modes:
+                port_mode = "trunk"
+            elif "access" in modes:
+                port_mode = "access"
+
+        # VLAN info
+        pvid_entry = next((v for v in vlans if v["is_pvid"]), None)
+        native_vlan = iface.native_vlan or (pvid_entry["vlan_id"] if pvid_entry else None)
+        access_vlans = sorted({v["vlan_id"] for v in vlans}) if vlans else []
+
+        ports.append({
+            "if_index":       iface.if_index,
+            "name":           iface.name,
+            "alias":          iface.alias,
+            "mac":            iface.mac,
+            "ip":             iface.ip,
+            "speed_mbps":     iface.speed,
+            "duplex":         iface.duplex,
+            "admin_up":       iface.admin_status,
+            "oper_up":        iface.oper_status,
+            # Tryb portu
+            "port_mode":      port_mode,
+            "native_vlan":    native_vlan,
+            "trunk_encap":    iface.trunk_encap,
+            "trunk_vlans":    iface.trunk_vlans,
+            "access_vlans":   access_vlans,
+            # STP
+            "stp_role":       stp.get("stp_role"),
+            "stp_state":      _STP_STATE_LABELS.get(stp.get("stp_state"), None),
+            "stp_path_cost":  stp.get("path_cost"),
+            # Sąsiad LLDP/CDP
+            "neighbor_ip":        nb.get("neighbor_ip"),
+            "neighbor_hostname":  nb.get("neighbor_hostname"),
+            "neighbor_port":      nb.get("neighbor_port"),
+            "neighbor_alias":     nb.get("neighbor_alias"),
+            "neighbor_protocol":  nb.get("protocol"),
+        })
+
+    return {"device_id": device_id, "ports": ports}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
