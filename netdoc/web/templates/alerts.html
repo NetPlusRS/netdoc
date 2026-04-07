@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Diagnostic Alerts{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+<div class="d-flex align-items-center gap-3 mb-3">
+  <h4 class="mb-0"><i class="bi bi-activity me-2"></i>Diagnostic Alerts</h4>
+  {% if alerts %}
+  <span class="badge bg-{{ 'danger' if alerts|selectattr('severity','eq','critical')|list|length > 0 else 'warning text-dark' }}">
+    {{ alerts|length }} active
+  </span>
+  {% else %}
+  <span class="badge bg-success">No active alerts</span>
+  {% endif %}
+</div>
+
+{% if not alerts %}
+<div class="alert alert-success d-flex align-items-center gap-2">
+  <i class="bi bi-check-circle-fill"></i>
+  <div>No diagnostic alerts. All monitored devices are within normal thresholds.</div>
+</div>
+{% else %}
+
+{# Summary counts #}
+{% set crit_list = alerts|selectattr('severity','eq','critical')|list %}
+{% set warn_list = alerts|selectattr('severity','eq','warning')|list %}
+<div class="row g-2 mb-3">
+  <div class="col-auto">
+    <div class="card border-danger text-center px-3 py-2">
+      <div class="fw-bold text-danger fs-4">{{ crit_list|length }}</div>
+      <div class="small text-muted">Critical</div>
+    </div>
+  </div>
+  <div class="col-auto">
+    <div class="card border-warning text-center px-3 py-2">
+      <div class="fw-bold text-warning fs-4">{{ warn_list|length }}</div>
+      <div class="small text-muted">Warning</div>
+    </div>
+  </div>
+  <div class="col-auto">
+    <div class="card text-center px-3 py-2">
+      <div class="fw-bold fs-4">{{ alerts|map(attribute='device_id')|unique|list|length }}</div>
+      <div class="small text-muted">Devices</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0" style="font-size:.85rem">
+        <thead class="table-light">
+          <tr>
+            <th>Severity</th>
+            <th>Device</th>
+            <th>Type</th>
+            <th>Interface</th>
+            <th>Current</th>
+            <th>Baseline</th>
+            <th>Trend</th>
+            <th>Since</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in alerts %}
+          {% set sev_cls = 'danger' if a.severity == 'critical' else 'warning' %}
+          {% set type_labels = {
+            'error_rate':  'Port errors/h',
+            'error_trend': 'Error trend',
+            'cpu_high':    'CPU high',
+            'mem_high':    'RAM high',
+          } %}
+          <tr class="{% if a.severity == 'critical' %}table-danger{% else %}table-warning{% endif %}" style="--bs-table-bg-opacity:.12">
+            <td><span class="badge bg-{{ sev_cls }}">{{ a.severity }}</span></td>
+            <td>
+              <a href="/devices/{{ a.device_id }}#card-diagnostics" class="text-decoration-none fw-semibold">
+                {{ a.device_name }}
+              </a>
+              <div class="text-muted" style="font-size:.75rem">{{ a.device_ip }}</div>
+            </td>
+            <td>{{ type_labels.get(a.alert_type, a.alert_type) }}</td>
+            <td>
+              {% if a.interface_name %}
+              <code>{{ a.interface_name }}</code>
+              {% elif a.if_index == 0 %}
+              <span class="text-muted">Device</span>
+              {% else %}
+              <span class="text-muted">ifIndex {{ a.if_index }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if a.value_current is not none %}
+              {{ "%.1f"|format(a.value_current) }}{% if a.alert_type in ('cpu_high','mem_high','error_trend') %}%{% else %}/h{% endif %}
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              {% if a.value_baseline is not none %}
+              {{ "%.1f"|format(a.value_baseline) }}
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              {% if a.trend_pct is not none %}
+              <span class="{% if a.trend_pct > 0 %}text-danger{% else %}text-success{% endif %}">
+                {% if a.trend_pct > 0 %}+{% endif %}{{ "%.0f"|format(a.trend_pct) }}%
+              </span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-muted" style="white-space:nowrap">
+              {% if a.first_seen %}{{ a.first_seen.strftime('%m-%d %H:%M') }}{% else %}—{% endif %}
+            </td>
+            <td>
+              <form method="post" action="/alerts/{{ a.id }}/ack" class="d-inline">
+                <button class="btn btn-outline-secondary btn-sm py-0 px-2" type="submit" title="Acknowledge — remove from active alerts">
+                  ACK
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endif %}
+
+<div class="mt-3 text-muted small">
+  <i class="bi bi-info-circle me-1"></i>
+  Alert thresholds and diagnostics can be configured in
+  <a href="/settings">Settings</a> (keys starting with <code>diag_</code>).
+  CPU and memory data is collected via HOST-RESOURCES-MIB every SNMP cycle.
+  Alert computation runs every 30 minutes.
+</div>
+
+</div>
+{% endblock %}

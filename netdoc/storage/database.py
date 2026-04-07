@@ -325,6 +325,24 @@ def _migrate_columns() -> None:
           END IF;
         END $$
         """,
+        # Alerty diagnostyczne — CPU, pamięć, błędy portów
+        """CREATE TABLE IF NOT EXISTS device_port_alerts (
+            id              SERIAL PRIMARY KEY,
+            device_id       INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+            if_index        INTEGER NOT NULL DEFAULT 0,
+            interface_name  VARCHAR(64),
+            alert_type      VARCHAR(20) NOT NULL,
+            severity        VARCHAR(10) NOT NULL,
+            value_current   FLOAT,
+            value_baseline  FLOAT,
+            trend_pct       FLOAT,
+            first_seen      TIMESTAMP NOT NULL DEFAULT NOW(),
+            last_seen       TIMESTAMP NOT NULL DEFAULT NOW(),
+            acknowledged_at TIMESTAMP,
+            CONSTRAINT uq_alert_dev_if_type UNIQUE (device_id, if_index, alert_type)
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_alert_device_id ON device_port_alerts (device_id)",
+        "CREATE INDEX IF NOT EXISTS ix_alert_severity   ON device_port_alerts (severity)",
     ]
     # Każda migracja w osobnej transakcji — błąd jednego kroku nie blokuje pozostałych.
     # lock_timeout=5s: DDL nie będzie czekać w nieskończoność na blokadę tabeli

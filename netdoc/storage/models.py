@@ -664,3 +664,41 @@ class DeviceStpPort(Base):
     polled_at    = Column(DateTime,   default=datetime.utcnow, nullable=False)
 
     device = relationship("Device", foreign_keys=[device_id])
+
+
+class DevicePortAlert(Base):
+    """Alert diagnostyczny dla portu lub zasobu urządzenia.
+
+    alert_type:
+        'error_rate'   — zbyt wiele błędów na interfejsie (In+Out errors/h)
+        'error_trend'  — rosnący trend błędów (% wzrost vs. baseline)
+        'cpu_high'     — wysokie obciążenie CPU
+        'mem_high'     — wysokie zużycie pamięci
+
+    severity:
+        'warning'  — przekroczono próg ostrzeżenia
+        'critical' — przekroczono próg krytyczny
+
+    if_index=0 oznacza alert dotyczący całego urządzenia (CPU, RAM).
+    """
+    __tablename__ = "device_port_alerts"
+    __table_args__ = (
+        UniqueConstraint("device_id", "if_index", "alert_type", name="uq_alert_dev_if_type"),
+        Index("ix_alert_device_id", "device_id"),
+        Index("ix_alert_severity", "severity"),
+    )
+
+    id              = Column(Integer,    primary_key=True)
+    device_id       = Column(Integer,    ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    if_index        = Column(Integer,    nullable=False, default=0)   # 0 = urządzenie (CPU/mem)
+    interface_name  = Column(String(64), nullable=True)
+    alert_type      = Column(String(20), nullable=False)  # error_rate|error_trend|cpu_high|mem_high
+    severity        = Column(String(10), nullable=False)  # warning|critical
+    value_current   = Column(Float,      nullable=True)   # aktualna wartość (err/h, %)
+    value_baseline  = Column(Float,      nullable=True)   # wartość bazowa (7d średnia)
+    trend_pct       = Column(Float,      nullable=True)   # % wzrost vs. baseline
+    first_seen      = Column(DateTime,   default=datetime.utcnow, nullable=False)
+    last_seen       = Column(DateTime,   default=datetime.utcnow, nullable=False)
+    acknowledged_at = Column(DateTime,   nullable=True)   # NULL = aktywny
+
+    device = relationship("Device", foreign_keys=[device_id])

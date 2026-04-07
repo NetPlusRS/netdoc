@@ -570,6 +570,16 @@ def create_app():
             "screenshot_ttl_hours":    ("12", "config"),
             "ai_assessment_enabled":   ("1",  "config"),
             "lab_monitoring_enabled":  ("0",  "config"),
+            # Diagnostics / alerting
+            "diag_enabled":                  ("1",   "config"),
+            "diag_error_warn_per_hour":      ("10",  "config"),
+            "diag_error_critical_per_hour":  ("100", "config"),
+            "diag_error_trend_pct":          ("50",  "config"),
+            "diag_error_trend_days":         ("7",   "config"),
+            "diag_cpu_warn_pct":             ("80",  "config"),
+            "diag_cpu_critical_pct":         ("95",  "config"),
+            "diag_mem_warn_pct":             ("80",  "config"),
+            "diag_mem_critical_pct":         ("90",  "config"),
             "network_ranges":          ("",   "worker_settings"),
             "scan_vpn_networks":       ("0",  "worker_settings"),
             "scan_virtual_networks":   ("0",  "worker_settings"),
@@ -751,6 +761,23 @@ def create_app():
                 vuln_details[_did] = vuln_details[_did][:10]
                 if _total > 10:
                     vuln_details[_did].append({"name": f"...i {_total - 10} więcej", "severity": "", "port": None})
+
+            # Alerty diagnostyczne per urządzenie (aktywne — acknowledged_at IS NULL)
+            try:
+                from netdoc.storage.models import DevicePortAlert
+                _alert_rows = (
+                    db.query(DevicePortAlert.device_id,
+                             func.count(DevicePortAlert.id),
+                             func.max(DevicePortAlert.severity))
+                    .filter(DevicePortAlert.acknowledged_at.is_(None))
+                    .group_by(DevicePortAlert.device_id)
+                    .all()
+                )
+                alert_counts = {r[0]: r[1] for r in _alert_rows}
+                alert_severity = {r[0]: r[2] for r in _alert_rows}
+            except Exception:
+                alert_counts = {}
+                alert_severity = {}
 
             # Statystyki statusu per urzadzenie (z tabeli events, ostatnie 30 dni)
             now = datetime.utcnow()
@@ -1067,7 +1094,9 @@ def create_app():
                                ai_last_by_device=ai_last_by_device,
                                known_networks=known_networks,
                                local_networks=local_networks,
-                               top_local_cidr=top_local_cidr)
+                               top_local_cidr=top_local_cidr,
+                               alert_counts=alert_counts,
+                               alert_severity=alert_severity)
 
     @app.route("/devices/live-status")
     def devices_live_status():
@@ -1217,6 +1246,24 @@ def create_app():
                 if _total > 10:
                     vuln_details[_did].append({"name": f"...i {_total - 10} więcej",
                                                 "severity": "", "port": None})
+
+            # Alerty diagnostyczne per urządzenie (live rows)
+            try:
+                from netdoc.storage.models import DevicePortAlert
+                _alert_rows2 = (
+                    db.query(DevicePortAlert.device_id,
+                             _func.count(DevicePortAlert.id),
+                             _func.max(DevicePortAlert.severity))
+                    .filter(DevicePortAlert.acknowledged_at.is_(None),
+                            DevicePortAlert.device_id.in_(dev_id_set))
+                    .group_by(DevicePortAlert.device_id)
+                    .all()
+                )
+                alert_counts  = {r[0]: r[1] for r in _alert_rows2}
+                alert_severity = {r[0]: r[2] for r in _alert_rows2}
+            except Exception:
+                alert_counts = {}
+                alert_severity = {}
 
             # Events (statystyki statusu)
             down_7d = dict(
@@ -1419,6 +1466,8 @@ def create_app():
             ai_assessment_enabled=ai_assessment_enabled,
             ping_interval_s=_ping_interval_s,
             ai_last_by_device=ai_last_by_device,
+            alert_counts=alert_counts,
+            alert_severity=alert_severity,
         )
 
     @app.route("/devices/<int:device_id>")
@@ -4085,6 +4134,60 @@ def create_app():
             flash(f"Podatnosc #{vuln_id} zamknieta.", "success")
         return redirect(url_for("security"))
 
+
+    # -- Diagnostics alerts page -----------------------------------------------
+    @app.route("/alerts")
+    def alerts_page():
+        """Strona sieciowych alertów diagnostycznych (CPU, pamięć, błędy portów)."""
+        from netdoc.storage.models import DevicePortAlert
+        db = SessionLocal()
+        try:
+            rows = (
+                db.query(DevicePortAlert, Device)
+                .join(Device, DevicePortAlert.device_id == Device.id)
+                .filter(DevicePortAlert.acknowledged_at.is_(None))
+                .order_by(
+                    DevicePortAlert.severity.desc(),
+                    DevicePortAlert.last_seen.desc(),
+                )
+                .all()
+            )
+            alerts = [
+                {
+                    "id":             a.id,
+                    "device_id":      a.device_id,
+                    "device_name":    dev.hostname or str(dev.ip),
+                    "device_ip":      str(dev.ip),
+                    "if_index":       a.if_index,
+                    "interface_name": a.interface_name,
+                    "alert_type":     a.alert_type,
+                    "severity":       a.severity,
+                    "value_current":  a.value_current,
+                    "value_baseline": a.value_baseline,
+                    "trend_pct":      a.trend_pct,
+                    "first_seen":     a.first_seen,
+                    "last_seen":      a.last_seen,
+                }
+                for a, dev in rows
+            ]
+        finally:
+            db.close()
+        return render_template("alerts.html", alerts=alerts)
+
+    @app.route("/alerts/<int:alert_id>/ack", methods=["POST"])
+    def alert_ack(alert_id):
+        """Potwierdza alert i wraca do /alerts."""
+        from netdoc.storage.models import DevicePortAlert
+        db = SessionLocal()
+        try:
+            a = db.query(DevicePortAlert).filter_by(id=alert_id).first()
+            if a:
+                from datetime import datetime as _dt
+                a.acknowledged_at = _dt.utcnow()
+                db.commit()
+        finally:
+            db.close()
+        return redirect(url_for("alerts_page"))
 
     # -- threats encyclopedia ---------------------------------------------------
     @app.route("/threats")

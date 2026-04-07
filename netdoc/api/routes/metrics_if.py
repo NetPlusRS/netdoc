@@ -7,19 +7,25 @@ Endpointy:
     GET /api/devices/{id}/fdb                — tablica MAC-port (FDB)
     GET /api/devices/{id}/vlan-ports         — przynaleznosc portow do VLAN-ow
     GET /api/devices/{id}/stp                — stan STP + root bridge
+    GET /api/devices/{id}/alerts             — aktywne alerty diagnostyczne dla urządzenia
+    GET /api/devices/{id}/resource-history   — historia CPU/mem z ClickHouse
+    POST /api/devices/{id}/alerts/{alert_id}/ack — potwierdzenie alertu
+    GET /api/alerts                          — wszystkie aktywne alerty (sieciowe)
 """
 import logging
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from netdoc.storage.database import get_db
-from netdoc.storage.models import Device, DeviceFdbEntry, DeviceVlanPort, DeviceStpPort, Interface, TopologyLink
+from netdoc.storage.models import Device, DeviceFdbEntry, DeviceVlanPort, DeviceStpPort, Interface, TopologyLink, DevicePortAlert
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/devices", tags=["metrics-l2"])
+alerts_router = APIRouter(prefix="/api/alerts", tags=["diagnostics"])
 
 
 def _get_device_or_404(device_id: int, db: Session) -> Device:
@@ -419,5 +425,100 @@ def get_stp(
                 "polled_at":     p.polled_at.isoformat() if p.polled_at else None,
             }
             for p in ports
+        ],
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Diagnostics — alerty per urządzenie
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _alert_to_dict(a: DevicePortAlert, device_name: str | None = None) -> dict:
+    return {
+        "id":              a.id,
+        "device_id":       a.device_id,
+        "device_name":     device_name,
+        "if_index":        a.if_index,
+        "interface_name":  a.interface_name,
+        "alert_type":      a.alert_type,
+        "severity":        a.severity,
+        "value_current":   a.value_current,
+        "value_baseline":  a.value_baseline,
+        "trend_pct":       a.trend_pct,
+        "first_seen":      a.first_seen.isoformat() if a.first_seen else None,
+        "last_seen":       a.last_seen.isoformat()  if a.last_seen  else None,
+        "acknowledged_at": a.acknowledged_at.isoformat() if a.acknowledged_at else None,
+    }
+
+
+@router.get("/{device_id}/alerts")
+def get_device_alerts(device_id: int, db: Session = Depends(get_db)):
+    """Zwraca aktywne alerty diagnostyczne dla urządzenia."""
+    _get_device_or_404(device_id, db)
+    alerts = (
+        db.query(DevicePortAlert)
+        .filter(DevicePortAlert.device_id == device_id)
+        .order_by(DevicePortAlert.severity.desc(), DevicePortAlert.last_seen.desc())
+        .all()
+    )
+    return {"device_id": device_id, "alerts": [_alert_to_dict(a) for a in alerts]}
+
+
+@router.get("/{device_id}/resource-history")
+def get_resource_history(
+    device_id: int,
+    hours: int = Query(24, ge=1, le=168),
+    db: Session = Depends(get_db),
+):
+    """Zwraca historię CPU i pamięci RAM z ClickHouse."""
+    _get_device_or_404(device_id, db)
+    step = 5 if hours <= 6 else (10 if hours <= 24 else (30 if hours <= 72 else 60))
+    try:
+        from netdoc.storage.clickhouse import query_resource_history
+        data = query_resource_history(device_id, hours=hours, step_minutes=step)
+    except Exception as exc:
+        logger.warning("resource-history %d: %s", device_id, exc)
+        data = []
+    return {"device_id": device_id, "hours": hours, "step_minutes": step, "data": data}
+
+
+@router.post("/{device_id}/alerts/{alert_id}/ack")
+def acknowledge_alert(device_id: int, alert_id: int, db: Session = Depends(get_db)):
+    """Potwierdza (wycisza) alert — ustawia acknowledged_at = now."""
+    _get_device_or_404(device_id, db)
+    alert = db.query(DevicePortAlert).filter_by(id=alert_id, device_id=device_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    alert.acknowledged_at = datetime.utcnow()
+    db.commit()
+    return {"status": "ok", "alert_id": alert_id}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sieciowe alerty — wszystkie urządzenia
+# ─────────────────────────────────────────────────────────────────────────────
+
+@alerts_router.get("")
+def get_all_alerts(
+    severity: Optional[str] = Query(None, description="warning|critical"),
+    acknowledged: bool = Query(False, description="Pokaż potwierdzone"),
+    db: Session = Depends(get_db),
+):
+    """Wszystkie aktywne alerty diagnostyczne w sieci."""
+    q = db.query(DevicePortAlert, Device.hostname, Device.ip).join(
+        Device, DevicePortAlert.device_id == Device.id
+    )
+    if severity:
+        q = q.filter(DevicePortAlert.severity == severity)
+    if not acknowledged:
+        q = q.filter(DevicePortAlert.acknowledged_at.is_(None))
+    q = q.order_by(DevicePortAlert.severity.desc(), DevicePortAlert.last_seen.desc())
+
+    rows = q.all()
+    return {
+        "total": len(rows),
+        "alerts": [
+            _alert_to_dict(alert, device_name=hostname or str(ip))
+            for alert, hostname, ip in rows
         ],
     }

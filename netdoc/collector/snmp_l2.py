@@ -638,3 +638,134 @@ def collect_trunk_info(ip: str, community: str, timeout: int = 2) -> dict[int, d
     logger.debug("collect_trunk_info %s: %d ports (%d trunk)",
                  ip, len(result), sum(1 for v in result.values() if v["port_mode"] == "trunk"))
     return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HOST-RESOURCES-MIB — CPU i pamięć
+# ─────────────────────────────────────────────────────────────────────────────
+
+# hrProcessorLoad: CPU utilization per processor (%), index = hrDeviceIndex
+_OID_HR_PROCESSOR_LOAD = "1.3.6.1.2.1.25.3.3.1.2"
+
+# hrStorageTable
+_OID_HR_STORAGE_TYPE   = "1.3.6.1.2.1.25.2.3.1.2"   # OID (type)
+_OID_HR_STORAGE_DESCR  = "1.3.6.1.2.1.25.2.3.1.3"   # DisplayString
+_OID_HR_STORAGE_ALLOC  = "1.3.6.1.2.1.25.2.3.1.4"   # AllocationUnits (bytes per unit)
+_OID_HR_STORAGE_SIZE   = "1.3.6.1.2.1.25.2.3.1.5"   # hrStorageSize (in units)
+_OID_HR_STORAGE_USED   = "1.3.6.1.2.1.25.2.3.1.6"   # hrStorageUsed (in units)
+
+# Typ "RAM" — hrStorageRam: 1.3.6.1.2.1.25.2.1.2
+_HR_STORAGE_RAM_OID = "1.3.6.1.2.1.25.2.1.2"
+
+
+def collect_host_resources(ip: str, community: str, timeout: int = 2) -> dict:
+    """Zbiera CPU i pamięć RAM z HOST-RESOURCES-MIB.
+
+    Zwraca:
+        {
+          'cpu_percent': float | None,    # średnie CPU ze wszystkich procesorów
+          'mem_used_pct': float | None,   # % użytej pamięci RAM
+          'mem_used_mb': float | None,    # użyta RAM w MiB
+          'mem_total_mb': float | None,   # całkowita RAM w MiB
+        }
+    Zwraca pusty dict gdy urządzenie nie obsługuje HOST-RESOURCES-MIB.
+    """
+    from netdoc.collector.snmp_walk import snmp_walk
+
+    # ── CPU ──────────────────────────────────────────────────────────────────
+    cpu_values: list[int] = []
+    try:
+        rows = snmp_walk(ip, _OID_HR_PROCESSOR_LOAD, community, timeout=timeout, max_iter=32)
+        for _, raw_val, _ in rows:
+            v = _int_from_raw(raw_val)
+            if v is not None and 0 <= v <= 100:
+                cpu_values.append(v)
+    except Exception as exc:
+        logger.debug("collect_host_resources %s CPU: %s", ip, exc)
+
+    cpu_pct: Optional[float] = None
+    if cpu_values:
+        cpu_pct = round(sum(cpu_values) / len(cpu_values), 1)
+
+    # ── Storage — szukamy wpisu RAM ─────────────────────────────────────────
+    storage_type:  dict[int, str] = {}   # index → type OID string
+    storage_alloc: dict[int, int] = {}   # index → alloc units (bytes)
+    storage_size:  dict[int, int] = {}   # index → size (units)
+    storage_used:  dict[int, int] = {}   # index → used (units)
+
+    def _walk_int_hr(oid: str, dest: dict) -> None:
+        try:
+            rows = snmp_walk(ip, oid, community, timeout=timeout, max_iter=64)
+            for full_oid, raw_val, _ in rows:
+                idx = _oid_suffix_int(full_oid, oid)
+                if idx is None:
+                    continue
+                v = _int_from_raw(raw_val)
+                if v is not None:
+                    dest[idx] = v
+        except Exception as exc:
+            logger.debug("collect_host_resources %s %s: %s", ip, oid, exc)
+
+    try:
+        rows = snmp_walk(ip, _OID_HR_STORAGE_TYPE, community, timeout=timeout, max_iter=64)
+        for full_oid, raw_val, _ in rows:
+            idx = _oid_suffix_int(full_oid, _OID_HR_STORAGE_TYPE)
+            if idx is None:
+                continue
+            # raw_val może być bytes (OID zakodowany) lub stringiem
+            if isinstance(raw_val, (bytes, bytearray)):
+                storage_type[idx] = raw_val.hex()
+            else:
+                storage_type[idx] = str(raw_val)
+    except Exception as exc:
+        logger.debug("collect_host_resources %s type: %s", ip, exc)
+
+    _walk_int_hr(_OID_HR_STORAGE_ALLOC, storage_alloc)
+    _walk_int_hr(_OID_HR_STORAGE_SIZE,  storage_size)
+    _walk_int_hr(_OID_HR_STORAGE_USED,  storage_used)
+
+    mem_used_pct:  Optional[float] = None
+    mem_used_mb:   Optional[float] = None
+    mem_total_mb:  Optional[float] = None
+
+    # Szukamy wpisu z typem RAM (hrStorageRam) — type OID ends with .2
+    # Alternatywnie: opis zawiera "RAM" lub "Physical Memory"
+    ram_candidates: list[int] = []
+    for idx, t in storage_type.items():
+        # Pysnmp może zwrócić OID jako string "1.3.6.1.2.1.25.2.1.2" lub jako hex bytes
+        if ".25.2.1.2" in t or t == _HR_STORAGE_RAM_OID:
+            ram_candidates.append(idx)
+
+    if not ram_candidates:
+        # Fallback: znajdź wpis z największą pojemnością > 16 MiB (najprawdopodobniej RAM)
+        for idx in storage_size:
+            alloc = storage_alloc.get(idx, 1)
+            total_bytes = storage_size[idx] * alloc
+            if total_bytes > 16 * 1024 * 1024:  # >16 MiB
+                ram_candidates.append(idx)
+
+    for idx in ram_candidates:
+        alloc = storage_alloc.get(idx, 1)
+        size  = storage_size.get(idx)
+        used  = storage_used.get(idx)
+        if size and used is not None and size > 0:
+            total_bytes = size * alloc
+            used_bytes  = used * alloc
+            mem_total_mb = round(total_bytes / (1024 * 1024), 1)
+            mem_used_mb  = round(used_bytes  / (1024 * 1024), 1)
+            mem_used_pct = round(used_bytes / total_bytes * 100, 1)
+            break  # pierwszy pasujący wystarczy
+
+    if cpu_pct is None and mem_used_pct is None:
+        logger.debug("collect_host_resources %s: no data (HOST-RESOURCES-MIB not supported)", ip)
+        return {}
+
+    result = {
+        "cpu_percent":  cpu_pct,
+        "mem_used_pct": mem_used_pct,
+        "mem_used_mb":  mem_used_mb,
+        "mem_total_mb": mem_total_mb,
+    }
+    logger.debug("collect_host_resources %s: CPU=%.1f%% MEM=%.1f%%",
+                 ip, cpu_pct or 0, mem_used_pct or 0)
+    return result

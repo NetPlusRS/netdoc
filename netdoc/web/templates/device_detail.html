@@ -482,6 +482,45 @@
       </div>
       {% endif %}
 
+      {# ── Diagnostics — CPU/mem + alerty portów ───────────────────────── #}
+      {% if dev.snmp_community %}
+      <div class="card mb-3" id="card-diagnostics">
+        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-activity me-1"></i>Diagnostics</span>
+          <span id="diag-alert-badge"></span>
+        </div>
+        <div class="card-body p-2">
+
+          {# Wiersz CPU + pamięć #}
+          <div class="row g-2 mb-2">
+            <div class="col-auto">
+              <small class="text-muted">CPU:</small>
+              <span id="diag-cpu-val" class="ms-1 fw-semibold">—</span>
+            </div>
+            <div class="col-auto">
+              <small class="text-muted">RAM:</small>
+              <span id="diag-mem-val" class="ms-1 fw-semibold">—</span>
+            </div>
+            <div class="col-auto ms-auto">
+              <select id="diag-hours" class="form-select form-select-sm" style="width:auto">
+                <option value="6">6h</option>
+                <option value="24" selected>24h</option>
+                <option value="72">3d</option>
+                <option value="168">7d</option>
+              </select>
+            </div>
+          </div>
+
+          {# Wykres CPU/mem #}
+          <canvas id="diagResourceChart" height="90"></canvas>
+
+          {# Alerty #}
+          <div id="diag-alerts-list" class="mt-2"></div>
+
+        </div>
+      </div>
+      {% endif %}
+
       {# ── Port Assessment ──────────────────────────────────────────────── #}
       {% if interfaces and dev.snmp_community %}
       <div class="card mb-3" id="card-port-summary">
@@ -1315,6 +1354,180 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
       ).join('');
     }).catch(()=>{ const b=document.getElementById('stp-tbody'); if(b) b.innerHTML='<tr><td colspan="5" class="text-danger text-center">Blad ladowania</td></tr>'; });
   }
+})();
+</script>
+{% endif %}
+
+{% if dev.snmp_community %}
+<script>
+(function(){
+  const DEV_ID   = {{ dev.id }};
+  const API_DIAG = '/api/devices/' + DEV_ID;
+  let _diagChart = null;
+
+  function _esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function _severityBadge(sev) {
+    const cls = sev === 'critical' ? 'danger' : 'warning';
+    return '<span class="badge bg-' + cls + '">' + _esc(sev) + '</span>';
+  }
+
+  function _alertTypeLabel(t) {
+    return {error_rate:'Port errors/h', error_trend:'Error trend', cpu_high:'CPU', mem_high:'RAM'}[t] || t;
+  }
+
+  function loadDiagnostics() {
+    const hours = document.getElementById('diag-hours')?.value || 24;
+
+    // ── Alerty ────────────────────────────────────────────────────────────────
+    fetch(API_DIAG + '/alerts')
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => {
+        const badge   = document.getElementById('diag-alert-badge');
+        const listEl  = document.getElementById('diag-alerts-list');
+        const alerts  = data.alerts || [];
+        const active  = alerts.filter(a => !a.acknowledged_at);
+
+        if (badge) {
+          if (active.length === 0) {
+            badge.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>OK</span>';
+          } else {
+            const crit = active.filter(a => a.severity === 'critical').length;
+            badge.innerHTML = crit
+              ? '<span class="badge bg-danger">' + crit + ' critical</span>'
+              : '<span class="badge bg-warning text-dark">' + active.length + ' warning</span>';
+          }
+        }
+
+        if (listEl) {
+          if (active.length === 0) {
+            listEl.innerHTML = '<p class="text-success small mb-0"><i class="bi bi-check-circle me-1"></i>No active alerts</p>';
+          } else {
+            listEl.innerHTML = '<table class="table table-sm mb-0" style="font-size:.8rem">'
+              + '<thead class="table-light"><tr><th>Severity</th><th>Type</th><th>Interface</th>'
+              + '<th>Value</th><th>Trend</th><th>Since</th><th></th></tr></thead>'
+              + '<tbody>'
+              + active.map(a => {
+                  const iface = a.interface_name || (a.if_index > 0 ? 'ifIndex '+a.if_index : 'Device');
+                  const val   = a.value_current != null ? a.value_current.toFixed(1) : '—';
+                  const trend = a.trend_pct != null ? (a.trend_pct > 0 ? '+' : '') + a.trend_pct.toFixed(0) + '%' : '—';
+                  const since = a.first_seen ? a.first_seen.substring(0,16).replace('T',' ') : '—';
+                  return '<tr>'
+                    + '<td>' + _severityBadge(a.severity) + '</td>'
+                    + '<td>' + _esc(_alertTypeLabel(a.alert_type)) + '</td>'
+                    + '<td><code>' + _esc(iface) + '</code></td>'
+                    + '<td>' + _esc(val) + '</td>'
+                    + '<td>' + _esc(trend) + '</td>'
+                    + '<td class="text-muted">' + _esc(since) + '</td>'
+                    + '<td><button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="ackAlert('+a.id+')" title="Acknowledge">ACK</button></td>'
+                    + '</tr>';
+                }).join('')
+              + '</tbody></table>';
+          }
+        }
+      })
+      .catch(() => {
+        const listEl = document.getElementById('diag-alerts-list');
+        if (listEl) listEl.innerHTML = '<p class="text-muted small">Alerts unavailable</p>';
+      });
+
+    // ── CPU/mem chart ─────────────────────────────────────────────────────────
+    fetch(API_DIAG + '/resource-history?hours=' + hours)
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => {
+        const rows = data.data || [];
+        const labels = rows.map(r => {
+          const s = r.bucket || '';
+          return hours <= 24 ? s.substring(11,16) : (s.substring(5,10) + ' ' + s.substring(11,16));
+        });
+        const cpuData = rows.map(r => r.cpu_percent);
+        const memData = rows.map(r => r.mem_used_pct);
+
+        // Ostatni punkt → aktualne wartości
+        if (rows.length > 0) {
+          const last = rows[rows.length - 1];
+          const cpuEl = document.getElementById('diag-cpu-val');
+          const memEl = document.getElementById('diag-mem-val');
+          if (cpuEl) {
+            const v = last.cpu_percent;
+            const cls = v == null ? '' : (v >= 95 ? 'text-danger' : v >= 80 ? 'text-warning' : 'text-success');
+            cpuEl.className = 'ms-1 fw-semibold ' + cls;
+            cpuEl.textContent = v != null ? v.toFixed(1) + '%' : '—';
+          }
+          if (memEl) {
+            const v = last.mem_used_pct;
+            const cls = v == null ? '' : (v >= 90 ? 'text-danger' : v >= 80 ? 'text-warning' : 'text-success');
+            memEl.className = 'ms-1 fw-semibold ' + cls;
+            memEl.textContent = v != null ? v.toFixed(1) + '%' : '—';
+          }
+        }
+
+        const ctx = document.getElementById('diagResourceChart');
+        if (!ctx) return;
+        if (_diagChart) { _diagChart.destroy(); _diagChart = null; }
+        if (rows.length === 0) return;
+
+        _diagChart = new Chart(ctx.getContext('2d'), {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: 'CPU %',
+                data: cpuData,
+                borderColor: 'rgba(255,99,132,0.8)',
+                backgroundColor: 'rgba(255,99,132,0.08)',
+                borderWidth: 1.5,
+                pointRadius: 0,
+                tension: 0.3,
+                fill: true,
+              },
+              {
+                label: 'RAM %',
+                data: memData,
+                borderColor: 'rgba(54,162,235,0.8)',
+                backgroundColor: 'rgba(54,162,235,0.08)',
+                borderWidth: 1.5,
+                pointRadius: 0,
+                tension: 0.3,
+                fill: true,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            animation: false,
+            scales: {
+              y: { min: 0, max: 100, ticks: { callback: v => v + '%', font: {size:10} }, grid: {color:'rgba(0,0,0,.05)'} },
+              x: { ticks: { maxTicksLimit: 12, font: {size:10} }, grid: {display:false} },
+            },
+            plugins: {
+              legend: { labels: { font: {size:10} } },
+              tooltip: {
+                callbacks: { label: ctx => ctx.dataset.label + ': ' + (ctx.parsed.y != null ? ctx.parsed.y.toFixed(1) + '%' : '—') }
+              },
+            },
+          },
+        });
+      })
+      .catch(() => {});
+  }
+
+  window.ackAlert = function(alertId) {
+    fetch(API_DIAG + '/alerts/' + alertId + '/ack', {method: 'POST'})
+      .then(r => r.ok ? loadDiagnostics() : null)
+      .catch(() => {});
+  };
+
+  document.getElementById('diag-hours')?.addEventListener('change', loadDiagnostics);
+
+  window.addEventListener('load', function() {
+    if (document.getElementById('diagResourceChart')) loadDiagnostics();
+  });
 })();
 </script>
 {% endif %}

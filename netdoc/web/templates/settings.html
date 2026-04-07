@@ -721,6 +721,33 @@
     "about a specific device: technical state, risk, suggested replacements in 3 price ranges. "
     "0 = disabled — button disappears, endpoint /devices/<id>/ai-assess returns 403. "
     "Each click = 1 API request (token cost). Result is cached per device."),
+  "diag_enabled": ("Diagnostics & alerting",
+    "1 = SNMP worker collects CPU/memory from HOST-RESOURCES-MIB and computes port error trends every 30 min. "
+    "Alerts are stored in PostgreSQL and displayed on device cards and the Alerts page. "
+    "0 = diagnostics module disabled — no CPU/mem collection, no alerts."),
+  "diag_error_warn_per_hour": ("Port errors — warning threshold [err/h]",
+    "Interface error rate (In+Out errors per hour) that triggers a WARNING alert. "
+    "Default: 10 errors/h. Applies to each interface independently."),
+  "diag_error_critical_per_hour": ("Port errors — critical threshold [err/h]",
+    "Interface error rate (In+Out errors per hour) that triggers a CRITICAL alert. "
+    "Default: 100 errors/h. Applies to each interface independently."),
+  "diag_error_trend_pct": ("Port error trend — growth alert [%]",
+    "Percentage increase in error rate (last 24h vs. 7-day baseline) that triggers a TREND alert. "
+    "Default: 50 — alert fires when error rate grows by 50% or more vs. the baseline. "
+    "Useful for detecting gradually degrading cables before they reach the absolute threshold."),
+  "diag_error_trend_days": ("Port error trend — baseline window [days]",
+    "How many days back to use as baseline for trend computation. "
+    "Default: 7 days. Increase for slower-changing networks, decrease for more sensitive detection."),
+  "diag_cpu_warn_pct": ("CPU — warning threshold [%]",
+    "Device CPU utilization (%) that triggers a WARNING alert. "
+    "Collected from HOST-RESOURCES-MIB (hrProcessorLoad). Default: 80%."),
+  "diag_cpu_critical_pct": ("CPU — critical threshold [%]",
+    "Device CPU utilization (%) that triggers a CRITICAL alert. Default: 95%."),
+  "diag_mem_warn_pct": ("Memory — warning threshold [%]",
+    "Device memory utilization (%) that triggers a WARNING alert. "
+    "Collected from HOST-RESOURCES-MIB (hrStorageUsed / hrStorageSize). Default: 80%."),
+  "diag_mem_critical_pct": ("Memory — critical threshold [%]",
+    "Device memory utilization (%) that triggers a CRITICAL alert. Default: 90%."),
 } %}
 
 {# Klucze konfiguracyjne z widgetem select (0/1) #}
@@ -728,7 +755,7 @@
                        "cred_snmp_enabled", "cred_ssh_enabled",
                        "cred_ftp_enabled", "cred_web_enabled", "cred_rdp_enabled",
                        "cred_mssql_enabled", "cred_mysql_enabled", "cred_postgres_enabled",
-                       "ai_assessment_enabled"] %}
+                       "ai_assessment_enabled", "diag_enabled"] %}
 
 <p class="text-muted small">The <strong>config</strong> section is editable. Other settings are read-only (change in <code>.env</code> and restart the service).</p>
 

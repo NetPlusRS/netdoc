@@ -80,6 +80,7 @@
         <li class="nav-item"><a class="nav-link {% if '/networks' in request.path %}active{% endif %}" href="/networks"><i class="bi bi-diagram-3 me-1"></i>Networks</a></li>
         <li class="nav-item"><a class="nav-link {% if '/credentials' in request.path %}active{% endif %}" href="/credentials"><i class="bi bi-key me-1"></i>Credentials</a></li>
         <li class="nav-item"><a class="nav-link {% if '/security' in request.path %}active{% endif %}" href="/security"><i class="bi bi-shield-exclamation me-1"></i>Security</a></li>
+        <li class="nav-item"><a class="nav-link {% if request.path == '/alerts' %}active{% endif %}" href="/alerts"><i class="bi bi-activity me-1"></i>Alerts</a></li>
         <li class="nav-item"><a class="nav-link {% if '/threats' in request.path %}active{% endif %}" href="/threats"><i class="bi bi-book-half me-1"></i>Threats</a></li>
         <li class="nav-item"><a class="nav-link {% if '/kb/ports' in request.path %}active{% endif %}" href="/kb/ports" title="Network ports encyclopedia"><i class="bi bi-plug me-1"></i>Ports KB</a></li>
         <li class="nav-item"><a class="nav-link {% if '/kb/guides' in request.path %}active{% endif %}" href="/kb/guides" title="Security guides"><i class="bi bi-journal-richtext me-1"></i>Guides</a></li>

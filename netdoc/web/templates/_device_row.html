@@ -3,6 +3,8 @@
         {% set cred = cred_by_device.get(d.id) %}
         {% set stats = device_stats.get(d.id, {}) %}
         {% set cscan = cred_scan_by_device.get(d.id, {}) %}
+        {% set diag_cnt = alert_counts.get(d.id, 0) %}
+        {% set diag_sev = alert_severity.get(d.id, '') %}
         <tr id="row-{{ d.id }}"
             data-id="{{ d.id }}"
             data-ip="{{ d.ip }}"
@@ -47,6 +49,13 @@
           </td>
           <td>
             <a href="/devices/{{ d.id }}" class="text-decoration-none text-body">{{ d.hostname or "—" }}</a>
+            {% if diag_cnt > 0 %}
+            <a href="/devices/{{ d.id }}#card-diagnostics"
+               class="badge bg-{{ 'danger' if diag_sev == 'critical' else 'warning text-dark' }} ms-1"
+               style="font-size:.65rem" title="{{ diag_cnt }} diagnostic alert{% if diag_cnt > 1 %}s{% endif %} ({{ diag_sev }})">
+              <i class="bi bi-activity"></i> {{ diag_cnt }}
+            </a>
+            {% endif %}
           </td>
           <td>
             {%- set _dt = d.device_type.value if d.device_type else "unknown" -%}

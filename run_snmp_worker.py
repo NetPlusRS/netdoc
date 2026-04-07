@@ -1853,6 +1853,271 @@ def scan_once() -> None:
     except Exception as exc:
         logger.warning("IF metrics collection error: %s", exc)
 
+    # ── Resource metrics (CPU/mem) → ClickHouse ──────────────────────────────
+    # Zbierane co każdy cykl SNMP workera via HOST-RESOURCES-MIB (if_index=0)
+    _collect_resource_metrics(devices, snmp_timeout)
+
+    # ── Alert computation ─────────────────────────────────────────────────────
+    # Uruchamiane co 30 min (nie co każdy cykl) — porównuje trendy błędów i CPU/mem z progami
+    _DIAG_INTERVAL = 1800  # 30 minut
+    if not hasattr(scan_once, "_diag_last"):
+        scan_once._diag_last = 0.0  # type: ignore[attr-defined]
+    _diag_now = time.monotonic()
+    if _diag_now - scan_once._diag_last >= _DIAG_INTERVAL:  # type: ignore[attr-defined]
+        try:
+            _compute_alerts(devices)
+            scan_once._diag_last = _diag_now  # type: ignore[attr-defined]
+        except Exception as exc:
+            logger.warning("Alert computation error: %s", exc)
+
+
+def _collect_resource_metrics(devices, snmp_timeout: int) -> None:
+    """Zbiera CPU i pamięć ze wszystkich urządzeń i zapisuje do ClickHouse (if_index=0)."""
+    from netdoc.storage.models import SystemStatus
+    db_cfg = SessionLocal()
+    try:
+        r = db_cfg.query(SystemStatus).filter(SystemStatus.key == "diag_enabled").first()
+        if r and r.value == "0":
+            return
+    except Exception:
+        pass
+    finally:
+        db_cfg.close()
+
+    from netdoc.collector.snmp_l2 import collect_host_resources
+    from netdoc.storage.clickhouse import insert_if_metrics
+    from datetime import datetime as _dt
+
+    snmp_devs = [d for d in devices if d.snmp_community]
+    if not snmp_devs:
+        return
+
+    batch: list[tuple] = []
+    now_ts = _dt.now()
+
+    def _collect_res(dev):
+        return collect_host_resources(str(dev.ip), dev.snmp_community, snmp_timeout), dev.id
+
+    with ThreadPoolExecutor(max_workers=min(16, len(snmp_devs))) as pool:
+        futures = {pool.submit(_collect_res, d): d for d in snmp_devs}
+        for fut in as_completed(futures):
+            try:
+                data, dev_id = fut.result()
+                if data.get("cpu_percent") is not None:
+                    batch.append((now_ts, dev_id, 0, "cpu_percent", data["cpu_percent"]))
+                if data.get("mem_used_pct") is not None:
+                    batch.append((now_ts, dev_id, 0, "mem_used_pct", data["mem_used_pct"]))
+            except Exception as exc:
+                logger.debug("Resource metrics collect error: %s", exc)
+
+    if batch:
+        try:
+            insert_if_metrics(batch)
+            logger.info("Resource metrics: %d points (CPU/mem) -> ClickHouse", len(batch))
+        except Exception as exc:
+            logger.warning("Resource metrics insert error: %s", exc)
+
+
+def _compute_alerts(devices) -> None:
+    """Oblicza alerty diagnostyczne (błędy portów, CPU, RAM) i zapisuje do PostgreSQL.
+
+    Porównuje:
+      - Błędy portów: łącznie last 24h vs. baseline [7d temu ±24h] → trend% i próg absolutny
+      - CPU/mem: ostatni odczyt vs. próg
+    Upsertuje wiersze do device_port_alerts (unikalne per device+if_index+alert_type).
+    """
+    from netdoc.storage.models import SystemStatus, DevicePortAlert
+    from netdoc.storage.clickhouse import query_error_totals, query_resource_history
+    from datetime import datetime as _dt
+
+    db_cfg = SessionLocal()
+    try:
+        cfg_rows = db_cfg.query(SystemStatus).filter(
+            SystemStatus.key.in_([
+                "diag_enabled", "diag_error_warn_per_hour", "diag_error_critical_per_hour",
+                "diag_error_trend_pct", "diag_error_trend_days",
+                "diag_cpu_warn_pct", "diag_cpu_critical_pct",
+                "diag_mem_warn_pct", "diag_mem_critical_pct",
+            ])
+        ).all()
+        cfg = {r.key: r.value for r in cfg_rows}
+    finally:
+        db_cfg.close()
+
+    if cfg.get("diag_enabled", "1") == "0":
+        return
+
+    def _f(key, default):
+        try:
+            return float(cfg.get(key, default))
+        except (ValueError, TypeError):
+            return float(default)
+
+    err_warn    = _f("diag_error_warn_per_hour",     10)
+    err_crit    = _f("diag_error_critical_per_hour", 100)
+    trend_pct   = _f("diag_error_trend_pct",         50)
+    trend_days  = int(_f("diag_error_trend_days",     7))
+    cpu_warn    = _f("diag_cpu_warn_pct",             80)
+    cpu_crit    = _f("diag_cpu_critical_pct",         95)
+    mem_warn    = _f("diag_mem_warn_pct",             80)
+    mem_crit    = _f("diag_mem_critical_pct",         90)
+
+    now = _dt.utcnow()
+
+    snmp_devs = [d for d in devices if d.snmp_community]
+    logger.info("Alert computation: %d devices", len(snmp_devs))
+
+    for dev in snmp_devs:
+        try:
+            _compute_device_alerts(
+                dev, now,
+                err_warn, err_crit, trend_pct, trend_days,
+                cpu_warn, cpu_crit, mem_warn, mem_crit,
+                query_error_totals, query_resource_history,
+            )
+        except Exception as exc:
+            logger.debug("Alert computation device %s: %s", dev.ip, exc)
+
+
+def _compute_device_alerts(
+    dev, now, err_warn, err_crit, trend_pct_thresh, trend_days,
+    cpu_warn, cpu_crit, mem_warn, mem_crit,
+    query_error_totals, query_resource_history,
+) -> None:
+    """Oblicza i zapisuje alerty dla jednego urządzenia."""
+    from netdoc.storage.models import DevicePortAlert, Interface
+    from sqlalchemy import text
+
+    alerts_to_upsert: list[dict] = []
+
+    # ── Błędy portów ─────────────────────────────────────────────────────────
+    try:
+        recent  = query_error_totals(dev.id, hours=24)
+        baseline = query_error_totals(dev.id, hours=trend_days * 24 + 24)
+        # baseline_only = total w [trend_days*24+24h temu, trend_days*24 temu]
+        # = baseline_total - recent_total (przybliżenie)
+        for if_index, recent_errors in recent.items():
+            rate_per_h = recent_errors / 24.0
+
+            severity = None
+            if rate_per_h >= err_crit:
+                severity = "critical"
+            elif rate_per_h >= err_warn:
+                severity = "warning"
+
+            base_total = baseline.get(if_index, 0.0) - recent_errors
+            base_rate  = max(0.0, base_total) / (trend_days * 24)
+            trend = None
+            if base_rate > 0:
+                trend = round((rate_per_h - base_rate) / base_rate * 100, 1)
+                if severity is None and trend >= trend_pct_thresh:
+                    severity = "warning"
+
+            if severity:
+                alerts_to_upsert.append({
+                    "if_index":      if_index,
+                    "alert_type":    "error_rate" if rate_per_h >= err_warn else "error_trend",
+                    "severity":      severity,
+                    "value_current": round(rate_per_h, 2),
+                    "value_baseline": round(base_rate, 2),
+                    "trend_pct":     trend,
+                })
+    except Exception as exc:
+        logger.debug("Error trend computation dev %s: %s", dev.ip, exc)
+
+    # ── CPU i pamięć ─────────────────────────────────────────────────────────
+    try:
+        resource_hist = query_resource_history(dev.id, hours=1, step_minutes=5)
+        if resource_hist:
+            last = resource_hist[-1]
+            cpu = last.get("cpu_percent")
+            mem = last.get("mem_used_pct")
+
+            if cpu is not None:
+                if cpu >= cpu_crit:
+                    alerts_to_upsert.append({"if_index": 0, "alert_type": "cpu_high",
+                        "severity": "critical", "value_current": cpu, "value_baseline": None, "trend_pct": None})
+                elif cpu >= cpu_warn:
+                    alerts_to_upsert.append({"if_index": 0, "alert_type": "cpu_high",
+                        "severity": "warning", "value_current": cpu, "value_baseline": None, "trend_pct": None})
+
+            if mem is not None:
+                if mem >= mem_crit:
+                    alerts_to_upsert.append({"if_index": 0, "alert_type": "mem_high",
+                        "severity": "critical", "value_current": mem, "value_baseline": None, "trend_pct": None})
+                elif mem >= mem_warn:
+                    alerts_to_upsert.append({"if_index": 0, "alert_type": "mem_high",
+                        "severity": "warning", "value_current": mem, "value_baseline": None, "trend_pct": None})
+    except Exception as exc:
+        logger.debug("CPU/mem alert dev %s: %s", dev.ip, exc)
+
+    if not alerts_to_upsert:
+        # Usuń wygasłe alerty dla tego urządzenia (wszystkie if aktualnie poniżej progów)
+        db_a = SessionLocal()
+        try:
+            db_a.query(DevicePortAlert).filter(
+                DevicePortAlert.device_id == dev.id,
+                DevicePortAlert.acknowledged_at.is_(None),
+            ).delete()
+            db_a.commit()
+        except Exception:
+            db_a.rollback()
+        finally:
+            db_a.close()
+        return
+
+    # Załaduj interfejsy (dla interface_name)
+    db_a = SessionLocal()
+    try:
+        iface_names = {
+            i.if_index: i.name
+            for i in db_a.query(Interface).filter(Interface.device_id == dev.id).all()
+            if i.if_index is not None
+        }
+
+        for a in alerts_to_upsert:
+            existing = db_a.query(DevicePortAlert).filter(
+                DevicePortAlert.device_id == dev.id,
+                DevicePortAlert.if_index  == a["if_index"],
+                DevicePortAlert.alert_type == a["alert_type"],
+            ).first()
+
+            if existing:
+                existing.severity       = a["severity"]
+                existing.value_current  = a["value_current"]
+                existing.value_baseline = a["value_baseline"]
+                existing.trend_pct      = a["trend_pct"]
+                existing.last_seen      = now
+            else:
+                db_a.add(DevicePortAlert(
+                    device_id      = dev.id,
+                    if_index       = a["if_index"],
+                    interface_name = iface_names.get(a["if_index"]),
+                    alert_type     = a["alert_type"],
+                    severity       = a["severity"],
+                    value_current  = a["value_current"],
+                    value_baseline = a["value_baseline"],
+                    trend_pct      = a["trend_pct"],
+                    first_seen     = now,
+                    last_seen      = now,
+                ))
+
+        # Usuń alerty których nie ma już w bieżącej liście (wróciły do normy)
+        active_combos = {(a["if_index"], a["alert_type"]) for a in alerts_to_upsert}
+        for existing in db_a.query(DevicePortAlert).filter(
+            DevicePortAlert.device_id == dev.id,
+            DevicePortAlert.acknowledged_at.is_(None),
+        ).all():
+            if (existing.if_index, existing.alert_type) not in active_combos:
+                db_a.delete(existing)
+
+        db_a.commit()
+    except Exception as exc:
+        db_a.rollback()
+        logger.warning("Alert upsert dev %s: %s", dev.ip, exc)
+    finally:
+        db_a.close()
+
 
 def _collect_if_metrics(ip: str, community: str, timeout: int = 2) -> list[tuple]:
     """Zbiera metryki interfejsow (64-bit HC gdy dostepne, fallback na 32-bit).

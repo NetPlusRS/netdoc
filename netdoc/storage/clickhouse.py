@@ -406,6 +406,77 @@ def query_if_current_rates(device_id: int, since_minutes: int = 10) -> list[dict
         return []
 
 
+def query_error_totals(device_id: int, hours: int = 24) -> dict[int, float]:
+    """Łączna liczba błędów (in+out) per interfejs w ostatnich `hours` godzinach.
+
+    Używa max-min (counter monotoniczny) — ignoruje resety licznika (<0 → 0).
+    Zwraca {if_index: total_errors}.
+    """
+    params = {"device_id": device_id, "hours": hours}
+    sql = (
+        "SELECT if_index, metric,"
+        "       greatest(0, max(value) - min(value)) AS total"
+        " FROM netdoc_logs.device_metrics"
+        " WHERE device_id = {device_id:UInt32}"
+        "   AND ts >= now() - INTERVAL {hours:UInt32} HOUR"
+        "   AND metric IN ('in_errors', 'out_errors')"
+        " GROUP BY if_index, metric"
+    )
+    try:
+        result = _get_client().query(sql, parameters=params)
+        totals: dict[int, float] = {}
+        for if_index, _, total in result.result_rows:
+            totals[if_index] = totals.get(if_index, 0.0) + float(total)
+        return totals
+    except Exception as exc:
+        logger.warning("query_error_totals(%d, %dh) failed: %s", device_id, hours, exc)
+        return {}
+
+
+def query_resource_history(device_id: int, hours: int = 24, step_minutes: int = 10) -> list[dict]:
+    """Zwraca historię CPU i pamięci dla urządzenia (if_index=0) z device_metrics.
+
+    Zwraca listę: {bucket: str, cpu_percent: float|None, mem_used_pct: float|None}
+    """
+    params = {
+        "device_id":   device_id,
+        "since_hours": hours,
+        "step":        step_minutes * 60,
+    }
+    sql = (
+        "SELECT"
+        "  toStartOfInterval(ts, INTERVAL {step:UInt32} SECOND) AS bucket,"
+        "  metric,"
+        "  avg(value) AS avg_val"
+        " FROM netdoc_logs.device_metrics"
+        " WHERE device_id = {device_id:UInt32}"
+        "   AND if_index = 0"
+        "   AND ts >= now() - INTERVAL {since_hours:UInt32} HOUR"
+        "   AND metric IN ('cpu_percent', 'mem_used_pct')"
+        " GROUP BY bucket, metric"
+        " ORDER BY bucket"
+    )
+    try:
+        result = _get_client().query(sql, parameters=params)
+        # Konwertuj do {bucket_str: {metric: value}}
+        buckets: dict[str, dict] = {}
+        for bucket, metric, avg_val in result.result_rows:
+            key = bucket.isoformat() if hasattr(bucket, "isoformat") else str(bucket)
+            buckets.setdefault(key, {})[metric] = round(float(avg_val), 1)
+        out = []
+        for key in sorted(buckets):
+            row = buckets[key]
+            out.append({
+                "bucket":       key,
+                "cpu_percent":  row.get("cpu_percent"),
+                "mem_used_pct": row.get("mem_used_pct"),
+            })
+        return out
+    except Exception as exc:
+        logger.warning("query_resource_history(%d) failed: %s", device_id, exc)
+        return []
+
+
 def count_syslog_by_severity(device_id: int, since_hours: int = 24) -> dict[int, int]:
     """Zlicza logi per severity dla jednego urządzenia (do badge'ów w UI)."""
     sql = (

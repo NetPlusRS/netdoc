@@ -59,6 +59,7 @@ app.include_router(logs_route.router)
 app.include_router(vulnerabilities.router)
 app.include_router(syslog_route.router)
 app.include_router(metrics_if_route.router)
+app.include_router(metrics_if_route.alerts_router)
 
 
 @app.get("/", tags=["health"])
