@@ -1856,7 +1856,11 @@ def _guess_device_type(open_ports, os_name, vendor=None, mac=None, hostname=None
     _effective_os = os_lower or _banner_hint
 
     # 1. OS fingerprint / banner — najpewniejszy sygnal
-    if "cisco" in _effective_os or "junos" in _effective_os or "routeros" in _effective_os:
+    # Wyjątek: Cisco WAP (Wireless Access Point) — hostname/OS zawiera "wap"
+    _is_cisco_wap = ("cisco" in _effective_os or "cisco" in vendor_lower) and (
+        "wap" in (hostname or "").lower() or "wap" in os_lower
+    )
+    if not _is_cisco_wap and ("cisco" in _effective_os or "junos" in _effective_os or "routeros" in _effective_os):
         return DeviceType.router
     if "fortinet" in _effective_os or "fortigate" in _effective_os or "fortios" in _effective_os:
         return DeviceType.firewall
@@ -2006,6 +2010,9 @@ def _guess_device_type(open_ports, os_name, vendor=None, mac=None, hostname=None
             if any(hostname_lower.startswith(p) for p in _UBIQUITI_ROUTER_PREFIXES):
                 return DeviceType.router
             # Ubiquiti bez pasujacego hostname — domyslnie AP (najczestszy typ)
+            return DeviceType.ap
+        # Cisco WAP (Wireless Access Point) — hostname lub OS zawiera "wap"
+        if _is_cisco_wap:
             return DeviceType.ap
         return DeviceType.router
 

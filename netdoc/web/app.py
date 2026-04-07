@@ -1923,6 +1923,38 @@ def create_app():
             return jsonify({"error": err}), 502
         return jsonify(data)
 
+    @app.route("/api/devices/<int:device_id>/port-summary")
+    def api_proxy_port_summary(device_id):
+        """Proxy: zestawienie portów (tryb, VLAN, STP, sąsiad)."""
+        data, err = _api("get", f"/api/devices/{device_id}/port-summary")
+        if err:
+            return jsonify({"error": err}), 502
+        return jsonify(data)
+
+    @app.route("/api/devices/<int:device_id>/alerts")
+    def api_proxy_device_alerts(device_id):
+        """Proxy: alerty diagnostyczne urządzenia."""
+        data, err = _api("get", f"/api/devices/{device_id}/alerts", params=request.args.to_dict())
+        if err:
+            return jsonify({"error": err}), 502
+        return jsonify(data)
+
+    @app.route("/api/devices/<int:device_id>/resource-history")
+    def api_proxy_resource_history(device_id):
+        """Proxy: historia CPU/mem z ClickHouse."""
+        data, err = _api("get", f"/api/devices/{device_id}/resource-history", params=request.args.to_dict())
+        if err:
+            return jsonify({"error": err}), 502
+        return jsonify(data)
+
+    @app.route("/api/devices/<int:device_id>/alerts/<int:alert_id>/ack", methods=["POST"])
+    def api_proxy_alert_ack(device_id, alert_id):
+        """Proxy: potwierdzenie alertu."""
+        data, err = _api("post", f"/api/devices/{device_id}/alerts/{alert_id}/ack")
+        if err:
+            return jsonify({"error": err}), 502
+        return jsonify(data)
+
     @app.route("/devices/<int:device_id>/inventory", methods=["POST"])
     def device_inventory(device_id):
         """Zapisuje pola inwentarzowe urzadzenia."""
