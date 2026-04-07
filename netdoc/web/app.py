@@ -1931,10 +1931,10 @@ def create_app():
             return jsonify({"error": err}), 502
         return jsonify(data)
 
-    @app.route("/api/devices/<int:device_id>/alerts")
-    def api_proxy_device_alerts(device_id):
-        """Proxy: alerty diagnostyczne urządzenia."""
-        data, err = _api("get", f"/api/devices/{device_id}/alerts", params=request.args.to_dict())
+    @app.route("/api/devices/<int:device_id>/diag-alerts")
+    def api_proxy_device_diag_alerts(device_id):
+        """Proxy: alerty diagnostyczne urządzenia (DevicePortAlert)."""
+        data, err = _api("get", f"/api/devices/{device_id}/diag-alerts", params=request.args.to_dict())
         if err:
             return jsonify({"error": err}), 502
         return jsonify(data)
@@ -1947,10 +1947,10 @@ def create_app():
             return jsonify({"error": err}), 502
         return jsonify(data)
 
-    @app.route("/api/devices/<int:device_id>/alerts/<int:alert_id>/ack", methods=["POST"])
+    @app.route("/api/devices/<int:device_id>/diag-alerts/<int:alert_id>/ack", methods=["POST"])
     def api_proxy_alert_ack(device_id, alert_id):
-        """Proxy: potwierdzenie alertu."""
-        data, err = _api("post", f"/api/devices/{device_id}/alerts/{alert_id}/ack")
+        """Proxy: potwierdzenie alertu diagnostycznego."""
+        data, err = _api("post", f"/api/devices/{device_id}/diag-alerts/{alert_id}/ack")
         if err:
             return jsonify({"error": err}), 502
         return jsonify(data)

@@ -451,8 +451,8 @@ def _alert_to_dict(a: DevicePortAlert, device_name: str | None = None) -> dict:
     }
 
 
-@router.get("/{device_id}/alerts")
-def get_device_alerts(device_id: int, db: Session = Depends(get_db)):
+@router.get("/{device_id}/diag-alerts")
+def get_device_diag_alerts(device_id: int, db: Session = Depends(get_db)):
     """Zwraca aktywne alerty diagnostyczne dla urządzenia."""
     _get_device_or_404(device_id, db)
     alerts = (
@@ -482,7 +482,7 @@ def get_resource_history(
     return {"device_id": device_id, "hours": hours, "step_minutes": step, "data": data}
 
 
-@router.post("/{device_id}/alerts/{alert_id}/ack")
+@router.post("/{device_id}/diag-alerts/{alert_id}/ack")
 def acknowledge_alert(device_id: int, alert_id: int, db: Session = Depends(get_db)):
     """Potwierdza (wycisza) alert — ustawia acknowledged_at = now."""
     _get_device_or_404(device_id, db)

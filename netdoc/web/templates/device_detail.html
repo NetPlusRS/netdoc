@@ -1388,7 +1388,7 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
     const hours = document.getElementById('diag-hours')?.value || 24;
 
     // ── Alerty ────────────────────────────────────────────────────────────────
-    fetch(API_DIAG + '/alerts')
+    fetch(API_DIAG + '/diag-alerts')
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(data => {
         const badge   = document.getElementById('diag-alert-badge');
@@ -1523,7 +1523,7 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
   }
 
   window.ackAlert = function(alertId) {
-    fetch(API_DIAG + '/alerts/' + alertId + '/ack', {method: 'POST'})
+    fetch(API_DIAG + '/diag-alerts/' + alertId + '/ack', {method: 'POST'})
       .then(r => r.ok ? loadDiagnostics() : null)
       .catch(() => {});
   };
