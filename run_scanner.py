@@ -2871,8 +2871,8 @@ def main():
             "lab_monitoring_enabled":  ("0",  "config"),
             # Diagnostics / alerting
             "diag_enabled":                  ("1",   "config"),
-            "diag_error_warn_per_hour":      ("10",  "config"),
-            "diag_error_critical_per_hour":  ("100", "config"),
+            "diag_error_warn_per_hour":      ("200",  "config"),
+            "diag_error_critical_per_hour":  ("1000", "config"),
             "diag_error_trend_pct":          ("50",  "config"),
             "diag_error_trend_days":         ("7",   "config"),
             "diag_cpu_warn_pct":             ("80",  "config"),
