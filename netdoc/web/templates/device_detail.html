@@ -1188,12 +1188,17 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
 
       function fmtStp(p) {
         if (!p.stp_role && !p.stp_state) return '<span class="text-muted">—</span>';
-        const roleColors = {root:'bg-success', designated:'bg-primary', alternate:'bg-warning text-dark', backup:'bg-secondary', disabled:'bg-light text-dark'};
-        const cls = roleColors[p.stp_role] || 'bg-secondary';
-        const role = p.stp_role ? '<span class="badge '+cls+'">'+p.stp_role+'</span>' : '';
-        const st   = p.stp_state && p.stp_state !== 'forwarding' ? '<br><small class="text-muted">'+p.stp_state+'</small>' : '';
-        const cost = p.stp_path_cost ? '<br><small class="text-muted">cost '+p.stp_path_cost+'</small>' : '';
-        return role + st + cost;
+        const roleColors  = {root:'bg-success', designated:'bg-primary', alternate:'bg-warning text-dark', backup:'bg-secondary', disabled:'bg-light text-dark'};
+        const stateColors = {forwarding:'bg-success', blocking:'bg-warning text-dark', listening:'bg-info text-dark', learning:'bg-info text-dark', broken:'bg-danger', disabled:'bg-light text-dark'};
+        const cost = (p.stp_path_cost != null && p.stp_path_cost > 0) ? '<br><small class="text-muted">cost '+p.stp_path_cost+'</small>' : '';
+        if (p.stp_role) {
+          const cls  = roleColors[p.stp_role] || 'bg-secondary';
+          const st   = (p.stp_state && p.stp_state !== 'forwarding') ? '<br><small class="text-muted">'+p.stp_state+'</small>' : '';
+          return '<span class="badge '+cls+'">'+p.stp_role+'</span>' + st + cost;
+        }
+        // No role — show state as badge (common on STP-only devices without RSTP role OID)
+        const scls = stateColors[p.stp_state] || 'bg-secondary';
+        return '<span class="badge '+scls+'">'+p.stp_state+'</span>' + cost;
       }
 
       function fmtNeighbor(p) {
