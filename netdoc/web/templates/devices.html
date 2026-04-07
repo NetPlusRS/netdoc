@@ -329,6 +329,8 @@
               title="Number of open ports from the last scan — click to sort">
             <i class="bi bi-ethernet"></i> <i class="bi bi-arrow-down-up text-muted sort-icon" style="font-size:.7rem"></i></th>
           <th title="Full port scan 1-65535"><i class="bi bi-search"></i></th>
+          <th title="Data coverage — które protokoły dostarczają danych z urządzenia">
+            <i class="bi bi-reception-4"></i></th>
           <th>Actions</th>
         </tr>
       </thead>
@@ -336,7 +338,7 @@
         {% for d in devices %}
         {% include '_device_row.html' %}
         {% else %}
-        <tr><td colspan="13" class="text-center text-muted py-4">No devices. Run a scan.</td></tr>
+        <tr><td colspan="14" class="text-center text-muted py-4">No devices. Run a scan.</td></tr>
         {% endfor %}
       </tbody>
     </table>

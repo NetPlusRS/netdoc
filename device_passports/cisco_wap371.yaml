@@ -1,0 +1,31 @@
+name: Cisco WAP371
+match_vendors: [Cisco, "Cisco Systems"]
+match_models: ["WAP371", "WAP371-E"]
+match_os: ["WAP371"]
+tested: true
+tested_at: "2026-04-07"
+notes: >
+  Access point klasy SMB (Linux-based, nie IOS).
+  SNMP działa — podstawowe dane interfejsów (eth0, wlan0, wlan1, brtrunk).
+  Brak Q-BRIDGE, STP, FDB przez SNMP.
+  Brak hrProcessorLoad / hrStorageTable.
+  Brak CLI przez SSH (mini_httpd web management, port 80/443).
+  Klasyfikowany błędnie jako router przez "Cisco" w sysDescr — naprawiono (WAP = ap).
+
+capabilities:
+  snmp: true
+  snmp_interfaces: true
+  snmp_fdb: false
+  snmp_vlan: false
+  snmp_stp: false
+  snmp_cpu: false
+  snmp_ram: false
+  lldp_snmp: false
+  lldp_unifi: false
+  syslog: true
+  config_backup: false
+  ssh: false              # brak IOS CLI
+
+relevant_protocols:
+  - snmp
+  - syslog

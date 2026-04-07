@@ -1,0 +1,32 @@
+name: Ubiquiti U6 In-Wall
+match_vendors: [Ubiquiti, "Ubiquiti Networks"]
+match_models: ["U6-IW", "U6IW"]
+match_os: []
+tested: true
+tested_at: "2026-04-07"
+notes: >
+  hrProcessorLoad działa — zwraca obciążenie CPU (testowane: 20-44%).
+  hrStorageTable pusta — brak RAM przez SNMP.
+  Q-BRIDGE-MIB nie zaimplementowane — brak VLAN/FDB przez SNMP.
+  STP nie obsługiwane (AP, nie switch).
+  LLDP dostępne przez UniFi API (topology_links zbierane przez snmp-worker).
+  Mesh backhaul (vwiresta*) generuje normalne błędy WiFi — próg 200 err/h.
+  Używa 5GHz dla klientów i backhaulem jednocześnie (brak dedykowanego radia backhaul).
+
+capabilities:
+  snmp: true
+  snmp_interfaces: true
+  snmp_fdb: false         # Q-BRIDGE nie zaimplementowane
+  snmp_vlan: false
+  snmp_stp: false
+  snmp_cpu: true          # hrProcessorLoad działa
+  snmp_ram: false
+  lldp_snmp: false
+  lldp_unifi: true        # przez UniFi API
+  syslog: true
+  config_backup: false    # brak CLI dostępu
+
+relevant_protocols:
+  - snmp
+  - syslog
+  - lldp

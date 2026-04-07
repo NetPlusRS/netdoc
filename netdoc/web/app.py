@@ -973,8 +973,50 @@ def create_app():
                 "top_vulns":    [(d, cnt) for d, cnt in _vuln_ranking if cnt > 0][:3],
             }
 
+            # Coverage: SSH — urządzenia z udanym logowaniem SSH
+            from netdoc.storage.models import CredentialMethod as _CM
+            _ssh_rows = (
+                db.query(Credential.device_id)
+                .filter(
+                    Credential.method == _CM.ssh,
+                    Credential.last_success_at.isnot(None),
+                    Credential.device_id.isnot(None),
+                )
+                .distinct()
+                .all()
+            )
+            cov_ssh_ids: set = {r[0] for r in _ssh_rows}
+
+            # Coverage: LLDP/CDP — urządzenia z linkami w topology_links
+            from netdoc.storage.models import TopologyLink as _TL
+            _lldp_src = db.query(_TL.src_device_id).distinct().all()
+            _lldp_dst = db.query(_TL.dst_device_id).distinct().all()
+            cov_lldp_ids: set = {r[0] for r in _lldp_src} | {r[0] for r in _lldp_dst}
+
+            # Coverage: FDB — urządzenia z wpisami w device_fdb (polled w ciągu 48h)
+            from netdoc.storage.models import DeviceFdbEntry as _FDB
+            _fdb_cutoff = now - timedelta(hours=48)
+            _fdb_rows = (
+                db.query(_FDB.device_id)
+                .filter(_FDB.polled_at >= _fdb_cutoff)
+                .distinct()
+                .all()
+            )
+            cov_fdb_ids: set = {r[0] for r in _fdb_rows}
+
         finally:
             db.close()
+
+        # Coverage: Passport — dopasowanie YAML dla każdego urządzenia
+        try:
+            from netdoc.web.passport_loader import find_passports_bulk as _passports_bulk
+            _dev_list = [{"id": d.id, "vendor": d.vendor,
+                          "model": d.model, "os_version": d.os_version}
+                         for d in devs]
+            passports_by_device: dict = _passports_bulk(_dev_list)
+        except Exception:
+            passports_by_device = {}
+
         # Statystyki skanowania credentiali per urzadzenie
         cred_scan_data, _ = _api("get", "/api/credentials/cred-scan-stats")
         cred_scan_by_device = {}
@@ -1096,7 +1138,11 @@ def create_app():
                                local_networks=local_networks,
                                top_local_cidr=top_local_cidr,
                                alert_counts=alert_counts,
-                               alert_severity=alert_severity)
+                               alert_severity=alert_severity,
+                               passports_by_device=passports_by_device,
+                               cov_ssh_ids=cov_ssh_ids,
+                               cov_lldp_ids=cov_lldp_ids,
+                               cov_fdb_ids=cov_fdb_ids)
 
     @app.route("/devices/live-status")
     def devices_live_status():
@@ -1429,8 +1475,48 @@ def create_app():
                                           "ping_inactive_after_min", "ping_interval_s"])
                 ).all()
             }
+
+            # Coverage: SSH
+            from netdoc.storage.models import CredentialMethod as _CM2
+            _ssh_rows2 = (
+                db.query(Credential.device_id)
+                .filter(
+                    Credential.method == _CM2.ssh,
+                    Credential.last_success_at.isnot(None),
+                    Credential.device_id.in_(dev_id_set),
+                )
+                .distinct().all()
+            )
+            cov_ssh_ids: set = {r[0] for r in _ssh_rows2}
+
+            # Coverage: LLDP
+            from netdoc.storage.models import TopologyLink as _TL2
+            _lldp_src2 = db.query(_TL2.src_device_id).filter(_TL2.src_device_id.in_(dev_id_set)).distinct().all()
+            _lldp_dst2 = db.query(_TL2.dst_device_id).filter(_TL2.dst_device_id.in_(dev_id_set)).distinct().all()
+            cov_lldp_ids: set = {r[0] for r in _lldp_src2} | {r[0] for r in _lldp_dst2}
+
+            # Coverage: FDB
+            from netdoc.storage.models import DeviceFdbEntry as _FDB2
+            _fdb_cutoff2 = now - timedelta(hours=48)
+            _fdb_rows2 = (
+                db.query(_FDB2.device_id)
+                .filter(_FDB2.polled_at >= _fdb_cutoff2, _FDB2.device_id.in_(dev_id_set))
+                .distinct().all()
+            )
+            cov_fdb_ids: set = {r[0] for r in _fdb_rows2}
+
         finally:
             db.close()
+
+        # Coverage: Passport
+        try:
+            from netdoc.web.passport_loader import find_passports_bulk as _passports_bulk2
+            _dev_list2 = [{"id": d.id, "vendor": d.vendor,
+                           "model": d.model, "os_version": d.os_version}
+                          for d in devs]
+            passports_by_device: dict = _passports_bulk2(_dev_list2)
+        except Exception:
+            passports_by_device = {}
 
         # Cred scan stats z API
         cred_scan_data, _ = _api("get", "/api/credentials/cred-scan-stats")
@@ -1468,6 +1554,10 @@ def create_app():
             ai_last_by_device=ai_last_by_device,
             alert_counts=alert_counts,
             alert_severity=alert_severity,
+            passports_by_device=passports_by_device,
+            cov_ssh_ids=cov_ssh_ids,
+            cov_lldp_ids=cov_lldp_ids,
+            cov_fdb_ids=cov_fdb_ids,
         )
 
     @app.route("/devices/<int:device_id>")

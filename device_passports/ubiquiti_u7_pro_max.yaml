@@ -1,0 +1,30 @@
+name: Ubiquiti U7 Pro Max
+match_vendors: [Ubiquiti, "Ubiquiti Networks"]
+match_models: ["U7Pro", "U7-Pro", "U7ProMax", "U7 Pro"]
+match_os: []
+tested: true
+tested_at: "2026-04-07"
+notes: >
+  WiFi 7 (802.11be), tri-band. hrProcessorLoad działa (testowane: ~6-8%).
+  hrStorageTable pusta — brak RAM przez SNMP.
+  Q-BRIDGE-MIB nie zaimplementowane.
+  LLDP przez UniFi API — widoczny jako cel linku z US860W Port6.
+  Mesh backhaul aktywny — wifi1ap6/7 oraz vwiresta generują błędy (normalnie do ~5000/h).
+
+capabilities:
+  snmp: true
+  snmp_interfaces: true
+  snmp_fdb: false
+  snmp_vlan: false
+  snmp_stp: false
+  snmp_cpu: true
+  snmp_ram: false
+  lldp_snmp: false
+  lldp_unifi: true
+  syslog: true
+  config_backup: false
+
+relevant_protocols:
+  - snmp
+  - syslog
+  - lldp

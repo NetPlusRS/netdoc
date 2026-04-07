@@ -1,0 +1,35 @@
+name: Cisco Catalyst 2960X
+match_vendors: [Cisco, "Cisco Systems"]
+match_models: ["2960X", "2960-X", "WS-C2960X"]
+match_os: ["15.2", "IOS 15"]
+tested: true
+tested_at: "2026-04-07"
+notes: >
+  dot1dStpPortRole (OID .6) zwraca 8-bajtowy Bridge ID zamiast roli RSTP (RFC 1493).
+  stp_role=null dla wszystkich portów — wyświetlamy tylko stp_state.
+  hrProcessorLoad nie zwraca danych (pusty wynik SNMP GET).
+  hrStorageTable pusta — brak danych RAM przez SNMP.
+  CDP globalnie włączony (cdpGlobalRun=1). LLDP wymaga ręcznego włączenia (lldp run).
+  SNMP walk (nextCmd) nie działa w pysnmp-lextudio 6.x — LLDP/CDP przez SNMP niedostępne.
+
+capabilities:
+  snmp: true
+  snmp_interfaces: true
+  snmp_fdb: true
+  snmp_vlan: true
+  snmp_stp: partial       # tylko state, nie role (RFC 1493)
+  snmp_cpu: false         # hrProcessorLoad puste
+  snmp_ram: false         # hrStorageTable puste
+  lldp_snmp: false        # nextCmd broken
+  lldp_ssh: true          # show lldp neighbors detail (wymaga SSH + lldp run na switchu)
+  cdp: true               # cdpGlobalRun=1, działa przez SSH
+  syslog: true            # Cisco IOS obsługuje syslog
+  config_backup: true     # show running-config przez SSH
+  ssh: true               # netmiko cisco_ios
+
+relevant_protocols:        # co jest ważne dla tego typu sprzętu
+  - snmp
+  - ssh
+  - syslog
+  - lldp
+  - fdb
