@@ -1017,6 +1017,28 @@ def create_app():
         except Exception:
             passports_by_device = {}
 
+        # Coverage: Syslog — urządzenia z logami w ClickHouse (ostatnie 24h)
+        cov_syslog_ids: set = set()
+        try:
+            from netdoc.storage.clickhouse import _get_client as _ch_client
+            _ch = _ch_client()
+            _syslog_ips = {d.ip for d in devs if d.ip}
+            if _syslog_ips:
+                # SELECT DISTINCT device_id, src_ip dla wszystkich logów z ostatnich 24h
+                _sysl_res = _ch.query(
+                    "SELECT DISTINCT src_ip, device_id FROM netdoc_logs.syslog"
+                    " WHERE timestamp >= now() - INTERVAL 24 HOUR"
+                )
+                _ip_to_devid = {d.ip: d.id for d in devs if d.ip}
+                for row in _sysl_res.result_rows:
+                    _sip, _did = row[0], row[1]
+                    if _did:
+                        cov_syslog_ids.add(int(_did))
+                    elif _sip in _ip_to_devid:
+                        cov_syslog_ids.add(_ip_to_devid[_sip])
+        except Exception:
+            pass  # ClickHouse niedostępny — brak ikony syslog
+
         # Statystyki skanowania credentiali per urzadzenie
         cred_scan_data, _ = _api("get", "/api/credentials/cred-scan-stats")
         cred_scan_by_device = {}
@@ -1142,7 +1164,8 @@ def create_app():
                                passports_by_device=passports_by_device,
                                cov_ssh_ids=cov_ssh_ids,
                                cov_lldp_ids=cov_lldp_ids,
-                               cov_fdb_ids=cov_fdb_ids)
+                               cov_fdb_ids=cov_fdb_ids,
+                               cov_syslog_ids=cov_syslog_ids)
 
     @app.route("/devices/live-status")
     def devices_live_status():
@@ -1518,6 +1541,25 @@ def create_app():
         except Exception:
             passports_by_device = {}
 
+        # Coverage: Syslog
+        cov_syslog_ids: set = set()
+        try:
+            from netdoc.storage.clickhouse import _get_client as _ch_client2
+            _ch2 = _ch_client2()
+            _sysl_res2 = _ch2.query(
+                "SELECT DISTINCT src_ip, device_id FROM netdoc_logs.syslog"
+                " WHERE timestamp >= now() - INTERVAL 24 HOUR"
+            )
+            _ip_to_devid2 = {d.ip: d.id for d in devs if d.ip}
+            for row in _sysl_res2.result_rows:
+                _sip2, _did2 = row[0], row[1]
+                if _did2:
+                    cov_syslog_ids.add(int(_did2))
+                elif _sip2 in _ip_to_devid2:
+                    cov_syslog_ids.add(_ip_to_devid2[_sip2])
+        except Exception:
+            pass
+
         # Cred scan stats z API
         cred_scan_data, _ = _api("get", "/api/credentials/cred-scan-stats")
         cred_scan_by_device = {}
@@ -1558,6 +1600,7 @@ def create_app():
             cov_ssh_ids=cov_ssh_ids,
             cov_lldp_ids=cov_lldp_ids,
             cov_fdb_ids=cov_fdb_ids,
+            cov_syslog_ids=cov_syslog_ids,
         )
 
     @app.route("/devices/<int:device_id>")

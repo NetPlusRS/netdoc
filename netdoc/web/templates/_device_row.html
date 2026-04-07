@@ -379,14 +379,16 @@
           {# ── Coverage Matrix ──────────────────────────────────────────── #}
           {% set _passport = passports_by_device.get(d.id) %}
           {% set _caps = _passport.get('capabilities', {}) if _passport else {} %}
-          {% set _snmp_ok = d.snmp_ok_at and (now - d.snmp_ok_at).total_seconds() < 172800 %}
-          {% set _ssh_ok  = d.id in cov_ssh_ids %}
-          {% set _lldp_ok = d.id in cov_lldp_ids %}
-          {% set _fdb_ok  = d.id in cov_fdb_ids %}
+          {% set _snmp_ok   = d.snmp_ok_at and (now - d.snmp_ok_at).total_seconds() < 172800 %}
+          {% set _ssh_ok    = d.id in cov_ssh_ids %}
+          {% set _lldp_ok   = d.id in cov_lldp_ids %}
+          {% set _fdb_ok    = d.id in cov_fdb_ids %}
+          {% set _syslog_ok = d.id in cov_syslog_ids %}
           {# Relevance from passport: false = not applicable for this device #}
-          {% set _ssh_rel  = not _passport or _caps.get('ssh', true) %}
-          {% set _lldp_rel = not _passport or _caps.get('lldp_snmp') or _caps.get('lldp_unifi') or _caps.get('lldp_ssh') or _caps.get('cdp') %}
-          {% set _fdb_rel  = not _passport or _caps.get('snmp_fdb') %}
+          {% set _ssh_rel    = not _passport or _caps.get('ssh', true) %}
+          {% set _lldp_rel   = not _passport or _caps.get('lldp_snmp') or _caps.get('lldp_unifi') or _caps.get('lldp_ssh') or _caps.get('cdp') %}
+          {% set _fdb_rel    = not _passport or _caps.get('snmp_fdb') %}
+          {% set _syslog_rel = not _passport or _caps.get('syslog', true) %}
           <td class="text-center" style="white-space:nowrap">
             {# SNMP #}
             {% if _snmp_ok %}
@@ -398,6 +400,17 @@
             {% else %}
               <i class="bi bi-broadcast-pin text-muted" style="font-size:.85rem;opacity:.25"
                  title="SNMP — brak dostępu"></i>
+            {% endif %}
+            {# Syslog #}
+            {% if _syslog_ok %}
+              <i class="bi bi-journal-text text-success ms-1" style="font-size:.85rem"
+                 title="Syslog — logi z ostatnich 24h"></i>
+            {% elif _syslog_rel %}
+              <i class="bi bi-journal-text text-muted ms-1" style="font-size:.85rem;opacity:.25"
+                 title="Syslog — brak logów w ostatnich 24h"></i>
+            {% else %}
+              <i class="bi bi-journal-text text-muted ms-1" style="font-size:.85rem;opacity:.12"
+                 title="Syslog — nieobsługiwane"></i>
             {% endif %}
             {# SSH #}
             {% if _ssh_ok %}
