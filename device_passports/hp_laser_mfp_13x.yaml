@@ -1,0 +1,32 @@
+name: HP Laser MFP 131/133/135-138
+match_vendors: ["Hewlett Packard", "HP", "HP Inc", "Hewlett-Packard"]
+match_models: ["MFP 131", "MFP 133", "MFP 135", "MFP 136", "MFP 137", "MFP 138",
+               "Laser MFP", "HP Laser"]
+match_os: ["HP ETHERNET MULTI-ENVIRONMENT", "LaserJet", "MFP", "HP Laser MFP"]
+tested: true
+tested_at: "2026-04-12"
+notes: >
+  Wielofunkcyjna drukarka laserowa klasy home/SMB. SNMP community 'public' działa —
+  sysDescr zawiera "HP ETHERNET MULTI-ENVIRONMENT" z SN, FN, PID.
+  Brak portów 9100/515/631 w standardowym skanowaniu (firewall lub wyłączone).
+  Hostname w formacie HPxxxxxx (MAC-based). Brak SSH, CLI, FDB, LLDP, syslog.
+  Klasyfikowany jako printer — nie podlega analizie Network Tier.
+  SNMP ok_at ustawiane co cykl (community public), ale dane przydatne są tylko
+  do identyfikacji (sysDescr, sysName). Brak MIB drukarek (Printer-MIB/RFC 3805).
+
+capabilities:
+  snmp: true           # community public odpowiada — sysDescr identyfikuje model
+  snmp_interfaces: true
+  snmp_fdb: false
+  snmp_vlan: false
+  snmp_stp: false
+  snmp_cpu: false
+  snmp_ram: false
+  lldp_snmp: false
+  lldp_ssh: false
+  syslog: false
+  config_backup: false
+  ssh: false
+
+relevant_protocols:
+  - snmp

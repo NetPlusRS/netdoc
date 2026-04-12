@@ -1986,6 +1986,16 @@ def _guess_device_type(open_ports, os_name, vendor=None, mac=None, hostname=None
     # Vendor drukarki (Canon, Epson, Brother, Lexmark, Xerox, Kyocera, Ricoh itd.)
     if any(v in vendor_lower for v in _PRINTER_VENDORS):
         return DeviceType.printer
+    # HP drukarka — HP jest też w _SERVER_VENDORS, więc sprawdzamy sysDescr/OS PRZED server check.
+    # "HP ETHERNET MULTI-ENVIRONMENT" to standardowy SNMP sysDescr drukarek HP.
+    # "MFP" (Multi-Function Printer), "LaserJet", "OfficeJet", "DeskJet" jednoznacznie drukarka.
+    _HP_PRINTER_OS_HINTS = (
+        "hp ethernet multi-environment", "laserjet", "officejet", "deskjet",
+        "mfp", "hp laser", "hp color laser", "pagewide", "hp designjet",
+    )
+    if "hewlett" in vendor_lower or "hp inc" in vendor_lower:
+        if any(h in _effective_os for h in _HP_PRINTER_OS_HINTS):
+            return DeviceType.printer
     # Hint z banneru (JetDirect / AirPrint w nmap product)
     if _banner_hint == "printer":
         return DeviceType.printer
