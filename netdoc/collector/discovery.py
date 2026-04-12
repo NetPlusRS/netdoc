@@ -2201,14 +2201,19 @@ def upsert_device(db, device_data):
                 device.vendor = device_data.vendor
             elif len(device_data.vendor) > len(device.vendor or ""):
                 device.vendor = device_data.vendor
-        # os_version: aktualizuj tylko gdy urzadzenie nie ma jeszcze wartosci
-        # lub gdy nowa jest bogatsza (dluzszy string — bardziej szczegolowa)
-        # Nie nadpisuj szczegolowego SNMP sysDescr generycznym "Linux 4.x" z nmap
+        # os_version: nmap fingerprint (discovery) ma niższy priorytet niż SNMP sysDescr.
+        # Aktualizuj tylko gdy:
+        #   1. pole jest puste — zapisz cokolwiek
+        #   2. urządzenie NIE ma działającego SNMP (snmp_ok_at=None) — nmap jest jedynym źródłem
+        # Gdy SNMP działa — nie nadpisuj: skaner wywołuje się co 5 min i resetowałby
+        # sysDescr ustawiony przez SNMP worker, powodując oscylację w Field history.
         if device_data.os_version:
             if not device.os_version:
                 device.os_version = device_data.os_version
-            elif len(device_data.os_version) > len(device.os_version):
-                device.os_version = device_data.os_version
+            elif not device.snmp_ok_at:
+                # Brak SNMP — nmap jest jedynym źródłem, aktualizuj gdy bogatszy opis
+                if len(device_data.os_version) > len(device.os_version):
+                    device.os_version = device_data.os_version
         if device_data.mac:
             device.mac = normalize_mac(device_data.mac)
         # model ustawiamy tylko jesli nie byl wczesniej znany (nie nadpisujemy dokladniejszego)
