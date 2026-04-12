@@ -387,18 +387,20 @@
           </td>
 
           {# ── Coverage Matrix ──────────────────────────────────────────── #}
-          {% set _passport = passports_by_device.get(d.id) %}
-          {% set _caps = _passport.get('capabilities', {}) if _passport else {} %}
+          {% set _passport  = passports_by_device.get(d.id) %}
+          {% set _inferred  = inferred_caps_by_device.get(d.id) if not _passport else none %}
+          {# Capabilities source: YAML passport (authoritative) → inferred from DB → empty #}
+          {% set _caps      = _passport.get('capabilities', {}) if _passport else (_inferred or {}) %}
           {% set _snmp_ok   = d.snmp_ok_at and (now - d.snmp_ok_at).total_seconds() < 172800 %}
           {% set _ssh_ok    = d.id in cov_ssh_ids %}
           {% set _lldp_ok   = d.id in cov_lldp_ids %}
           {% set _fdb_ok    = d.id in cov_fdb_ids %}
           {% set _syslog_ok = d.id in cov_syslog_ids %}
-          {# Relevance from passport: false = not applicable for this device #}
-          {% set _ssh_rel    = not _passport or _caps.get('ssh', true) %}
-          {% set _lldp_rel   = not _passport or _caps.get('lldp_snmp') or _caps.get('lldp_unifi') or _caps.get('lldp_ssh') or _caps.get('cdp') %}
-          {% set _fdb_rel    = not _passport or _caps.get('snmp_fdb') %}
-          {% set _syslog_rel = not _passport or _caps.get('syslog', true) %}
+          {# Relevance: YAML passport → explicit caps; inferred → from device_type+data; none → all relevant #}
+          {% set _ssh_rel    = (not _passport and not _inferred) or _caps.get('ssh', true) %}
+          {% set _lldp_rel   = (not _passport and not _inferred) or _caps.get('lldp_snmp') or _caps.get('lldp_unifi') or _caps.get('lldp_ssh') or _caps.get('cdp') %}
+          {% set _fdb_rel    = (not _passport and not _inferred) or _caps.get('snmp_fdb') %}
+          {% set _syslog_rel = (not _passport and not _inferred) or _caps.get('syslog', true) %}
           <td class="text-center" style="white-space:nowrap">
             {# SNMP #}
             {% if _snmp_ok %}
@@ -455,12 +457,18 @@
               <i class="bi bi-table text-muted ms-1" style="font-size:.85rem;opacity:.12"
                  title="FDB — nieobsługiwane (nie switch lub brak Q-BRIDGE)"></i>
             {% endif %}
-            {# Passport badge #}
+            {# Passport badge — YAML (niebieski, przetestowany) lub inferred (szary, wyliczony) #}
             {% if _passport %}
               <span class="badge bg-info text-dark ms-1"
                     style="font-size:.55rem;cursor:default;vertical-align:middle"
                     title="Paszport: {{ _passport.get('name', '?') }}{% if _passport.get('tested') %} — przetestowany {{ _passport.get('tested_at', '') }}{% endif %}">
                 <i class="bi bi-journal-check"></i>
+              </span>
+            {% elif _inferred %}
+              <span class="badge bg-secondary ms-1"
+                    style="font-size:.55rem;cursor:default;vertical-align:middle;opacity:.6"
+                    title="Capabilities wyliczone z zebranych danych (brak ręcznego paszportu dla tego modelu)">
+                <i class="bi bi-cpu"></i>
               </span>
             {% endif %}
           </td>

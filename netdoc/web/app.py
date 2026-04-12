@@ -1017,6 +1017,16 @@ def create_app():
         except Exception:
             passports_by_device = {}
 
+        # Inferred capabilities — dla urządzeń bez YAML paszportu (zero dodatkowych zapytań)
+        try:
+            from netdoc.analyzer.capabilities import infer_capabilities_bulk as _infer_caps
+            _no_passport = [d for d in devs if passports_by_device.get(d.id) is None]
+            inferred_caps_by_device: dict = _infer_caps(
+                _no_passport, cov_ssh_ids, cov_fdb_ids, cov_lldp_ids, cov_syslog_ids,
+            )
+        except Exception:
+            inferred_caps_by_device = {}
+
         # Coverage: Syslog — urządzenia z logami w ClickHouse (ostatnie 24h)
         cov_syslog_ids: set = set()
         try:
@@ -1162,6 +1172,7 @@ def create_app():
                                alert_counts=alert_counts,
                                alert_severity=alert_severity,
                                passports_by_device=passports_by_device,
+                               inferred_caps_by_device=inferred_caps_by_device,
                                cov_ssh_ids=cov_ssh_ids,
                                cov_lldp_ids=cov_lldp_ids,
                                cov_fdb_ids=cov_fdb_ids,
@@ -1541,6 +1552,16 @@ def create_app():
         except Exception:
             passports_by_device = {}
 
+        # Inferred capabilities — dla urządzeń bez YAML paszportu
+        try:
+            from netdoc.analyzer.capabilities import infer_capabilities_bulk as _infer_caps2
+            _no_passport2 = [d for d in devs if passports_by_device.get(d.id) is None]
+            inferred_caps_by_device: dict = _infer_caps2(
+                _no_passport2, cov_ssh_ids, cov_fdb_ids, cov_lldp_ids, cov_syslog_ids,
+            )
+        except Exception:
+            inferred_caps_by_device = {}
+
         # Coverage: Syslog
         cov_syslog_ids: set = set()
         try:
@@ -1597,6 +1618,7 @@ def create_app():
             alert_counts=alert_counts,
             alert_severity=alert_severity,
             passports_by_device=passports_by_device,
+            inferred_caps_by_device=inferred_caps_by_device,
             cov_ssh_ids=cov_ssh_ids,
             cov_lldp_ids=cov_lldp_ids,
             cov_fdb_ids=cov_fdb_ids,
