@@ -49,7 +49,8 @@
           </td>
           <td>
             <a href="/devices/{{ d.id }}" class="text-decoration-none text-body">{{ d.hostname or "—" }}</a>
-            {% if d.network_tier and d.network_tier != 'undef' %}
+            {% set _is_network_dev = d.device_type and d.device_type.value in ('router','switch','firewall','ap','unknown') %}
+            {% if d.network_tier and d.network_tier != 'undef' and _is_network_dev %}
             {%- set _tier_color = {"core":"danger","dist":"warning","access":"success","edge":"info"} -%}
             {%- set _tier_label = {"core":"CORE","dist":"DIST","access":"ACC","edge":"EDGE"} -%}
             <a href="/devices/{{ d.id }}#card-network-role"

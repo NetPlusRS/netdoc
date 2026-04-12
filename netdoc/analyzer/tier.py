@@ -107,6 +107,15 @@ def _get_hints(vendor: Optional[str], os_version: Optional[str], topic: str) -> 
     return _HINTS_GENERIC.get(topic, [])
 
 
+# ── Typy urządzeń sieciowych (infrastruktura) vs endpoint ───────────────────
+
+# Tylko te typy mają sensowną rolę w topologii (core/dist/access/edge).
+# Endpoint'y (serwery, drukarki, kamery itp.) NIE są analizowane — tier
+# opisuje rolę w infrastrukturze sieciowej, nie gdzie urządzenie jest podłączone.
+NETWORK_DEVICE_TYPES = {
+    "router", "switch", "firewall", "ap", "unknown",
+}
+
 # ── Główna funkcja analizy ────────────────────────────────────────────────────
 
 def analyze_device_tier(device_id: int, db, force: bool = False) -> dict[str, Any]:
@@ -130,6 +139,17 @@ def analyze_device_tier(device_id: int, db, force: bool = False) -> dict[str, An
     dev = db.query(Device).filter(Device.id == device_id).first()
     if not dev:
         return {"tier": "undef", "confidence": 0, "evidence": {"signals": [], "missing": []}}
+
+    # Endpoint'y nie mają roli w topologii sieciowej — wyczyść stary tier i pomiń
+    dev_type_val = dev.device_type.value if dev.device_type else "unknown"
+    if not force and dev_type_val not in NETWORK_DEVICE_TYPES:
+        if dev.network_tier is not None:
+            dev.network_tier    = None
+            dev.tier_confidence = None
+            dev.tier_evidence   = None
+            dev.tier_analyzed_at = None
+            db.commit()
+        return {"tier": None, "confidence": 0, "evidence": {"signals": [], "missing": []}}
 
     # Jeśli użytkownik ręcznie ustawił tier — nie nadpisuj (chyba że force=True)
     # BUG-L7 fix: sprawdzaj tylko tier_overridden (nie network_tier) — None traktowane jako False
@@ -165,11 +185,6 @@ def analyze_device_tier(device_id: int, db, force: bool = False) -> dict[str, An
         scores["access"] += 40
         scored_signal_count += 1
         signals.append({"icon": "✅", "text": "Typ urządzenia: AP — warstwa dostępu (access)"})
-    elif dev_type in (DeviceType.server, DeviceType.workstation, DeviceType.camera,
-                       DeviceType.printer, DeviceType.iot, DeviceType.nas, DeviceType.phone):
-        scores["access"] += 50  # endpoint — jednoznacznie w warstwie dostępu (jako cel, nie sw)
-        scored_signal_count += 1
-        signals.append({"icon": "✅", "text": f"Typ urządzenia: {dev_type.value} — endpoint w sieci dostępu"})
     else:
         missing.append({
             "icon": "🟡",
@@ -405,10 +420,12 @@ def analyze_all_devices(db) -> int:
 
     Zwraca liczbę faktycznie przeanalizowanych urządzeń.
     """
-    from netdoc.storage.models import Device
-    # BUG-L1 fix: filtruj na poziomie zapytania DB — nie ładuj overridden devices
+    from netdoc.storage.models import Device, DeviceType
+    # Filtruj: tylko urządzenia sieciowe (infrastruktura), bez ręcznie overridden
+    _network_types = [DeviceType(t) for t in NETWORK_DEVICE_TYPES if t != "unknown"]
     devs = db.query(Device.id).filter(
-        (Device.tier_overridden.is_(None)) | (Device.tier_overridden == False)
+        (Device.device_type.in_(_network_types)) | (Device.device_type == DeviceType.unknown) | Device.device_type.is_(None),
+        (Device.tier_overridden.is_(None)) | (Device.tier_overridden == False),
     ).all()
     count = 0
     for (dev_id,) in devs:

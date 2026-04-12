@@ -482,7 +482,9 @@
       </div>
       {% endif %}
 
-      {# ── Network Role Analysis ─────────────────────────────────────────── #}
+      {# ── Network Role Analysis — tylko dla urządzeń sieciowych (infrastruktura) #}
+      {% set _is_network_dev_detail = not dev.device_type or dev.device_type.value in ('router','switch','firewall','ap','unknown') %}
+      {% if _is_network_dev_detail %}
       <div class="card mb-3" id="card-network-role">
         <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center">
           <span><i class="bi bi-diagram-3 me-1"></i>Network Role</span>
@@ -667,6 +669,8 @@
         loadTier();
       })();
       </script>
+
+      {% endif %}{# _is_network_dev_detail #}
 
       {# ── Diagnostics — CPU/mem + alerty portów ───────────────────────── #}
       {% if dev.snmp_community %}
