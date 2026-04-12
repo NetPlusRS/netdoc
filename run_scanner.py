@@ -1782,7 +1782,7 @@ _LAB_DEVICES = [
     ("172.28.0.11", "Modicon-M340",   "iot",     "Schneider Electric", "Modicon M340 PLC",                   "Lab / Main Distribution Panel / Energy Meter"),
     ("172.28.0.12", "ABB-AC500-Tank", "iot",     "ABB",               "AC500 PLC v3.0 Tank Control",         "Lab / Fuel Tank / Section B"),
     ("172.28.0.20", "MikroTik-RB750", "router",  "MikroTik",          "RouterOS 6.49.10 (stable) RB750Gr3",  "Lab / Server Room A / Rack 2"),
-    ("172.28.0.30", "lab-switch",     "switch",  "Cisco",             "IOS 15.2(7)E",                        "Lab / Switch room"),
+    ("172.28.0.30", "netdoc-lab-switch", "switch",  "Cisco",             "IOS 15.2(7)E",                        "Lab / Switch room"),
     ("172.28.0.40", "netdoc-lab-hmi",  "unknown", None,                "SCADA HMI WebServer",                 "Lab / HMI Panel"),
 ]
 
