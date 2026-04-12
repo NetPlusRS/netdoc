@@ -1689,6 +1689,7 @@ _IOT_VENDORS = (
     "siemens", "schneider", "abb ", "beckhoff", "wago",
     "phoenix contact", "advantech", "pepperl", "omron",
     "dexatek",
+    "netio products", "netio",   # smart power sockets (NETIO PowerBOX)
 )
 
 # Producenci falownikow PV i UPS z obsuga SunSpec/Modbus TCP
@@ -2003,13 +2004,25 @@ def _guess_device_type(open_ports, os_name, vendor=None, mac=None, hostname=None
         # Ubiquiti: rozroznienie AP / switch / router po hostname
         if "ubiquiti" in vendor_lower:
             hostname_lower = (hostname or "").lower()
+            os_lower_u = _effective_os.lower()
+            # Sprawdź hostname (wyższy priorytet)
             if any(hostname_lower.startswith(p) for p in _UBIQUITI_AP_PREFIXES):
                 return DeviceType.ap
             if any(hostname_lower.startswith(p) for p in _UBIQUITI_SWITCH_PREFIXES):
                 return DeviceType.switch
             if any(hostname_lower.startswith(p) for p in _UBIQUITI_ROUTER_PREFIXES):
                 return DeviceType.router
-            # Ubiquiti bez pasujacego hostname — domyslnie AP (najczestszy typ)
+            # Sprawdź OS version gdy hostname nie daje informacji
+            # "US.m487.boot..." / "US.v6...." → UniFi Switch firmware
+            if os_lower_u.startswith("us.") or os_lower_u.startswith("usw."):
+                return DeviceType.switch
+            # "UDM", "USG", "UDR" w OS → router/gateway
+            if any(kw in os_lower_u for kw in ("udm", "usg", "udr", "dream machine", "unifi gateway")):
+                return DeviceType.router
+            # "U6-", "U7-", "UAP" w OS → AP
+            if any(kw in os_lower_u for kw in ("u6-", "u7-", "uap", "u5-")):
+                return DeviceType.ap
+            # Ubiquiti bez pasujacego hostname ani OS — domyslnie AP (najczestszy typ)
             return DeviceType.ap
         # Cisco WAP (Wireless Access Point) — hostname lub OS zawiera "wap"
         if _is_cisco_wap:

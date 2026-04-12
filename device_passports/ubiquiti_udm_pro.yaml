@@ -1,0 +1,34 @@
+name: Ubiquiti UniFi Dream Machine Pro
+match_vendors: [Ubiquiti, "Ubiquiti Inc", "Ubiquiti Networks"]
+match_models: ["UDM-Pro", "UDMPro", "UDM Pro", "Dream Machine Pro"]
+match_os: ["UDM-Pro", "UniFi Dream Machine", "udm"]
+tested: true
+tested_at: "2026-04-12"
+notes: >
+  Router/gateway all-in-one z wbudowanym UniFi Controller. Działa jako brama
+  sieciowa L3 (routing, NAT, firewall), nie switch L2.
+  SNMP dostępne przez UniFi firmware — podstawowe dane interfejsów i CPU.
+  hrProcessorLoad działa. LLDP przez UniFi API.
+  SSH dostępne (UniFi firmware). Brak FDB (nie switch L2).
+  Tier: edge (WAN gateway) — przypisywany automatycznie przez tier analyzer
+  dzięki device_type=router.
+
+capabilities:
+  snmp: true
+  snmp_interfaces: true
+  snmp_fdb: false         # UDM-Pro to router L3, nie switch L2
+  snmp_vlan: false
+  snmp_stp: false         # STP nie dotyczy routera
+  snmp_cpu: true          # hrProcessorLoad dostępne
+  snmp_ram: false
+  lldp_snmp: false
+  lldp_unifi: true        # UniFi Controller widzi topologię
+  lldp_ssh: false
+  syslog: true
+  config_backup: false    # brak standardowego CLI dump konfiguracji
+  ssh: true               # UniFi firmware SSH
+
+relevant_protocols:
+  - snmp
+  - syslog
+  - lldp

@@ -1,0 +1,29 @@
+name: NETIO Smart Power Socket
+match_vendors: ["NETIO products", "NETIO products a.s.", "NETIO"]
+match_models: ["PowerBOX", "NETIO 4", "NETIO 230", "PowerPDU", "PowerCable"]
+match_os: []
+tested: true
+tested_at: "2026-04-12"
+notes: >
+  Inteligentna listwa zasilająca / gniazdko sieciowe z zarządzaniem przez HTTP API.
+  Zarządzane przez Web GUI (port 80) i API REST/JSON/XML.
+  SNMP brak dostępu (community nie skonfigurowane).
+  Brak SSH, FDB, LLDP, syslog. IoT/PDU, nie urządzenie sieciowe infrastruktury.
+  OS fingerprint nmap może błędnie wykrywać "OSRAM Lightify" lub inne — ignorować.
+  Klasyfikowany jako iot — nie podlega analizie Network Tier.
+
+capabilities:
+  snmp: false
+  snmp_interfaces: false
+  snmp_fdb: false
+  snmp_vlan: false
+  snmp_stp: false
+  snmp_cpu: false
+  snmp_ram: false
+  lldp_snmp: false
+  lldp_ssh: false
+  syslog: false
+  config_backup: false
+  ssh: false
+
+relevant_protocols: []

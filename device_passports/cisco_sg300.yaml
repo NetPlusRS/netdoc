@@ -1,0 +1,37 @@
+name: Cisco SG300 Managed Switch
+match_vendors: [Cisco, "Cisco Systems", "Cisco Systems, Inc"]
+match_models: ["SG300", "SG 300", "SF300", "SG302", "SG305", "SG308", "SG310", "SG316", "SG318"]
+match_os: ["SG300", "SF300", "Small Business"]
+tested: true
+tested_at: "2026-04-12"
+notes: >
+  Switch klasy SMB (Small Business), Linux-based — NIE jest to IOS (jak Catalyst).
+  Zarządzany przez Web GUI lub CLI (ssh/telnet, inny interfejs niż IOS).
+  SNMP dostępne — FDB przez Q-BRIDGE MIB, VLAN przez dot1qVlanCurrentTable.
+  LLDP włączone domyślnie przez Web GUI (Settings → Administration → LLDP Properties).
+  STP dostępne (IEEE 802.1D/802.1w RSTP).
+  hrProcessorLoad i hrStorageTable mogą być niedostępne (Linux-based).
+  SSH: dostępne (Cisco Small Business CLI, inny format komend niż IOS).
+  Komendy różnią się od IOS: 'show mac address-table' zamiast 'show mac-address-table'.
+
+capabilities:
+  snmp: true
+  snmp_interfaces: true
+  snmp_fdb: true          # Q-BRIDGE MIB zaimplementowane
+  snmp_vlan: true         # dot1qVlanCurrentTable dostępna
+  snmp_stp: true          # STP MIB dostępne
+  snmp_cpu: false         # hrProcessorLoad niedostępne (Linux-based)
+  snmp_ram: false
+  lldp_snmp: false        # nextCmd broken w pysnmp 6.x
+  lldp_ssh: true          # 'show lldp neighbors' przez SSH (Small Business CLI)
+  cdp: false              # SG300 nie obsługuje CDP
+  syslog: true
+  config_backup: true     # 'show running-config' przez SSH
+  ssh: true               # Cisco Small Business CLI
+
+relevant_protocols:
+  - snmp
+  - ssh
+  - syslog
+  - lldp
+  - fdb
