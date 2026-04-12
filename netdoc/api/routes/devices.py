@@ -424,9 +424,15 @@ def trigger_tier_analyze(device_id: int, db: Session = Depends(get_db)):
     if not device:
         raise HTTPException(status_code=404, detail="Urządzenie nie znalezione")
     from netdoc.analyzer.tier import analyze_device_tier
-    result = analyze_device_tier(device_id, db, force=True)
-    # Dodaj tier_overridden do odpowiedzi (frontend potrzebuje wiedzieć czy override jest aktywny)
+    analyze_device_tier(device_id, db, force=True)
+    # Re-query żeby mieć świeże dane po commit wewnątrz analyze_device_tier
     device = db.query(Device).filter(Device.id == device_id).first()
-    if device:
-        result["tier_overridden"] = bool(device.tier_overridden)
-    return result
+    # Zwróć format spójny z GET /tier (renderTier() w JS czyta network_tier, tier_confidence itd.)
+    return {
+        "device_id":       device_id,
+        "network_tier":    device.network_tier,
+        "tier_confidence": device.tier_confidence,
+        "tier_evidence":   device.tier_evidence,
+        "tier_overridden": bool(device.tier_overridden),
+        "tier_analyzed_at": device.tier_analyzed_at.isoformat() if device.tier_analyzed_at else None,
+    }
