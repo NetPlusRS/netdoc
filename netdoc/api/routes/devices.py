@@ -399,12 +399,12 @@ class TierOverridePayload(BaseModel):
 @router.post("/{device_id}/tier/override")
 def override_device_tier(device_id: int, payload: TierOverridePayload, db: Session = Depends(get_db)):
     """Ręczne nadpisanie tiera przez użytkownika. tier_overridden=True blokuje auto-update."""
-    valid = {"core", "dist", "access", "edge", "undef"}
-    if payload.network_tier not in valid:
-        raise HTTPException(status_code=422, detail=f"Nieprawidłowy tier: {payload.network_tier}")
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Urządzenie nie znalezione")
+    valid = {"core", "dist", "access", "edge", "undef"}
+    if payload.network_tier not in valid:
+        raise HTTPException(status_code=422, detail=f"Nieprawidłowy tier: {payload.network_tier}")
     device.network_tier    = payload.network_tier
     device.tier_overridden = payload.tier_overridden
     db.commit()
@@ -413,21 +413,20 @@ def override_device_tier(device_id: int, payload: TierOverridePayload, db: Sessi
 
 @router.post("/{device_id}/tier/analyze")
 def trigger_tier_analyze(device_id: int, db: Session = Depends(get_db)):
-    """Wymusza natychmiastową re-analizę tiera dla wskazanego urządzenia."""
+    """Wymusza natychmiastową re-analizę tiera dla wskazanego urządzenia.
+
+    Zawsze nadpisuje tier (ignoruje tier_overridden) — użytkownik świadomie
+    kliknął "Re-analyze". Po analizie tier_overridden pozostaje bez zmian.
+    Używa force=True zamiast modyfikowania tier_overridden w DB — eliminuje
+    okno race condition z automatycznym cyklem SNMP.
+    """
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Urządzenie nie znalezione")
-    # Tymczasowo wyłącz override żeby analiza mogła nadpisać (jeśli chcemy re-analizę)
-    _was_overridden = device.tier_overridden
-    device.tier_overridden = False
-    db.commit()
-    try:
-        from netdoc.analyzer.tier import analyze_device_tier
-        result = analyze_device_tier(device_id, db)
-    finally:
-        # Przywróć override (użytkownik może go mieć ustawiony celowo)
-        device = db.query(Device).filter(Device.id == device_id).first()
-        if device:
-            device.tier_overridden = _was_overridden
-            db.commit()
+    from netdoc.analyzer.tier import analyze_device_tier
+    result = analyze_device_tier(device_id, db, force=True)
+    # Dodaj tier_overridden do odpowiedzi (frontend potrzebuje wiedzieć czy override jest aktywny)
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if device:
+        result["tier_overridden"] = bool(device.tier_overridden)
     return result

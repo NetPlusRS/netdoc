@@ -2099,8 +2099,10 @@ def create_app():
     @app.route("/api/devices/<int:device_id>/tier/override", methods=["POST"])
     def api_proxy_tier_override(device_id):
         """Proxy: ręczne nadpisanie tiera przez użytkownika."""
-        data, err = _api("post", f"/api/devices/{device_id}/tier/override",
-                         json=request.get_json())
+        body = request.get_json(silent=True)
+        if not body:
+            return jsonify({"error": "Wymagane body JSON z polami network_tier i tier_overridden"}), 400
+        data, err = _api("post", f"/api/devices/{device_id}/tier/override", json=body)
         if err:
             return jsonify({"error": err}), 502
         return jsonify(data)

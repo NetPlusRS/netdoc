@@ -346,7 +346,7 @@ def _migrate_columns() -> None:
         # Network Tier Analysis (2026-04-12)
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS network_tier     VARCHAR(10)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS tier_confidence  INTEGER",
-        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS tier_evidence    JSONB",
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS tier_evidence    JSON",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS tier_overridden  BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS tier_analyzed_at TIMESTAMP",
     ]

@@ -109,12 +109,13 @@ def _get_hints(vendor: Optional[str], os_version: Optional[str], topic: str) -> 
 
 # ── Główna funkcja analizy ────────────────────────────────────────────────────
 
-def analyze_device_tier(device_id: int, db) -> dict[str, Any]:
+def analyze_device_tier(device_id: int, db, force: bool = False) -> dict[str, Any]:
     """Analizuje tier urządzenia na podstawie dostępnych danych w DB.
 
     Args:
         device_id: ID urządzenia w tabeli devices
         db: aktywna sesja SQLAlchemy
+        force: jeśli True — pomija sprawdzenie tier_overridden (używane przez /tier/analyze endpoint)
 
     Returns:
         dict z kluczami: tier, confidence, evidence (signals+missing)
@@ -122,7 +123,7 @@ def analyze_device_tier(device_id: int, db) -> dict[str, Any]:
     """
     from netdoc.storage.models import (
         Device, DeviceType, Interface, TopologyLink,
-        DeviceFdbEntry, DeviceVlanPort, DeviceStpPort,
+        DeviceFdbEntry, DeviceVlanPort,
     )
     from sqlalchemy import func
 
@@ -130,10 +131,11 @@ def analyze_device_tier(device_id: int, db) -> dict[str, Any]:
     if not dev:
         return {"tier": "undef", "confidence": 0, "evidence": {"signals": [], "missing": []}}
 
-    # Jeśli użytkownik ręcznie ustawił tier — nie nadpisuj, ale wróć bieżące dane
-    if dev.tier_overridden and dev.network_tier:
+    # Jeśli użytkownik ręcznie ustawił tier — nie nadpisuj (chyba że force=True)
+    # BUG-L7 fix: sprawdzaj tylko tier_overridden (nie network_tier) — None traktowane jako False
+    if not force and dev.tier_overridden:
         return {
-            "tier": dev.network_tier,
+            "tier": dev.network_tier or "undef",
             "confidence": dev.tier_confidence or 0,
             "evidence": dev.tier_evidence or {"signals": [], "missing": []},
         }
@@ -142,26 +144,31 @@ def analyze_device_tier(device_id: int, db) -> dict[str, Any]:
     os_ver    = dev.os_version or ""
     dev_type  = dev.device_type
 
-    signals: list[dict] = []   # [{icon, text}]
+    signals: list[dict] = []   # [{icon, text}] — sygnały które faktycznie wniosły punkty
     missing: list[dict] = []   # [{icon, text, hints:[str]}]
 
     scores = {"core": 0, "dist": 0, "access": 0, "edge": 0}
+    scored_signal_count = 0  # tylko sygnały które zmieniły scores — do data_fraction
     max_signals = 0  # ile sygnałów mogło wnieść punkty
 
     # ── 1. Typ urządzenia ────────────────────────────────────────────────────
     max_signals += 1
     if dev_type in (DeviceType.router, DeviceType.firewall):
         scores["edge"] += 35
+        scored_signal_count += 1
         signals.append({"icon": "✅", "text": f"Typ urządzenia: {dev_type.value} — typowo edge/WAN"})
     elif dev_type == DeviceType.switch:
-        # Switch może być core/dist/access — nie dajemy punktów, ale zaznaczamy
-        signals.append({"icon": "ℹ️", "text": "Typ urządzenia: switch — wymaga dalszej analizy"})
+        # Switch może być core/dist/access — nie dajemy punktów, informujemy tylko
+        # BUG-L4 fix: NIE wliczamy do scored_signal_count (brak punktów = brak danych)
+        signals.append({"icon": "ℹ️", "text": "Typ urządzenia: switch — wymaga dalszej analizy (LLDP/FDB/STP)"})
     elif dev_type == DeviceType.ap:
         scores["access"] += 40
+        scored_signal_count += 1
         signals.append({"icon": "✅", "text": "Typ urządzenia: AP — warstwa dostępu (access)"})
     elif dev_type in (DeviceType.server, DeviceType.workstation, DeviceType.camera,
                        DeviceType.printer, DeviceType.iot, DeviceType.nas, DeviceType.phone):
         scores["access"] += 50  # endpoint — jednoznacznie w warstwie dostępu (jako cel, nie sw)
+        scored_signal_count += 1
         signals.append({"icon": "✅", "text": f"Typ urządzenia: {dev_type.value} — endpoint w sieci dostępu"})
     else:
         missing.append({
@@ -182,19 +189,28 @@ def analyze_device_tier(device_id: int, db) -> dict[str, Any]:
 
     if lldp_degree >= 4:
         scores["core"] += 30
+        scored_signal_count += 1
         signals.append({"icon": "✅", "text": f"LLDP: {lldp_degree} sąsiadów — wysoka łączność (core)"})
     elif lldp_degree in (2, 3):
         scores["dist"] += 25
+        scored_signal_count += 1
         signals.append({"icon": "✅", "text": f"LLDP: {lldp_degree} sąsiadów — pośrednia łączność (distribution)"})
     elif lldp_degree == 1:
         scores["access"] += 28
+        scored_signal_count += 1
         signals.append({"icon": "✅", "text": "LLDP: 1 sąsiad — pojedynczy uplink (access)"})
     elif any_lldp > 0:
-        # Inne urządzenia mają linki LLDP, ale to nie — LLDP wyłączone na tym urządzeniu
-        scores["access"] += 10  # słaba sugestia access (izolowane urządzenia zwykle są na końcu)
+        # BUG-L5 fix: brak LLDP gdy inne urządzenia mają → słaba sugestia access,
+        # ale wliczamy do scored_signal_count (bo jednak coś wiemy) i dodajemy do signals
+        scores["access"] += 10
+        scored_signal_count += 1
+        signals.append({
+            "icon": "⚠️",
+            "text": "LLDP: brak sąsiadów (inne urządzenia mają LLDP) — prawdopodobnie endpoint/edge sieci",
+        })
         missing.append({
             "icon": "🔴",
-            "text": "LLDP: brak sąsiadów — włącz LLDP na urządzeniu (kluczowy sygnał tiera)",
+            "text": "LLDP: włącz LLDP na urządzeniu — kluczowy sygnał dla dokładnej analizy tiera",
             "hints": _get_hints(vendor, os_ver, "lldp"),
         })
     else:
@@ -214,20 +230,23 @@ def analyze_device_tier(device_id: int, db) -> dict[str, Any]:
     ).scalar() or 0
 
     if fdb_count > 0:
-        if fdb_count > 80:
+        # BUG-L3 fix: progi dopasowane do realnych sieci — dist może mieć 20-100 MAC
+        # z podłączonych switchów access; próg access podniesiony do >150
+        scored_signal_count += 1
+        if fdb_count > 150:
             scores["access"] += 25
             signals.append({"icon": "✅", "text": f"FDB: {fdb_count} wpisów MAC — wiele urządzeń końcowych (access)"})
-        elif fdb_count > 20:
-            scores["access"] += 15
-            scores["dist"] += 10
-            signals.append({"icon": "✅", "text": f"FDB: {fdb_count} wpisów MAC — mieszana warstwa"})
+        elif fdb_count > 30:
+            scores["access"] += 12
+            scores["dist"] += 12
+            signals.append({"icon": "✅", "text": f"FDB: {fdb_count} wpisów MAC — mieszana warstwa (dist/access)"})
         elif fdb_count <= 8:
             scores["core"] += 15
             scores["dist"] += 10
             signals.append({"icon": "✅", "text": f"FDB: tylko {fdb_count} wpisów MAC — tranzytowe urządzenie (core/dist)"})
-        else:
-            scores["dist"] += 12
-            signals.append({"icon": "✅", "text": f"FDB: {fdb_count} wpisów MAC"})
+        else:  # 9..30
+            scores["dist"] += 15
+            signals.append({"icon": "✅", "text": f"FDB: {fdb_count} wpisów MAC — typowy switch distribution"})
     else:
         missing.append({
             "icon": "🟡",
@@ -249,6 +268,7 @@ def analyze_device_tier(device_id: int, db) -> dict[str, Any]:
 
     if total_mode > 0:
         trunk_ratio = trunk_cnt / total_mode
+        scored_signal_count += 1
         if trunk_ratio >= 0.8:
             scores["core"] += 20
             scores["dist"] += 15
@@ -271,12 +291,19 @@ def analyze_device_tier(device_id: int, db) -> dict[str, Any]:
     # stp_root_cost == 0 → to urządzenie JEST root bridge
     # stp_root_cost == None → nie zebrano danych STP
     if dev.stp_root_cost is not None:
+        scored_signal_count += 1
         if dev.stp_root_cost == 0:
             scores["core"] += 28
             signals.append({"icon": "✅", "text": "STP: to urządzenie jest root bridge — typowo core"})
-        elif dev.stp_root_cost <= 4:
+        elif dev.stp_root_cost <= 2:
+            # BUG-L8 fix: cost<=2 może być RSTP 10G access — nie klasyfikuj jako dist,
+            # daj równe punkty dist i access
+            scores["dist"] += 12
+            scores["access"] += 12
+            signals.append({"icon": "✅", "text": f"STP: koszt do root = {dev.stp_root_cost} — blisko root (RSTP 10G lub dist)"})
+        elif dev.stp_root_cost <= 8:
             scores["dist"] += 20
-            signals.append({"icon": "✅", "text": f"STP: koszt do root = {dev.stp_root_cost} — blisko root (dist?)"})
+            signals.append({"icon": "✅", "text": f"STP: koszt do root = {dev.stp_root_cost} — blisko root (distribution)"})
         elif dev.stp_root_cost <= 19:
             scores["dist"] += 10
             scores["access"] += 10
@@ -298,6 +325,7 @@ def analyze_device_tier(device_id: int, db) -> dict[str, Any]:
     ).scalar() or 0
 
     if vlan_count > 0:
+        scored_signal_count += 1
         if vlan_count >= 8:
             scores["dist"] += 18
             scores["core"] += 12
@@ -328,10 +356,9 @@ def analyze_device_tier(device_id: int, db) -> dict[str, Any]:
     best_tier  = max(scores, key=lambda t: scores[t])
     best_score = scores[best_tier]
 
-    # Confidence: ważona przez liczbę znanych sygnałów ORAZ dominację zwycięzcy
-    known_signals = len(signals)  # sygnały które wniosły dane (nie missing)
-    total_possible = max_signals
-    data_fraction = known_signals / max(total_possible, 1)
+    # BUG-L4 fix: używamy scored_signal_count (faktyczne punktujące sygnały),
+    # nie len(signals) (które zawiera też ℹ️ switch bez punktów)
+    data_fraction = scored_signal_count / max(max_signals, 1)
 
     # Dominacja: zwycięzca vs drugi (im większa różnica, tym pewniej)
     sorted_scores = sorted(scores.values(), reverse=True)
@@ -343,7 +370,11 @@ def analyze_device_tier(device_id: int, db) -> dict[str, Any]:
 
     confidence = int(data_fraction * 50 + dominance * 50)
 
-    if best_score == 0 or known_signals == 0:
+    # BUG-L6 fix: cap confidence gdy mało sygnałów — 1 sygnał nie może dać >55%
+    if scored_signal_count < 3:
+        confidence = min(confidence, 55)
+
+    if best_score == 0 or scored_signal_count == 0:
         tier = "undef"
         confidence = 0
     else:
@@ -367,12 +398,18 @@ def analyze_device_tier(device_id: int, db) -> dict[str, Any]:
 
 
 def analyze_all_devices(db) -> int:
-    """Analizuje tier dla wszystkich urządzeń (pomija te z tier_overridden=True).
+    """Analizuje tier dla wszystkich urządzeń bez ręcznego override.
 
-    Zwraca liczbę przeanalizowanych urządzeń.
+    Urządzenia z tier_overridden=True są pomijane w zapytaniu (nie tylko w guard
+    wewnątrz analyze_device_tier) — BUG-L1 fix.
+
+    Zwraca liczbę faktycznie przeanalizowanych urządzeń.
     """
     from netdoc.storage.models import Device
-    devs = db.query(Device.id).all()
+    # BUG-L1 fix: filtruj na poziomie zapytania DB — nie ładuj overridden devices
+    devs = db.query(Device.id).filter(
+        (Device.tier_overridden.is_(None)) | (Device.tier_overridden == False)
+    ).all()
     count = 0
     for (dev_id,) in devs:
         try:
@@ -380,5 +417,5 @@ def analyze_all_devices(db) -> int:
             count += 1
         except Exception as exc:
             logger.warning("Błąd analizy tiera dla device %d: %s", dev_id, exc)
-    logger.info("Tier analysis: przeanalizowano %d urządzeń", count)
+    logger.info("Tier analysis: przeanalizowano %d urządzeń (overridden pominięte)", count)
     return count
