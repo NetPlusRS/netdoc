@@ -2088,6 +2088,31 @@ def create_app():
             return jsonify({"error": err}), 502
         return jsonify(data)
 
+    @app.route("/api/devices/<int:device_id>/tier")
+    def api_proxy_tier_get(device_id):
+        """Proxy: pobierz wynik analizy tiera (GET)."""
+        data, err = _api("get", f"/api/devices/{device_id}/tier")
+        if err:
+            return jsonify({"error": err}), 502
+        return jsonify(data)
+
+    @app.route("/api/devices/<int:device_id>/tier/override", methods=["POST"])
+    def api_proxy_tier_override(device_id):
+        """Proxy: ręczne nadpisanie tiera przez użytkownika."""
+        data, err = _api("post", f"/api/devices/{device_id}/tier/override",
+                         json=request.get_json())
+        if err:
+            return jsonify({"error": err}), 502
+        return jsonify(data)
+
+    @app.route("/api/devices/<int:device_id>/tier/analyze", methods=["POST"])
+    def api_proxy_tier_analyze(device_id):
+        """Proxy: wymusza natychmiastową re-analizę tiera."""
+        data, err = _api("post", f"/api/devices/{device_id}/tier/analyze")
+        if err:
+            return jsonify({"error": err}), 502
+        return jsonify(data)
+
     @app.route("/devices/<int:device_id>/inventory", methods=["POST"])
     def device_inventory(device_id):
         """Zapisuje pola inwentarzowe urzadzenia."""

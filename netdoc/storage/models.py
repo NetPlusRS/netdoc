@@ -178,6 +178,13 @@ class Device(Base):
     snmp_sys_object_id = Column(String(100),    nullable=True)   # sysObjectID np. "1.3.6.1.4.1.9.1.1"
     stp_root_mac       = Column(String(17),     nullable=True)   # MAC root bridge z STP
     stp_root_cost      = Column(Integer,        nullable=True)   # koszt sciezki do root
+    # Network Tier Analysis (2026-04-12) — obliczany przez netdoc/analyzer/tier.py
+    # tier_evidence: {signals:[{icon,text}], missing:[{icon,text,hint}]}
+    network_tier     = Column(String(10),  nullable=True)   # core|dist|access|edge|undef
+    tier_confidence  = Column(Integer,     nullable=True)   # 0-100
+    tier_evidence    = Column(JSON,        nullable=True)   # {signals:[..], missing:[..]}
+    tier_overridden  = Column(Boolean,     nullable=False, default=False)
+    tier_analyzed_at = Column(DateTime,    nullable=True)
     # Kolumny zakupowe — zachowane w DB dla kompatybilności, nieużywane w UI od 2026-03-29
     purchase_date      = Column(Date,           nullable=True)
     purchase_vendor    = Column(String(255),    nullable=True)

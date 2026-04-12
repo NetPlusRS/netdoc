@@ -482,6 +482,192 @@
       </div>
       {% endif %}
 
+      {# ── Network Role Analysis ─────────────────────────────────────────── #}
+      <div class="card mb-3" id="card-network-role">
+        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-diagram-3 me-1"></i>Network Role</span>
+          <div class="d-flex align-items-center gap-2">
+            <span id="tier-badge-header"></span>
+            <button class="btn btn-outline-secondary btn-sm py-0 px-2" id="btn-tier-analyze"
+                    onclick="tierAnalyze()" title="Re-analyze network role">
+              <i class="bi bi-arrow-repeat"></i>
+            </button>
+          </div>
+        </div>
+        <div class="card-body p-3" id="tier-card-body">
+          <div class="text-center text-muted py-3" id="tier-loading">
+            <div class="spinner-border spinner-border-sm me-1"></div> Analyzing…
+          </div>
+        </div>
+      </div>
+
+      <script>
+      (function() {
+        const DEVICE_ID = {{ dev.id }};
+        const TIER_LABELS = {
+          core: "Core", dist: "Distribution", access: "Access",
+          edge: "Edge / WAN", undef: "Unknown"
+        };
+        const TIER_COLORS = {
+          core: "danger", dist: "warning", access: "success",
+          edge: "info", undef: "secondary"
+        };
+
+        function renderTier(data) {
+          const tier   = data.network_tier || "undef";
+          const conf   = data.tier_confidence ?? 0;
+          const ev     = data.tier_evidence  || {signals: [], missing: []};
+          const label  = TIER_LABELS[tier] || tier;
+          const color  = TIER_COLORS[tier] || "secondary";
+          const over   = data.tier_overridden;
+          const ts     = data.tier_analyzed_at ? data.tier_analyzed_at.substring(0,16).replace("T"," ") : "";
+          const analyzed_at = ts ? `<small class="text-muted ms-2">Last: ${ts} UTC</small>` : "";
+
+          // Badge w nagłówku karty
+          document.getElementById("tier-badge-header").innerHTML =
+            `<span class="badge bg-${color}">${label}</span>` +
+            (over ? `<span class="badge bg-secondary ms-1" title="Ręcznie ustawiony">override</span>` : "") +
+            analyzed_at;
+
+          // Pasek pewności
+          let confColor = conf >= 70 ? "success" : conf >= 40 ? "warning" : "danger";
+          let confBar = `
+            <div class="mb-3">
+              <div class="d-flex justify-content-between mb-1">
+                <small class="text-muted">Confidence</small>
+                <small class="fw-bold text-${confColor}">${conf}%</small>
+              </div>
+              <div class="progress" style="height:6px">
+                <div class="progress-bar bg-${confColor}" style="width:${conf}%"></div>
+              </div>
+            </div>`;
+
+          // Sygnały (co wiemy)
+          let sigHtml = "";
+          if (ev.signals && ev.signals.length) {
+            sigHtml = `<div class="mb-3">
+              <div class="small fw-semibold text-muted mb-1 text-uppercase" style="letter-spacing:.05em">Detected signals</div>`;
+            ev.signals.forEach(s => {
+              sigHtml += `<div class="small py-1 border-bottom border-secondary border-opacity-25">
+                ${s.icon} ${s.text}</div>`;
+            });
+            sigHtml += `</div>`;
+          }
+
+          // Brakujące dane (co wymaga konfiguracji)
+          let misHtml = "";
+          if (ev.missing && ev.missing.length) {
+            misHtml = `<div class="mb-3">
+              <div class="small fw-semibold text-muted mb-1 text-uppercase" style="letter-spacing:.05em">Missing data — enable to improve accuracy</div>`;
+            ev.missing.forEach(m => {
+              let hintsHtml = "";
+              if (m.hints && m.hints.length) {
+                const hid = `tier-hint-${Math.random().toString(36).slice(2,7)}`;
+                hintsHtml = `
+                  <div>
+                    <a class="small text-info text-decoration-none" data-bs-toggle="collapse"
+                       href="#${hid}" role="button">
+                      <i class="bi bi-terminal me-1"></i>Show config commands
+                    </a>
+                    <div class="collapse" id="${hid}">
+                      <pre class="bg-dark text-success p-2 rounded mt-1 small"
+                           style="font-size:.78rem;white-space:pre-wrap">${m.hints.join("\n")}</pre>
+                    </div>
+                  </div>`;
+              }
+              misHtml += `<div class="py-1 border-bottom border-secondary border-opacity-25">
+                <div class="small">${m.icon} ${m.text}</div>
+                ${hintsHtml}
+              </div>`;
+            });
+            misHtml += `</div>`;
+          }
+
+          // Override form
+          let overrideHtml = `
+            <div class="mt-3 pt-2 border-top border-secondary border-opacity-25">
+              <div class="small fw-semibold text-muted mb-2 text-uppercase" style="letter-spacing:.05em">Manual override</div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <select class="form-select form-select-sm" id="tier-override-select" style="max-width:180px">
+                  <option value="">— auto-detected —</option>
+                  ${Object.entries(TIER_LABELS).map(([v,l]) =>
+                    `<option value="${v}"${tier===v&&over?' selected':''}>${l}</option>`
+                  ).join("")}
+                </select>
+                <button class="btn btn-sm btn-outline-primary" onclick="tierOverride()">
+                  <i class="bi bi-lock me-1"></i>Save override
+                </button>
+                ${over ? `<button class="btn btn-sm btn-outline-secondary" onclick="tierClearOverride()" title="Remove override — let auto-detect run">
+                  <i class="bi bi-unlock me-1"></i>Clear
+                </button>` : ""}
+              </div>
+            </div>`;
+
+          document.getElementById("tier-card-body").innerHTML =
+            confBar + sigHtml + misHtml + overrideHtml;
+        }
+
+        function loadTier() {
+          fetch(`/api/devices/${DEVICE_ID}/tier`)
+            .then(r => r.json())
+            .then(data => {
+              if (data.error) {
+                document.getElementById("tier-card-body").innerHTML =
+                  `<div class="text-muted small p-2">Analysis not available: ${data.error}</div>`;
+              } else {
+                renderTier(data);
+              }
+            })
+            .catch(() => {
+              document.getElementById("tier-card-body").innerHTML =
+                `<div class="text-muted small p-2">Could not load tier analysis.</div>`;
+            });
+        }
+
+        window.tierAnalyze = function() {
+          const btn = document.getElementById("btn-tier-analyze");
+          btn.disabled = true;
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+          fetch(`/api/devices/${DEVICE_ID}/tier/analyze`, {method:"POST"})
+            .then(r => r.json())
+            .then(data => { renderTier(data); })
+            .catch(() => {})
+            .finally(() => {
+              btn.disabled = false;
+              btn.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
+            });
+        };
+
+        window.tierOverride = function() {
+          const sel = document.getElementById("tier-override-select");
+          const tier = sel.value;
+          if (!tier) { tierClearOverride(); return; }
+          fetch(`/api/devices/${DEVICE_ID}/tier/override`, {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({network_tier: tier, tier_overridden: true})
+          })
+          .then(r => r.json())
+          .then(() => loadTier())
+          .catch(console.error);
+        };
+
+        window.tierClearOverride = function() {
+          const sel = document.getElementById("tier-override-select");
+          fetch(`/api/devices/${DEVICE_ID}/tier/override`, {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({network_tier: sel.value || "undef", tier_overridden: false})
+          })
+          .then(() => tierAnalyze())
+          .catch(console.error);
+        };
+
+        // Załaduj przy otwarciu strony
+        loadTier();
+      })();
+      </script>
+
       {# ── Diagnostics — CPU/mem + alerty portów ───────────────────────── #}
       {% if dev.snmp_community %}
       <div class="card mb-3" id="card-diagnostics">

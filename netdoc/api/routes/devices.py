@@ -371,3 +371,63 @@ def get_device_alerts(device_id: int, db: Session = Depends(get_db)):
         }
         for a in alerts
     ]
+
+
+# ── Network Tier Analysis ──────────────────────────────────────────────────────
+
+@router.get("/{device_id}/tier")
+def get_device_tier(device_id: int, db: Session = Depends(get_db)):
+    """Zwraca aktualny wynik analizy tiera urządzenia (core/dist/access/edge/undef)."""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Urządzenie nie znalezione")
+    return {
+        "device_id":      device_id,
+        "network_tier":   device.network_tier,
+        "tier_confidence": device.tier_confidence,
+        "tier_evidence":  device.tier_evidence,
+        "tier_overridden": device.tier_overridden,
+        "tier_analyzed_at": device.tier_analyzed_at.isoformat() if device.tier_analyzed_at else None,
+    }
+
+
+class TierOverridePayload(BaseModel):
+    network_tier: str
+    tier_overridden: bool = True
+
+
+@router.post("/{device_id}/tier/override")
+def override_device_tier(device_id: int, payload: TierOverridePayload, db: Session = Depends(get_db)):
+    """Ręczne nadpisanie tiera przez użytkownika. tier_overridden=True blokuje auto-update."""
+    valid = {"core", "dist", "access", "edge", "undef"}
+    if payload.network_tier not in valid:
+        raise HTTPException(status_code=422, detail=f"Nieprawidłowy tier: {payload.network_tier}")
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Urządzenie nie znalezione")
+    device.network_tier    = payload.network_tier
+    device.tier_overridden = payload.tier_overridden
+    db.commit()
+    return {"ok": True, "network_tier": device.network_tier, "tier_overridden": device.tier_overridden}
+
+
+@router.post("/{device_id}/tier/analyze")
+def trigger_tier_analyze(device_id: int, db: Session = Depends(get_db)):
+    """Wymusza natychmiastową re-analizę tiera dla wskazanego urządzenia."""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Urządzenie nie znalezione")
+    # Tymczasowo wyłącz override żeby analiza mogła nadpisać (jeśli chcemy re-analizę)
+    _was_overridden = device.tier_overridden
+    device.tier_overridden = False
+    db.commit()
+    try:
+        from netdoc.analyzer.tier import analyze_device_tier
+        result = analyze_device_tier(device_id, db)
+    finally:
+        # Przywróć override (użytkownik może go mieć ustawiony celowo)
+        device = db.query(Device).filter(Device.id == device_id).first()
+        if device:
+            device.tier_overridden = _was_overridden
+            db.commit()
+    return result

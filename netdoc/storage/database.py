@@ -343,6 +343,12 @@ def _migrate_columns() -> None:
         )""",
         "CREATE INDEX IF NOT EXISTS ix_alert_device_id ON device_port_alerts (device_id)",
         "CREATE INDEX IF NOT EXISTS ix_alert_severity   ON device_port_alerts (severity)",
+        # Network Tier Analysis (2026-04-12)
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS network_tier     VARCHAR(10)",
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS tier_confidence  INTEGER",
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS tier_evidence    JSONB",
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS tier_overridden  BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS tier_analyzed_at TIMESTAMP",
     ]
     # Każda migracja w osobnej transakcji — błąd jednego kroku nie blokuje pozostałych.
     # lock_timeout=5s: DDL nie będzie czekać w nieskończoność na blokadę tabeli

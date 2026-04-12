@@ -49,6 +49,16 @@
           </td>
           <td>
             <a href="/devices/{{ d.id }}" class="text-decoration-none text-body">{{ d.hostname or "—" }}</a>
+            {% if d.network_tier and d.network_tier != 'undef' %}
+            {%- set _tier_color = {"core":"danger","dist":"warning","access":"success","edge":"info"} -%}
+            {%- set _tier_label = {"core":"CORE","dist":"DIST","access":"ACC","edge":"EDGE"} -%}
+            <a href="/devices/{{ d.id }}#card-network-role"
+               class="badge bg-{{ _tier_color.get(d.network_tier,'secondary') }} ms-1"
+               style="font-size:.6rem;text-decoration:none"
+               title="Network tier: {{ d.network_tier }}{% if d.tier_overridden %} (manual){% endif %} — confidence {{ d.tier_confidence or 0 }}%">
+              {{ _tier_label.get(d.network_tier, d.network_tier|upper) }}
+            </a>
+            {% endif %}
             {% if diag_cnt > 0 %}
             <a href="/devices/{{ d.id }}#card-diagnostics"
                class="badge bg-{{ 'danger' if diag_sev == 'critical' else 'warning text-dark' }} ms-1"

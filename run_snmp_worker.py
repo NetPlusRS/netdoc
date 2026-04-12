@@ -1870,6 +1870,24 @@ def scan_once() -> None:
         except Exception as exc:
             logger.warning("Alert computation error: %s", exc)
 
+    # ── Network Tier Analysis ──────────────────────────────────────────────────
+    # Uruchamiane co 1h — analiza roli L2/L3 urządzeń na podstawie LLDP, FDB, portów, STP
+    _TIER_INTERVAL = 3600  # 1 godzina
+    if not hasattr(scan_once, "_tier_last"):
+        scan_once._tier_last = 0.0  # type: ignore[attr-defined]
+    if time.monotonic() - scan_once._tier_last >= _TIER_INTERVAL:  # type: ignore[attr-defined]
+        try:
+            from netdoc.analyzer.tier import analyze_all_devices as _analyze_tiers
+            _tier_db = SessionLocal()
+            try:
+                _n = _analyze_tiers(_tier_db)
+                logger.info("Network tier analysis: %d devices analyzed", _n)
+            finally:
+                _tier_db.close()
+            scan_once._tier_last = time.monotonic()  # type: ignore[attr-defined]
+        except Exception as exc:
+            logger.warning("Network tier analysis error: %s", exc)
+
 
 def _collect_resource_metrics(devices, snmp_timeout: int) -> None:
     """Zbiera CPU i pamięć ze wszystkich urządzeń i zapisuje do ClickHouse (if_index=0)."""
