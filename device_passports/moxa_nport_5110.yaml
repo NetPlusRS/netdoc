@@ -1,0 +1,28 @@
+name: Moxa NPort 5110
+match_vendors: [Moxa, "MOXA", "MOXA TECHNOLOGIES CORP., LTD."]
+match_models: ["NPort 5110", "NPort5110", "NPort 5", "NPort"]
+match_os: ["NPort", "serial device server", "serial server"]
+tested: true
+tested_at: "2026-04-12"
+notes: >
+  Serial device server RS-232 → Ethernet (1 port). NIE jest urządzeniem sieciowym
+  infrastruktury — to przelicznik portu szeregowego na TCP/IP (np. dla PLC, drukarek
+  szeregowych, czytników kodów kreskowych). Zarządzany przez web UI (port 80).
+  SNMP brak dostępu (brak community). SSH niedostępne.
+  Klasyfikowany jako iot (nie router) — nie podlega analizie Network Tier.
+
+capabilities:
+  snmp: false         # brak community SNMP
+  snmp_interfaces: false
+  snmp_fdb: false
+  snmp_vlan: false
+  snmp_stp: false
+  snmp_cpu: false
+  snmp_ram: false
+  lldp_snmp: false
+  lldp_ssh: false
+  syslog: false       # NPort 5110 nie obsługuje syslog
+  config_backup: false
+  ssh: false          # brak CLI SSH
+
+relevant_protocols: []

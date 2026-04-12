@@ -2014,6 +2014,12 @@ def _guess_device_type(open_ports, os_name, vendor=None, mac=None, hostname=None
         # Cisco WAP (Wireless Access Point) — hostname lub OS zawiera "wap"
         if _is_cisco_wap:
             return DeviceType.ap
+        # Moxa: rozróżnienie serial device server (NPort) vs industrial switch (EDS/IKS)
+        if "moxa" in vendor_lower:
+            _os_low = _effective_os.lower()
+            if "nport" in _os_low or "serial" in _os_low or "device server" in _os_low:
+                return DeviceType.iot   # NPort, AWServ — serial-to-ethernet converter
+            return DeviceType.switch    # EDS, IKS, PT — industrial Ethernet switch
         return DeviceType.router
 
     # 7. Falownik PV / SunSpec vs. PLC/urzadzenia przemyslowe
