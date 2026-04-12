@@ -2008,13 +2008,36 @@ def _compute_device_alerts(
 
     alerts_to_upsert: list[dict] = []
 
+    # Interfejsy znane z wysokich błędów z powodów strukturalnych (mesh backhaul,
+    # wirtualne radiowe VAP) — pomijaj alerty error_rate/error_trend dla nich.
+    # Ubiquiti: wifi1ap* = backhaul 5GHz, vwiresta* = mesh station, mon* = monitor mode
+    _NOISY_IFACE_PREFIXES = ("vwiresta", "vwire", "mon", "wifi1ap", "wifi0ap")
+
     # ── Błędy portów ─────────────────────────────────────────────────────────
     try:
         recent  = query_error_totals(dev.id, hours=24)
         baseline = query_error_totals(dev.id, hours=trend_days * 24 + 24)
-        # baseline_only = total w [trend_days*24+24h temu, trend_days*24 temu]
-        # = baseline_total - recent_total (przybliżenie)
+
+        # Pobierz nazwy interfejsów żeby móc filtrować noisy
+        from netdoc.storage.database import SessionLocal as _SL
+        _db_iface = _SL()
+        try:
+            _iface_names: dict[int, str] = {
+                i.if_index: (i.name or "")
+                for i in _db_iface.query(Interface)
+                    .filter(Interface.device_id == dev.id, Interface.if_index.isnot(None))
+                    .all()
+            }
+        finally:
+            _db_iface.close()
+
         for if_index, recent_errors in recent.items():
+            iface_name = _iface_names.get(if_index, "")
+
+            # Pomiń znane strukturalnie głośne interfejsy (mesh backhaul, VAP monitor)
+            if any(iface_name.startswith(p) for p in _NOISY_IFACE_PREFIXES):
+                continue
+
             rate_per_h = recent_errors / 24.0
 
             severity = None
@@ -2028,7 +2051,9 @@ def _compute_device_alerts(
             trend = None
             if base_rate > 0:
                 trend = round((rate_per_h - base_rate) / base_rate * 100, 1)
-                if severity is None and trend >= trend_pct_thresh:
+                # Trend alert tylko gdy wartość bezwzględna jest istotna (≥ 10% progu warning).
+                # Zapobiega fałszywym alarmom gdy 2→4 błędy/h daje "+100% trend".
+                if severity is None and trend >= trend_pct_thresh and rate_per_h >= err_warn * 0.1:
                     severity = "warning"
 
             if severity:
