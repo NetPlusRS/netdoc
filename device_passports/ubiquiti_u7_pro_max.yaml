@@ -1,6 +1,6 @@
 name: Ubiquiti U7 Pro Max
 match_vendors: [Ubiquiti, "Ubiquiti Networks"]
-match_models: ["U7Pro", "U7-Pro", "U7ProMax", "U7 Pro"]
+match_models: ["U7Pro", "U7-Pro", "U7ProMax", "U7 Pro", "U7 Pro Max"]
 match_os: []
 tested: true
 tested_at: "2026-04-07"
@@ -10,19 +10,23 @@ notes: >
   Q-BRIDGE-MIB nie zaimplementowane.
   LLDP przez UniFi API — widoczny jako cel linku z US860W Port6.
   Mesh backhaul aktywny — wifi1ap6/7 oraz vwiresta generują błędy (normalnie do ~5000/h).
+  Alert threshold podwyższony do 5000 err/h w konfiguracji (mesh WiFi environment).
+  SSH dostępne (UniFi firmware, user ubnt lub skonfigurowany w UniFi Controller).
 
 capabilities:
   snmp: true
   snmp_interfaces: true
-  snmp_fdb: false
+  snmp_fdb: false         # Q-BRIDGE nie zaimplementowane w UniFi AP firmware
   snmp_vlan: false
   snmp_stp: false
-  snmp_cpu: true
+  snmp_cpu: true          # hrProcessorLoad działa
   snmp_ram: false
   lldp_snmp: false
-  lldp_unifi: true
+  lldp_unifi: true        # przez UniFi API
+  lldp_ssh: false         # brak IOS-style CLI
   syslog: true
-  config_backup: false
+  config_backup: false    # brak CLI dostępu do konfiguracji
+  ssh: true               # UniFi firmware — dostępne SSH
 
 relevant_protocols:
   - snmp

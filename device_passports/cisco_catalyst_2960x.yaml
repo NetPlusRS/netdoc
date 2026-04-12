@@ -17,7 +17,7 @@ capabilities:
   snmp_interfaces: true
   snmp_fdb: true
   snmp_vlan: true
-  snmp_stp: partial       # tylko state, nie role (RFC 1493)
+  snmp_stp: true          # tylko state, nie role (RFC 1493 — dot1dStpPortRole zwraca Bridge ID)
   snmp_cpu: false         # hrProcessorLoad puste
   snmp_ram: false         # hrStorageTable puste
   lldp_snmp: false        # nextCmd broken

@@ -12,19 +12,22 @@ notes: >
   LLDP dostępne przez UniFi API (topology_links zbierane przez snmp-worker).
   Mesh backhaul (vwiresta*) generuje normalne błędy WiFi — próg 200 err/h.
   Używa 5GHz dla klientów i backhaulem jednocześnie (brak dedykowanego radia backhaul).
+  SSH dostępne (UniFi firmware, user ubnt lub skonfigurowany w UniFi Controller).
 
 capabilities:
   snmp: true
   snmp_interfaces: true
-  snmp_fdb: false         # Q-BRIDGE nie zaimplementowane
+  snmp_fdb: false         # Q-BRIDGE nie zaimplementowane w UniFi AP firmware
   snmp_vlan: false
   snmp_stp: false
   snmp_cpu: true          # hrProcessorLoad działa
   snmp_ram: false
   lldp_snmp: false
   lldp_unifi: true        # przez UniFi API
+  lldp_ssh: false         # brak IOS-style CLI
   syslog: true
-  config_backup: false    # brak CLI dostępu
+  config_backup: false    # brak CLI dostępu do konfiguracji
+  ssh: true               # UniFi firmware — dostępne SSH
 
 relevant_protocols:
   - snmp

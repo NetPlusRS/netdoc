@@ -6,23 +6,27 @@ tested: true
 tested_at: "2026-04-07"
 notes: >
   Switch 8-portowy PoE. LLDP widoczny w topology_links (Port6 → U7ProMax).
-  FDB przez SNMP — do weryfikacji (Q-BRIDGE może nie być dostępne).
+  Q-BRIDGE MIB zaimplementowane przez UniFi firmware — FDB i VLAN dostępne przez SNMP.
   Brak danych CPU/RAM przez hrProcessorLoad/hrStorageTable.
+  SSH dostępne (UniFi firmware, user ubnt lub skonfigurowany w UniFi Controller).
 
 capabilities:
   snmp: true
   snmp_interfaces: true
-  snmp_fdb: false         # Q-BRIDGE nie potwierdzone
-  snmp_vlan: false
-  snmp_stp: false
+  snmp_fdb: true          # Q-BRIDGE MIB zaimplementowane w UniFi firmware
+  snmp_vlan: true         # dot1qVlanCurrentTable dostępna
+  snmp_stp: false         # STP MIB nie testowane na tym modelu
   snmp_cpu: false
   snmp_ram: false
   lldp_snmp: false
   lldp_unifi: true        # działa — widoczny w topology_links
+  lldp_ssh: false         # brak IOS-style CLI
   syslog: true
   config_backup: false
+  ssh: true               # UniFi firmware — dostępne SSH
 
 relevant_protocols:
   - snmp
   - syslog
   - lldp
+  - fdb
