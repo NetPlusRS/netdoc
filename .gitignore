@@ -9,6 +9,9 @@ _private/
 # Pro package — nie dołaczaj do Community repo
 netdoc_pro/
 
+# Wygenerowane raporty Device Passport (Pro feature) — pliki HTML per-urządzenie
+device_passports/*.html
+
 # Logi i runtime
 logs/*
 !logs/.gitkeep
