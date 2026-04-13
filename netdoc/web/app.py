@@ -1007,26 +1007,6 @@ def create_app():
         finally:
             db.close()
 
-        # Coverage: Passport — dopasowanie YAML dla każdego urządzenia
-        try:
-            from netdoc.web.passport_loader import find_passports_bulk as _passports_bulk
-            _dev_list = [{"id": d.id, "vendor": d.vendor,
-                          "model": d.model, "os_version": d.os_version}
-                         for d in devs]
-            passports_by_device: dict = _passports_bulk(_dev_list)
-        except Exception:
-            passports_by_device = {}
-
-        # Inferred capabilities — dla urządzeń bez YAML paszportu (zero dodatkowych zapytań)
-        try:
-            from netdoc.analyzer.capabilities import infer_capabilities_bulk as _infer_caps
-            _no_passport = [d for d in devs if passports_by_device.get(d.id) is None]
-            inferred_caps_by_device: dict = _infer_caps(
-                _no_passport, cov_ssh_ids, cov_fdb_ids, cov_lldp_ids, cov_syslog_ids,
-            )
-        except Exception:
-            inferred_caps_by_device = {}
-
         # Coverage: Syslog — urządzenia z logami w ClickHouse (ostatnie 24h)
         cov_syslog_ids: set = set()
         try:
@@ -1048,6 +1028,26 @@ def create_app():
                         cov_syslog_ids.add(_ip_to_devid[_sip])
         except Exception:
             pass  # ClickHouse niedostępny — brak ikony syslog
+
+        # Coverage: Passport — dopasowanie YAML dla każdego urządzenia
+        try:
+            from netdoc.web.passport_loader import find_passports_bulk as _passports_bulk
+            _dev_list = [{"id": d.id, "vendor": d.vendor,
+                          "model": d.model, "os_version": d.os_version}
+                         for d in devs]
+            passports_by_device: dict = _passports_bulk(_dev_list)
+        except Exception:
+            passports_by_device = {}
+
+        # Inferred capabilities — dla urządzeń bez YAML paszportu (zero dodatkowych zapytań)
+        try:
+            from netdoc.analyzer.capabilities import infer_capabilities_bulk as _infer_caps
+            _no_passport = [d for d in devs if passports_by_device.get(d.id) is None]
+            inferred_caps_by_device: dict = _infer_caps(
+                _no_passport, cov_ssh_ids, cov_fdb_ids, cov_lldp_ids, cov_syslog_ids,
+            )
+        except Exception:
+            inferred_caps_by_device = {}
 
         # Statystyki skanowania credentiali per urzadzenie
         cred_scan_data, _ = _api("get", "/api/credentials/cred-scan-stats")
@@ -1542,6 +1542,25 @@ def create_app():
         finally:
             db.close()
 
+        # Coverage: Syslog
+        cov_syslog_ids: set = set()
+        try:
+            from netdoc.storage.clickhouse import _get_client as _ch_client2
+            _ch2 = _ch_client2()
+            _sysl_res2 = _ch2.query(
+                "SELECT DISTINCT src_ip, device_id FROM netdoc_logs.syslog"
+                " WHERE timestamp >= now() - INTERVAL 24 HOUR"
+            )
+            _ip_to_devid2 = {d.ip: d.id for d in devs if d.ip}
+            for row in _sysl_res2.result_rows:
+                _sip2, _did2 = row[0], row[1]
+                if _did2:
+                    cov_syslog_ids.add(int(_did2))
+                elif _sip2 in _ip_to_devid2:
+                    cov_syslog_ids.add(_ip_to_devid2[_sip2])
+        except Exception:
+            pass
+
         # Coverage: Passport
         try:
             from netdoc.web.passport_loader import find_passports_bulk as _passports_bulk2
@@ -1561,25 +1580,6 @@ def create_app():
             )
         except Exception:
             inferred_caps_by_device = {}
-
-        # Coverage: Syslog
-        cov_syslog_ids: set = set()
-        try:
-            from netdoc.storage.clickhouse import _get_client as _ch_client2
-            _ch2 = _ch_client2()
-            _sysl_res2 = _ch2.query(
-                "SELECT DISTINCT src_ip, device_id FROM netdoc_logs.syslog"
-                " WHERE timestamp >= now() - INTERVAL 24 HOUR"
-            )
-            _ip_to_devid2 = {d.ip: d.id for d in devs if d.ip}
-            for row in _sysl_res2.result_rows:
-                _sip2, _did2 = row[0], row[1]
-                if _did2:
-                    cov_syslog_ids.add(int(_did2))
-                elif _sip2 in _ip_to_devid2:
-                    cov_syslog_ids.add(_ip_to_devid2[_sip2])
-        except Exception:
-            pass
 
         # Cred scan stats z API
         cred_scan_data, _ = _api("get", "/api/credentials/cred-scan-stats")
@@ -1758,6 +1758,52 @@ def create_app():
                 .all()
             )
 
+            # Passport readiness — shown in confirmation modal before generating (Pro only)
+            passport_readiness = {}
+            if PRO_PASSPORT:
+                from netdoc.storage.models import Credential as _Cred, CredentialMethod as _CM
+                from sqlalchemy import exists as _exists
+                import datetime as _dt
+                _now = _dt.datetime.utcnow()
+                _snmp_age_h = None
+                if dev.snmp_ok_at:
+                    _snmp_age_h = round((_now - dev.snmp_ok_at).total_seconds() / 3600, 1)
+                # SSH success: per-device credential with last_success_at (SSH-specific)
+                _ssh_ok = db.query(
+                    _exists().where(
+                        _Cred.device_id == device_id,
+                        _Cred.method == _CM.ssh,
+                        _Cred.last_success_at.isnot(None),
+                    )
+                ).scalar()
+                _has_ssh_cred = db.query(
+                    _exists().where(
+                        _Cred.method == _CM.ssh,
+                        _Cred.device_id.is_(None),
+                    )
+                ).scalar()
+                # Find RAM from sensors (Cisco uses mem_total_mb, others ram_total_mb)
+                _sensor_map = {s.sensor_name: s.value for s in sensors}
+                _ram_mb = None
+                for _k in ("ram_total_mb", "mem_total_mb", "ram_total_mb_1"):
+                    _v = _sensor_map.get(_k)
+                    if _v and _v > 0:
+                        _ram_mb = round(_v)
+                        break
+                if not _ram_mb:
+                    _ram_mb = dev.ram_total_mb
+                passport_readiness = {
+                    "snmp_ok":      dev.snmp_ok_at is not None,
+                    "snmp_age_h":   _snmp_age_h,
+                    "snmp_ok_at":   dev.snmp_ok_at.strftime("%Y-%m-%d %H:%M") if dev.snmp_ok_at else None,
+                    "ssh_ok":       _ssh_ok,
+                    "ssh_cred":     _has_ssh_cred,
+                    "sensor_count": len(sensors),
+                    "iface_count":  len(interfaces),
+                    "ram_mb":       _ram_mb,
+                    "serial":       dev.serial_number,
+                }
+
             return render_template(
                 "device_detail.html",
                 dev=dev,
@@ -1775,6 +1821,7 @@ def create_app():
                 vap_data=vap_data,
                 passports=passports,
                 pro_passport=PRO_PASSPORT,
+                passport_readiness=passport_readiness,
             )
         finally:
             db.close()
@@ -1797,6 +1844,7 @@ def create_app():
             token, filename = generate_passport(db, device_id)
             flash(f"Passport generated: {filename}", "success")
         except Exception as exc:
+            db.rollback()
             flash(f"Passport generation failed: {exc}", "danger")
         finally:
             db.close()
@@ -2730,6 +2778,28 @@ def create_app():
             flash(f"Error: {err}", "danger")
         else:
             flash("Credential deleted.", "success")
+        return redirect(url_for("credentials"))
+
+    @app.route("/credentials/bulk-delete", methods=["POST"])
+    def credential_bulk_delete():
+        method = request.form.get("method") or None   # None = all types
+        scope = request.form.get("scope", "global")   # "global" or "all"
+        if scope not in ("global", "all"):
+            flash("Invalid scope.", "danger")
+            return redirect(url_for("credentials"))
+        include_device = scope == "all"
+        params = {}
+        if method:
+            params["method"] = method
+        if include_device:
+            params["include_device"] = "true"
+        _, err = _api("delete", "/api/credentials/bulk/all", params=params)
+        if err:
+            flash(f"Error: {err}", "danger")
+        else:
+            label = method.upper() if method else "all"
+            scope_label = " (including per-device)" if include_device else " (global only)"
+            flash(f"Deleted {label} credentials{scope_label}.", "success")
         return redirect(url_for("credentials"))
 
     @app.route("/credentials/<int:cred_id>/edit", methods=["POST"])

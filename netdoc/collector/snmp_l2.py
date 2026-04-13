@@ -658,36 +658,95 @@ _OID_HR_STORAGE_USED   = "1.3.6.1.2.1.25.2.3.1.6"   # hrStorageUsed (in units)
 _HR_STORAGE_RAM_OID = "1.3.6.1.2.1.25.2.1.2"
 
 
-def collect_host_resources(ip: str, community: str, timeout: int = 2) -> dict:
-    """Zbiera CPU i pamięć RAM z HOST-RESOURCES-MIB.
+def collect_host_resources(
+    ip: str,
+    community: str,
+    timeout: int = 2,
+    cpu_oid: Optional[str] = None,
+    ram_free_oid: Optional[str] = None,
+    ram_used_oid: Optional[str] = None,
+) -> dict:
+    """Zbiera CPU i pamięć RAM.
+
+    Domyślnie: HOST-RESOURCES-MIB (hrProcessorLoad, hrStorageTable).
+    Z OID override (z paszportu): vendor-specific MIB (np. CISCO-PROCESS-MIB).
+
+    Parametry override (z passport extra_oids):
+      cpu_oid      — pojedynczy OID zwracający CPU% (np. cpmCPUTotal5minRev)
+      ram_free_oid — OID z wolną pamięcią w bajtach (np. ciscoMemoryPoolFree)
+      ram_used_oid — OID z używaną pamięcią w bajtach (np. ciscoMemoryPoolUsed)
 
     Zwraca:
         {
-          'cpu_percent': float | None,    # średnie CPU ze wszystkich procesorów
-          'mem_used_pct': float | None,   # % użytej pamięci RAM
-          'mem_used_mb': float | None,    # użyta RAM w MiB
-          'mem_total_mb': float | None,   # całkowita RAM w MiB
+          'cpu_percent': float | None,
+          'mem_used_pct': float | None,
+          'mem_used_mb': float | None,
+          'mem_total_mb': float | None,
         }
-    Zwraca pusty dict gdy urządzenie nie obsługuje HOST-RESOURCES-MIB.
     """
     from netdoc.collector.snmp_walk import snmp_walk
 
     # ── CPU ──────────────────────────────────────────────────────────────────
-    cpu_values: list[int] = []
-    try:
-        rows = snmp_walk(ip, _OID_HR_PROCESSOR_LOAD, community, timeout=timeout, max_iter=32)
-        for _, raw_val, _ in rows:
-            v = _int_from_raw(raw_val)
-            if v is not None and 0 <= v <= 100:
-                cpu_values.append(v)
-    except Exception as exc:
-        logger.debug("collect_host_resources %s CPU: %s", ip, exc)
-
     cpu_pct: Optional[float] = None
-    if cpu_values:
-        cpu_pct = round(sum(cpu_values) / len(cpu_values), 1)
 
-    # ── Storage — szukamy wpisu RAM ─────────────────────────────────────────
+    if cpu_oid:
+        # Vendor-specific: single SNMP GET (np. cpmCPUTotal5minRev dla Cisco)
+        # Musi być GET (nie GETNEXT/walk) żeby uderzyć w konkretny OID
+        try:
+            from netdoc.collector.drivers.snmp import _snmp_get
+            raw = _snmp_get(ip, community, cpu_oid, timeout=timeout)
+            v = _int_from_raw(raw)
+            if v is not None and 0 <= v <= 100:
+                cpu_pct = float(v)
+        except Exception as exc:
+            logger.debug("collect_host_resources %s CPU (vendor OID): %s", ip, exc)
+    else:
+        # Domyślnie: HOST-RESOURCES-MIB hrProcessorLoad walk
+        cpu_values: list[int] = []
+        try:
+            rows = snmp_walk(ip, _OID_HR_PROCESSOR_LOAD, community, timeout=timeout, max_iter=32)
+            for _, raw_val, _ in rows:
+                v = _int_from_raw(raw_val)
+                if v is not None and 0 <= v <= 100:
+                    cpu_values.append(v)
+        except Exception as exc:
+            logger.debug("collect_host_resources %s CPU: %s", ip, exc)
+        if cpu_values:
+            cpu_pct = round(sum(cpu_values) / len(cpu_values), 1)
+
+    # ── RAM — vendor OID override (np. CISCO-MEMORY-POOL-MIB) ────────────────
+    mem_used_pct:  Optional[float] = None
+    mem_used_mb:   Optional[float] = None
+    mem_total_mb:  Optional[float] = None
+
+    if ram_free_oid and ram_used_oid:
+        # Vendor-specific: dwa SNMP GET (ciscoMemoryPoolFree + ciscoMemoryPoolUsed)
+        try:
+            from netdoc.collector.drivers.snmp import _snmp_get
+            free_raw = _snmp_get(ip, community, ram_free_oid, timeout=timeout)
+            used_raw = _snmp_get(ip, community, ram_used_oid, timeout=timeout)
+            free_val = _int_from_raw(free_raw)
+            used_val = _int_from_raw(used_raw)
+            if free_val is not None and used_val is not None and (free_val + used_val) > 0:
+                total = free_val + used_val
+                mem_used_pct = round(used_val / total * 100, 1)
+                mem_used_mb  = round(used_val / (1024 * 1024), 1)
+                mem_total_mb = round(total    / (1024 * 1024), 1)
+        except Exception as exc:
+            logger.debug("collect_host_resources %s RAM (vendor OID): %s", ip, exc)
+
+    if ram_free_oid and ram_used_oid:
+        # Vendor OID path done — skip hrStorageTable
+        if cpu_pct is None and mem_used_pct is None:
+            return {}
+        return {
+            "cpu_percent":  cpu_pct,
+            "mem_used_pct": mem_used_pct,
+            "mem_used_mb":  mem_used_mb,
+            "mem_total_mb": mem_total_mb,
+        }
+
+    # ── Storage — szukamy wpisu RAM (HOST-RESOURCES-MIB) ─────────────────────
     storage_type:  dict[int, str] = {}   # index → type OID string
     storage_alloc: dict[int, int] = {}   # index → alloc units (bytes)
     storage_size:  dict[int, int] = {}   # index → size (units)
@@ -723,10 +782,6 @@ def collect_host_resources(ip: str, community: str, timeout: int = 2) -> dict:
     _walk_int_hr(_OID_HR_STORAGE_ALLOC, storage_alloc)
     _walk_int_hr(_OID_HR_STORAGE_SIZE,  storage_size)
     _walk_int_hr(_OID_HR_STORAGE_USED,  storage_used)
-
-    mem_used_pct:  Optional[float] = None
-    mem_used_mb:   Optional[float] = None
-    mem_total_mb:  Optional[float] = None
 
     # Szukamy wpisu z typem RAM (hrStorageRam) — type OID ends with .2
     # Alternatywnie: opis zawiera "RAM" lub "Physical Memory"

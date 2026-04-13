@@ -612,14 +612,19 @@ def _poll_device(device_id: int, ip: str, community: str,
                 continue
             _old = getattr(device, _field)
             if _old is not None and _old != _new:
-                db.add(DeviceFieldHistory(
-                    device_id=device_id,
-                    field_name=_field,
-                    old_value=str(_old),
-                    new_value=str(_new),
-                    source="snmp",
-                ))
-                logger.info("Field change %s [%s]: %r → %r", ip, _field, _old, _new)
+                # Hostname: pomiń zapis historii gdy różnica to tylko wielkość liter
+                # (NBNS zwraca UPPERCASE, SNMP sysName zwraca prawidłowy case)
+                if _field == "hostname" and (_old or "").lower() == (_new or "").lower():
+                    pass  # tylko case — nie generuj historii, ale zaktualizuj
+                else:
+                    db.add(DeviceFieldHistory(
+                        device_id=device_id,
+                        field_name=_field,
+                        old_value=str(_old),
+                        new_value=str(_new),
+                        source="snmp",
+                    ))
+                    logger.info("Field change %s [%s]: %r -> %r", ip, _field, _old, _new)
             # Always write SNMP value (overrides nmap OS fingerprint)
             setattr(device, _field, _new)
 
@@ -1565,6 +1570,37 @@ def scan_once() -> None:
         g_polled.set(0); g_success.set(0); g_failed.set(0)
         return
 
+    # Paszport cache — jeden lookup per device na cały cykl
+    try:
+        from netdoc.collector.passport_loader import (
+            find_passport as _fp,
+            passport_allows_arp as _passport_allows_arp,
+            passport_allows_cpu as _passport_allows_cpu,
+            passport_allows_ram as _passport_allows_ram,
+            passport_sensor_method as _passport_sensor_method,
+            passport_sensor_oids as _passport_sensor_oids,
+            passport_extra_oids as _passport_extra_oids,
+        )
+        _device_passports: dict = {
+            d.id: _fp(d.vendor, d.model, d.os_version)
+            for d in devices
+        }
+        _device_extra_oids: dict = {
+            d.id: _passport_extra_oids(_device_passports.get(d.id))
+            for d in devices
+        }
+        _n_matched = sum(1 for p in _device_passports.values() if p is not None)
+        logger.info("Passport match: %d/%d devices", _n_matched, len(devices))
+    except ImportError:
+        _device_passports = {}
+        _device_extra_oids = {}
+        def _passport_allows_arp(p): return None  # type: ignore[misc]
+        def _passport_allows_cpu(p): return None  # type: ignore[misc]
+        def _passport_allows_ram(p): return None  # type: ignore[misc]
+        def _passport_sensor_method(p): return None  # type: ignore[misc]
+        def _passport_sensor_oids(p): return {}  # type: ignore[misc]
+        def _passport_extra_oids(p): return {}  # type: ignore[misc]
+
     logger.info("SNMP poll: %d devices with known community | workers=%d", len(devices), workers)
 
     polled = success = failed = 0
@@ -1636,9 +1672,18 @@ def scan_once() -> None:
             logger.info("Neighbor total updated: %d", neighbor_total)
 
     # ARP table walk — routery i L3 switche ujawniaja urzadzenia w innych VLAN-ach
-    # Uruchamiamy tylko dla urzadzen ktore wyglądają na routing (router/switch/firewall/unknown)
+    # Paszport (snmp_collection.arp.enabled) ma priorytet; fallback: device_type heuristic
     _L3_TYPES = {DeviceType.router, DeviceType.switch, DeviceType.firewall, DeviceType.unknown}
-    arp_candidates = [d for d in devices if d.snmp_community and d.device_type in _L3_TYPES]
+    arp_candidates = []
+    for _d in devices:
+        if not _d.snmp_community:
+            continue
+        _arp_flag = _passport_allows_arp(_device_passports.get(_d.id))
+        if _arp_flag is True:
+            arp_candidates.append(_d)
+        elif _arp_flag is None and _d.device_type in _L3_TYPES:
+            arp_candidates.append(_d)
+        # _arp_flag == False → jawnie wyłączone w paszporcie, pomiń
     if arp_candidates:
         logger.info("ARP walk: checking %d L3 devices for ARP table", len(arp_candidates))
         arp_total = 0
@@ -1699,12 +1744,17 @@ def scan_once() -> None:
         for d in devices:
             vendor_hint = (d.vendor or "").lower()
             os_hint     = (d.os_version or "").lower()
+            _pp = _device_passports.get(d.id)
+            _s_method = _passport_sensor_method(_pp)
+            _s_oids   = _passport_sensor_oids(_pp)
             try:
                 sensors = poll_sensors(
                     str(d.ip), d.snmp_community,
                     vendor_hint=vendor_hint,
                     os_hint=os_hint,
                     timeout=snmp_timeout,
+                    sensor_method=_s_method,
+                    sensor_oids=_s_oids,
                 )
             except Exception as exc:
                 logger.debug("Sensor poll %s: %s", d.ip, exc)
@@ -1855,7 +1905,17 @@ def scan_once() -> None:
 
     # ── Resource metrics (CPU/mem) → ClickHouse ──────────────────────────────
     # Zbierane co każdy cykl SNMP workera via HOST-RESOURCES-MIB (if_index=0)
-    _collect_resource_metrics(devices, snmp_timeout)
+    # Passport: pomijamy urządzenia gdzie obie flagi cpu i ram jawnie wyłączone
+    _res_devs = []
+    for _d in devices:
+        _pp = _device_passports.get(_d.id)
+        if _passport_allows_cpu(_pp) is False and _passport_allows_ram(_pp) is False:
+            continue  # paszport jawnie wyklucza CPU i RAM dla tego modelu
+        _res_devs.append(_d)
+    if len(_res_devs) < len(devices):
+        logger.debug("Resource metrics: skipping %d devices (passport cpu+ram=false)",
+                     len(devices) - len(_res_devs))
+    _collect_resource_metrics(_res_devs, snmp_timeout, device_extra_oids=_device_extra_oids)
 
     # ── Alert computation ─────────────────────────────────────────────────────
     # Uruchamiane co 30 min (nie co każdy cykl) — porównuje trendy błędów i CPU/mem z progami
@@ -1889,8 +1949,14 @@ def scan_once() -> None:
             logger.warning("Network tier analysis error: %s", exc)
 
 
-def _collect_resource_metrics(devices, snmp_timeout: int) -> None:
-    """Zbiera CPU i pamięć ze wszystkich urządzeń i zapisuje do ClickHouse (if_index=0)."""
+def _collect_resource_metrics(
+    devices, snmp_timeout: int, device_extra_oids: dict | None = None
+) -> None:
+    """Zbiera CPU i pamięć ze wszystkich urządzeń i zapisuje do ClickHouse (if_index=0).
+
+    device_extra_oids: {device_id: {"cpu_5min": oid, "ram_free": oid, "ram_used": oid}}
+    Gdy obecne, używa vendor-specific OIDów zamiast HOST-RESOURCES-MIB.
+    """
     from netdoc.storage.models import SystemStatus
     db_cfg = SessionLocal()
     try:
@@ -1914,7 +1980,13 @@ def _collect_resource_metrics(devices, snmp_timeout: int) -> None:
     now_ts = _dt.now()
 
     def _collect_res(dev):
-        return collect_host_resources(str(dev.ip), dev.snmp_community, snmp_timeout), dev.id
+        extra = (device_extra_oids or {}).get(dev.id, {})
+        return collect_host_resources(
+            str(dev.ip), dev.snmp_community, snmp_timeout,
+            cpu_oid=extra.get("cpu_5min"),
+            ram_free_oid=extra.get("ram_free"),
+            ram_used_oid=extra.get("ram_used"),
+        ), dev.id
 
     with ThreadPoolExecutor(max_workers=min(16, len(snmp_devs))) as pool:
         futures = {pool.submit(_collect_res, d): d for d in snmp_devs}
@@ -2011,7 +2083,7 @@ def _compute_device_alerts(
     # Interfejsy znane z wysokich błędów z powodów strukturalnych (mesh backhaul,
     # wirtualne radiowe VAP) — pomijaj alerty error_rate/error_trend dla nich.
     # Ubiquiti: wifi1ap* = backhaul 5GHz, vwiresta* = mesh station, mon* = monitor mode
-    _NOISY_IFACE_PREFIXES = ("vwiresta", "vwire", "mon", "wifi1ap", "wifi0ap")
+    _NOISY_IFACE_PREFIXES = ("vwiresta", "vwire", "mon", "wifi1ap", "wifi0ap", "wifi1", "wifi0")
 
     # ── Błędy portów ─────────────────────────────────────────────────────────
     try:
@@ -2093,6 +2165,80 @@ def _compute_device_alerts(
                         "severity": "warning", "value_current": mem, "value_baseline": None, "trend_pct": None})
     except Exception as exc:
         logger.debug("CPU/mem alert dev %s: %s", dev.ip, exc)
+
+    # ── Sensory: dyski, RAID, temp ───────────────────────────────────────────
+    try:
+        from netdoc.storage.models import DeviceSensor as _DevSensor
+        _db_sens = SessionLocal()
+        try:
+            _sensors: dict[str, float] = {
+                s.sensor_name: s.value
+                for s in _db_sens.query(_DevSensor)
+                    .filter(_DevSensor.device_id == dev.id, _DevSensor.value.isnot(None))
+                    .all()
+                if s.sensor_name and s.value is not None
+            }
+        finally:
+            _db_sens.close()
+
+        # RAID/Storage pool free% — krytyczne <5%, warning <15%
+        for sname, sval in _sensors.items():
+            if "free_pct" in sname:
+                if sval < 5:
+                    alerts_to_upsert.append({"if_index": 0, "alert_type": f"sensor_{sname}",
+                        "severity": "critical", "value_current": sval,
+                        "value_baseline": None, "trend_pct": None})
+                elif sval < 15:
+                    alerts_to_upsert.append({"if_index": 0, "alert_type": f"sensor_{sname}",
+                        "severity": "warning", "value_current": sval,
+                        "value_baseline": None, "trend_pct": None})
+
+        # Disk health != 1 (Synology: 2=Warning, 3=Critical, 4=Failing)
+        for sname, sval in _sensors.items():
+            if sname.endswith("_health") and "disk" in sname:
+                if sval >= 3:
+                    alerts_to_upsert.append({"if_index": 0, "alert_type": f"sensor_{sname}",
+                        "severity": "critical", "value_current": sval,
+                        "value_baseline": None, "trend_pct": None})
+                elif sval >= 2:
+                    alerts_to_upsert.append({"if_index": 0, "alert_type": f"sensor_{sname}",
+                        "severity": "warning", "value_current": sval,
+                        "value_baseline": None, "trend_pct": None})
+
+        # RAID status != 1 (Synology: 11=Degrade, 12=Crashed)
+        for sname, sval in _sensors.items():
+            if sname.endswith("_status") and "raid" in sname:
+                if sval >= 11:
+                    alerts_to_upsert.append({"if_index": 0, "alert_type": f"sensor_{sname}",
+                        "severity": "critical", "value_current": sval,
+                        "value_baseline": None, "trend_pct": None})
+                elif sval > 1:
+                    alerts_to_upsert.append({"if_index": 0, "alert_type": f"sensor_{sname}",
+                        "severity": "warning", "value_current": sval,
+                        "value_baseline": None, "trend_pct": None})
+
+        # Bad sectors > 0
+        for sname, sval in _sensors.items():
+            if "bad_sector" in sname and sval > 0:
+                severity = "critical" if sval >= 50 else "warning"
+                alerts_to_upsert.append({"if_index": 0, "alert_type": f"sensor_{sname}",
+                    "severity": severity, "value_current": sval,
+                    "value_baseline": None, "trend_pct": None})
+
+        # Temp: warn >60C, critical >75C
+        for sname, sval in _sensors.items():
+            if "temp" in sname and sval is not None:
+                if sval >= 75:
+                    alerts_to_upsert.append({"if_index": 0, "alert_type": f"sensor_{sname}",
+                        "severity": "critical", "value_current": sval,
+                        "value_baseline": None, "trend_pct": None})
+                elif sval >= 60:
+                    alerts_to_upsert.append({"if_index": 0, "alert_type": f"sensor_{sname}",
+                        "severity": "warning", "value_current": sval,
+                        "value_baseline": None, "trend_pct": None})
+
+    except Exception as exc:
+        logger.debug("Sensor alert computation dev %s: %s", dev.ip, exc)
 
     if not alerts_to_upsert:
         # Usuń wygasłe alerty dla tego urządzenia (wszystkie if aktualnie poniżej progów)

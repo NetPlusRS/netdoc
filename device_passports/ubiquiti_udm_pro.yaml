@@ -21,12 +21,28 @@ capabilities:
   snmp_stp: false         # STP nie dotyczy routera
   snmp_cpu: true          # hrProcessorLoad dostępne
   snmp_ram: false
+  snmp_hc_counters: false # brak ifHCInOctets — tylko 32-bit IF-MIB
+  snmp_arp: true          # router/gateway L3 — ipNetToMediaTable dostępne
+  snmp_sensors: false
   lldp_snmp: false
   lldp_unifi: true        # UniFi Controller widzi topologię
   lldp_ssh: false
   syslog: true
   config_backup: false    # brak standardowego CLI dump konfiguracji
   ssh: true               # UniFi firmware SSH
+
+snmp_collection:
+  interfaces:
+    hc_counters: false       # brak ifHCInOctets — tylko 32-bit IF-MIB
+  cpu:
+    enabled: true
+    method: host_resources   # hrProcessorLoad dostępne
+  ram:
+    enabled: false           # hrStorageTable puste w UniFi firmware
+  arp:
+    enabled: true            # router/gateway L3 — ipNetToMediaTable dostępne
+  sensors:
+    enabled: false
 
 relevant_protocols:
   - snmp

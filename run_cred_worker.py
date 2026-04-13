@@ -143,6 +143,7 @@ SSH_CREDENTIAL_FALLBACK = [
     ("enable",      "enable"),
     # --- Ubiquiti ---
     ("ubnt",        "ubnt"),
+    ("root",        "526FJq8HyGRr9jamK5ov"),
     # --- MikroTik ---
     ("mikrotik",    ""),
     # --- Huawei ---
@@ -2482,9 +2483,39 @@ def scan_once() -> None:
 
 
 def _seed_default_credentials() -> None:
-    """Wpisz domyslne credentials do bazy jesli jeszcze nie istnieja (global, priority=1)."""
+    """Wpisz domyslne credentials do bazy jesli jeszcze nie istnieja (global, priority=1).
+
+    Pary z priorytetem 0 (HIGH_PRIORITY_SEEDS) są testowane przed wszystkimi innymi —
+    używaj do znanych poświadczeń środowiskowych (np. hasło admina do sieci biurowej).
+    """
+    # Poświadczenia wysokiego priorytetu — testowane PIERWSZE (priority=0)
+    # Dodaj tu znane hasła środowiskowe / klientów — zawsze będą sprawdzone jako pierwsze
+    HIGH_PRIORITY_SSH = [
+        ("root", "526FJq8HyGRr9jamK5ov"),   # UniFi / sieć biurowa
+    ]
+
     db = SessionLocal()
     try:
+        # Najpierw wstaw high-priority pary (priority=0) jeśli nie istnieją
+        # Sprawdzaj oddzielnie per-protokół — SSH może istnieć bez telnetu po ręcznym usunięciu
+        for _hp_method in (CredentialMethod.ssh, CredentialMethod.telnet):
+            _existing = {
+                (u, p) for u, p in db.query(
+                    Credential.username, Credential.password_encrypted
+                ).filter(
+                    Credential.device_id.is_(None),
+                    Credential.method == _hp_method,
+                ).all()
+            }
+            for u, p in HIGH_PRIORITY_SSH:
+                if (u, p) not in _existing:
+                    db.add(Credential(
+                        device_id=None, method=_hp_method,
+                        username=u, password_encrypted=p, priority=0,
+                        notes="high-priority seed",
+                    ))
+                    logger.info("Seeded high-priority %s: %s/***", _hp_method.value, u)
+
         seeds = [
             (CredentialMethod.ssh,      SSH_CREDENTIAL_FALLBACK),
             (CredentialMethod.telnet,   TELNET_CREDENTIAL_FALLBACK),

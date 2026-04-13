@@ -22,11 +22,33 @@ capabilities:
   snmp_stp: false
   snmp_cpu: false
   snmp_ram: false
+  snmp_hc_counters: false
+  snmp_arp: false
+  snmp_sensors: false     # brak Printer-MIB (RFC 3805) — sysDescr/sysName tylko
   lldp_snmp: false
   lldp_ssh: false
   syslog: false
   config_backup: false
   ssh: false
+
+snmp_collection:
+  interfaces:
+    hc_counters: false
+  cpu:
+    enabled: false
+  ram:
+    enabled: false
+  arp:
+    enabled: false           # drukarka — brak routingu
+  sensors:
+    enabled: true
+    method: printer_mib      # RFC 3805 (Printer-MIB) — poziom tonera, bębna, liczba stron
+    oids:
+      toner_level:  "1.3.6.1.2.1.43.11.1.1.9.1.1"   # prnMarkerSuppliesLevel (toner 1)
+      toner_max:    "1.3.6.1.2.1.43.11.1.1.8.1.1"   # prnMarkerSuppliesMaxCapacity
+      drum_level:   "1.3.6.1.2.1.43.11.1.1.9.1.2"   # supplies index 2 (bęben, o ile present)
+      drum_max:     "1.3.6.1.2.1.43.11.1.1.8.1.2"
+      page_count:   "1.3.6.1.2.1.43.10.2.1.4.1.1"   # prtMarkerLifeCount (total stron)
 
 relevant_protocols:
   - snmp

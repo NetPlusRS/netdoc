@@ -1,7 +1,7 @@
 name: Ubiquiti UniFi Switch 8 60W
 match_vendors: [Ubiquiti, "Ubiquiti Networks"]
-match_models: ["US-8-60W", "US860W", "US-860W"]
-match_os: []
+match_models: ["US-8-60W", "US860W", "US-860W", "UBNT-ES8"]
+match_os: ["US-8-60W", "US-8 60W", "UBNT-ES8"]
 tested: true
 tested_at: "2026-04-07"
 notes: >
@@ -18,12 +18,27 @@ capabilities:
   snmp_stp: false         # STP MIB nie testowane na tym modelu
   snmp_cpu: false
   snmp_ram: false
+  snmp_hc_counters: false # brak ifHCInOctets — tylko 32-bit IF-MIB (potwierdzone w ClickHouse)
+  snmp_arp: false         # switch L2, nie router
+  snmp_sensors: false
   lldp_snmp: false
   lldp_unifi: true        # działa — widoczny w topology_links
   lldp_ssh: false         # brak IOS-style CLI
   syslog: true
   config_backup: false
   ssh: true               # UniFi firmware — dostępne SSH
+
+snmp_collection:
+  interfaces:
+    hc_counters: false       # brak ifHCInOctets — potwierdzone w ClickHouse
+  cpu:
+    enabled: false           # brak hrProcessorLoad/hrStorageTable — potwierdzone
+  ram:
+    enabled: false
+  arp:
+    enabled: false           # switch L2 — brak routingu
+  sensors:
+    enabled: false
 
 relevant_protocols:
   - snmp

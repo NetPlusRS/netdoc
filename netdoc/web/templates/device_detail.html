@@ -44,13 +44,12 @@
     {# ── Passport button ─────────────────────────────────────────────────── #}
     <div class="ms-auto">
       {% if pro_passport %}
-        {# Pro: single split button — generate or open latest #}
+        {# Pro: split button — opens readiness modal or shows dropdown with latest #}
         <div class="btn-group">
-          <form method="post" action="{{ url_for('device_passport_generate', device_id=dev.id) }}" class="d-inline">
-            <button type="submit" class="btn btn-sm btn-dark">
-              <i class="bi bi-file-earmark-text me-1"></i>Device Passport
-            </button>
-          </form>
+          <button type="button" class="btn btn-sm btn-dark"
+                  data-bs-toggle="modal" data-bs-target="#passportReadinessModal">
+            <i class="bi bi-file-earmark-text me-1"></i>Device Passport
+          </button>
           {% if passports %}
           <button type="button" class="btn btn-sm btn-dark dropdown-toggle dropdown-toggle-split"
                   data-bs-toggle="dropdown" aria-expanded="false">
@@ -83,9 +82,9 @@
     ══════════════════════════════════════════════════════════════════════ #}
     <div class="col-12 col-xl-4">
 
-      {# ── Network ─────────────────────────────────────────────────────────── #}
+      {# ── Device Info (Network + Identity + Status merged) ────────────── #}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">Network</div>
+        <div class="card-header fw-semibold py-2"><i class="bi bi-pc-display me-1"></i>Device Info</div>
         <div class="card-body p-0">
           <table class="table table-sm mb-0 param-table">
             <tr><td>IP</td><td><code>{{ dev.ip }}</code>
@@ -93,37 +92,63 @@
               <span class="badge bg-light text-dark border ms-1">{{ dev.ip_type }}</span>
               {% endif %}
             </td></tr>
+            <tr><td>Hostname</td><td>{{ dev.hostname or '<span class="text-muted">—</span>' | safe }}</td></tr>
             <tr><td>MAC</td><td>
               {% if dev.mac %}<code>{{ dev.mac }}</code>{% else %}<span class="text-muted">—</span>{% endif %}
             </td></tr>
             <tr><td>Vendor (OUI)</td><td>
               {{ dev.vendor or '<span class="text-muted">—</span>' | safe }}
             </td></tr>
-          </table>
-        </div>
-      </div>
-
-      {# ── Identity ─────────────────────────────────────────────────────── #}
-      <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">Identity</div>
-        <div class="card-body p-0">
-          <table class="table table-sm mb-0 param-table">
-            <tr><td>Hostname</td><td>{{ dev.hostname or '<span class="text-muted">—</span>' | safe }}</td></tr>
             <tr><td>Model</td><td>{{ dev.model or '<span class="text-muted">—</span>' | safe }}</td></tr>
             <tr><td>Device type</td><td>{{ dev.device_type.value if dev.device_type else '—' }}</td></tr>
-            <tr><td>OS / SNMP sysDescr</td><td>
+            <tr><td>OS / sysDescr</td><td>
               {% if dev.os_version %}
               <span title="{{ dev.os_version }}">{{ dev.os_version[:80] }}{% if dev.os_version|length > 80 %}…{% endif %}</span>
               {% else %}<span class="text-muted">—</span>{% endif %}
             </td></tr>
             <tr><td>Serial number</td><td>{{ dev.serial_number or '<span class="text-muted">—</span>' | safe }}</td></tr>
+            <tr><td colspan="2" class="pt-2 pb-0 px-3">
+              <small class="text-muted text-uppercase fw-semibold" style="letter-spacing:.05em">Status</small>
+            </td></tr>
+            <tr><td>First seen</td><td>
+              {% if dev.first_seen %}{{ dev.first_seen.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}
+            </td></tr>
+            <tr><td>Last seen</td><td>
+              {% if dev.last_seen %}{{ dev.last_seen.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}
+            </td></tr>
+            <tr><td>Last ping OK</td><td>
+              {% if dev.last_ping_ok_at %}{{ dev.last_ping_ok_at.strftime('%Y-%m-%d %H:%M') }}
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td></tr>
+            <tr><td>Last cred OK</td><td>
+              {% if dev.last_credential_ok_at %}{{ dev.last_credential_ok_at.strftime('%Y-%m-%d %H:%M') }}
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td></tr>
+            <tr><td>Trusted</td><td>
+              {% if dev.is_trusted %}<span class="text-success">Yes</span>
+                {% if dev.trust_category %}<span class="text-muted"> ({{ dev.trust_category }})</span>{% endif %}
+                {% if dev.trust_note %}<br><small class="text-muted">{{ dev.trust_note }}</small>{% endif %}
+              {% else %}<span class="text-muted">No</span>{% endif %}
+            </td></tr>
+            {% if dev.is_monitored %}
+            <tr><td>Monitored</td><td>
+              <span class="text-warning">Yes</span>
+              {% if dev.monitor_note %}<br><small class="text-muted">{{ dev.monitor_note }}</small>{% endif %}
+            </td></tr>
+            {% endif %}
           </table>
         </div>
       </div>
 
       {# ── Location / Contact ──────────────────────────────────────────── #}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">Location / Contact</div>
+        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center collapsible-header collapsed"
+             data-bs-toggle="collapse" data-bs-target="#collapseLocation"
+             aria-expanded="false" aria-controls="collapseLocation">
+          <span><i class="bi bi-geo-alt me-1"></i>Location / Contact</span>
+          <i class="bi bi-chevron-up collapse-icon"></i>
+        </div>
+        <div class="collapse" id="collapseLocation">
         <div class="card-body p-0">
           <table class="table table-sm mb-0 param-table">
             <tr><td>Location</td><td>{{ dev.location or '<span class="text-muted">—</span>' | safe }}</td></tr>
@@ -133,6 +158,7 @@
             <tr><td>Responsible</td><td>{{ dev.responsible_person or '<span class="text-muted">—</span>' | safe }}</td></tr>
           </table>
         </div>
+        </div>{# /collapseLocation #}
       </div>
 
       {# ── SNMP ──────────────────────────────────────────────────────────── #}
@@ -150,14 +176,6 @@
               {% if dev.snmp_community %}<code>{{ dev.snmp_community[:2] }}****</code>
               {% else %}<span class="text-muted">—</span>{% endif %}
             </td></tr>
-            <tr><td>sysName</td><td>{{ dev.hostname or '<span class="text-muted">—</span>' | safe }}</td></tr>
-            <tr><td>sysDescr</td><td>
-              {% if dev.os_version %}
-              <span class="small" title="{{ dev.os_version }}">{{ dev.os_version[:100] }}{% if dev.os_version|length > 100 %}…{% endif %}</span>
-              {% else %}<span class="text-muted">—</span>{% endif %}
-            </td></tr>
-            <tr><td>sysLocation</td><td>{{ dev.location or '<span class="text-muted">—</span>' | safe }}</td></tr>
-            <tr><td>sysContact</td><td>{{ dev.sys_contact or '<span class="text-muted">—</span>' | safe }}</td></tr>
             <tr><td>sysUpTime</td><td>{{ dev.snmp_uptime or '<span class="text-muted">—</span>' | safe }}</td></tr>
             {% if dev.ram_total_mb %}
             <tr><td>RAM</td><td>{{ dev.ram_total_mb }} MB</td></tr>
@@ -200,6 +218,190 @@
           </table>
         </div>
       </div>
+      {% endif %}
+
+      {# ── Network Role — left column, only for network infrastructure ──── #}
+      {% set _is_network_dev_detail = not dev.device_type or dev.device_type.value in ('router','switch','firewall','ap','unknown') %}
+      {% if _is_network_dev_detail %}
+      <div class="card mb-3" id="card-network-role">
+        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-diagram-3 me-1"></i>Network Role</span>
+          <div class="d-flex align-items-center gap-2">
+            <span id="tier-badge-header"></span>
+            <button class="btn btn-outline-secondary btn-sm py-0 px-2" id="btn-tier-analyze"
+                    onclick="tierAnalyze()" title="Re-analyze network role">
+              <i class="bi bi-arrow-repeat"></i>
+            </button>
+          </div>
+        </div>
+        <div class="card-body p-3" id="tier-card-body">
+          <div class="text-center text-muted py-2" id="tier-loading">
+            <div class="spinner-border spinner-border-sm me-1"></div> Analyzing…
+          </div>
+        </div>
+      </div>
+
+      <script>
+      (function() {
+        const DEVICE_ID = {{ dev.id }};
+        const TIER_LABELS = {
+          core: "Core", dist: "Distribution", access: "Access",
+          edge: "Edge / WAN", undef: "Unknown"
+        };
+        const TIER_COLORS = {
+          core: "danger", dist: "warning", access: "success",
+          edge: "info", undef: "secondary"
+        };
+
+        function renderTier(data) {
+          const tier   = data.network_tier || "undef";
+          const conf   = data.tier_confidence ?? 0;
+          const ev     = data.tier_evidence  || {signals: [], missing: []};
+          const label  = TIER_LABELS[tier] || tier;
+          const color  = TIER_COLORS[tier] || "secondary";
+          const over   = data.tier_overridden;
+          const ts     = data.tier_analyzed_at ? data.tier_analyzed_at.substring(0,16).replace("T"," ") : "";
+          const analyzed_at = ts ? `<small class="text-muted ms-2">Last: ${ts} UTC</small>` : "";
+
+          document.getElementById("tier-badge-header").innerHTML =
+            `<span class="badge bg-${color}">${label}</span>` +
+            (over ? `<span class="badge bg-secondary ms-1" title="Ręcznie ustawiony">override</span>` : "") +
+            analyzed_at;
+
+          let confColor = conf >= 70 ? "success" : conf >= 40 ? "warning" : "danger";
+          let confBar = `
+            <div class="mb-3">
+              <div class="d-flex justify-content-between mb-1">
+                <small class="text-muted">Confidence</small>
+                <small class="fw-bold text-${confColor}">${conf}%</small>
+              </div>
+              <div class="progress" style="height:6px">
+                <div class="progress-bar bg-${confColor}" style="width:${conf}%"></div>
+              </div>
+            </div>`;
+
+          let sigHtml = "";
+          if (ev.signals && ev.signals.length) {
+            sigHtml = `<div class="mb-3">
+              <div class="small fw-semibold text-muted mb-1 text-uppercase" style="letter-spacing:.05em">Detected signals</div>`;
+            ev.signals.forEach(s => {
+              sigHtml += `<div class="small py-1 border-bottom border-secondary border-opacity-25">
+                ${s.icon} ${s.text}</div>`;
+            });
+            sigHtml += `</div>`;
+          }
+
+          let misHtml = "";
+          if (ev.missing && ev.missing.length) {
+            misHtml = `<div class="mb-3">
+              <div class="small fw-semibold text-muted mb-1 text-uppercase" style="letter-spacing:.05em">Missing data — enable to improve accuracy</div>`;
+            ev.missing.forEach(m => {
+              let hintsHtml = "";
+              if (m.hints && m.hints.length) {
+                const hid = `tier-hint-${Math.random().toString(36).slice(2,7)}`;
+                hintsHtml = `
+                  <div>
+                    <a class="small text-info text-decoration-none" data-bs-toggle="collapse"
+                       href="#${hid}" role="button">
+                      <i class="bi bi-terminal me-1"></i>Show config commands
+                    </a>
+                    <div class="collapse" id="${hid}">
+                      <pre class="bg-dark text-success p-2 rounded mt-1 small"
+                           style="font-size:.78rem;white-space:pre-wrap">${m.hints.join("\n")}</pre>
+                    </div>
+                  </div>`;
+              }
+              misHtml += `<div class="py-1 border-bottom border-secondary border-opacity-25">
+                <div class="small">${m.icon} ${m.text}</div>
+                ${hintsHtml}
+              </div>`;
+            });
+            misHtml += `</div>`;
+          }
+
+          let overrideHtml = `
+            <div class="mt-3 pt-2 border-top border-secondary border-opacity-25">
+              <div class="small fw-semibold text-muted mb-2 text-uppercase" style="letter-spacing:.05em">Manual override</div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <select class="form-select form-select-sm" id="tier-override-select" style="max-width:180px">
+                  <option value="">— auto-detected —</option>
+                  ${Object.entries(TIER_LABELS).map(([v,l]) =>
+                    `<option value="${v}"${tier===v&&over?' selected':''}>${l}</option>`
+                  ).join("")}
+                </select>
+                <button class="btn btn-sm btn-outline-primary" onclick="tierOverride()">
+                  <i class="bi bi-lock me-1"></i>Save override
+                </button>
+                ${over ? `<button class="btn btn-sm btn-outline-secondary" onclick="tierClearOverride()" title="Remove override — let auto-detect run">
+                  <i class="bi bi-unlock me-1"></i>Clear
+                </button>` : ""}
+              </div>
+            </div>`;
+
+          document.getElementById("tier-card-body").innerHTML =
+            confBar + sigHtml + misHtml + overrideHtml;
+        }
+
+        function loadTier() {
+          fetch(`/api/devices/${DEVICE_ID}/tier`)
+            .then(r => r.json())
+            .then(data => {
+              if (data.error) {
+                document.getElementById("tier-card-body").innerHTML =
+                  `<div class="text-muted small p-2">Analysis not available: ${data.error}</div>`;
+              } else {
+                renderTier(data);
+              }
+            })
+            .catch(() => {
+              document.getElementById("tier-card-body").innerHTML =
+                `<div class="text-muted small p-2">Could not load tier analysis.</div>`;
+            });
+        }
+
+        window.tierAnalyze = function() {
+          const btn = document.getElementById("btn-tier-analyze");
+          btn.disabled = true;
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+          fetch(`/api/devices/${DEVICE_ID}/tier/analyze`, {method:"POST"})
+            .then(r => r.json())
+            .then(data => { renderTier(data); })
+            .catch(() => {})
+            .finally(() => {
+              btn.disabled = false;
+              btn.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
+            });
+        };
+
+        window.tierOverride = function() {
+          const sel = document.getElementById("tier-override-select");
+          const tier = sel.value;
+          if (!tier) { tierClearOverride(); return; }
+          fetch(`/api/devices/${DEVICE_ID}/tier/override`, {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({network_tier: tier, tier_overridden: true})
+          })
+          .then(r => r.json())
+          .then(() => loadTier())
+          .catch(console.error);
+        };
+
+        window.tierClearOverride = function() {
+          const sel = document.getElementById("tier-override-select");
+          fetch(`/api/devices/${DEVICE_ID}/tier/override`, {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({network_tier: sel.value || "undef", tier_overridden: false})
+          })
+          .then(() => tierAnalyze())
+          .catch(console.error);
+        };
+
+        loadTier();
+      })();
+      </script>
+
       {% endif %}
 
       {# ── WiFi VAP / SSID ──────────────────────────────────────────────── #}
@@ -313,45 +515,18 @@
       </div>
       {% endif %}
 
-      {# ── Status ────────────────────────────────────────────────────────── #}
-      <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">Status</div>
-        <div class="card-body p-0">
-          <table class="table table-sm mb-0 param-table">
-            <tr><td>First seen</td><td>
-              {% if dev.first_seen %}{{ dev.first_seen.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}
-            </td></tr>
-            <tr><td>Last seen</td><td>
-              {% if dev.last_seen %}{{ dev.last_seen.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}
-            </td></tr>
-            <tr><td>Last ping OK</td><td>
-              {% if dev.last_ping_ok_at %}{{ dev.last_ping_ok_at.strftime('%Y-%m-%d %H:%M') }}
-              {% else %}<span class="text-muted">—</span>{% endif %}
-            </td></tr>
-            <tr><td>Last credential OK</td><td>
-              {% if dev.last_credential_ok_at %}{{ dev.last_credential_ok_at.strftime('%Y-%m-%d %H:%M') }}
-              {% else %}<span class="text-muted">—</span>{% endif %}
-            </td></tr>
-            <tr><td>Trusted</td><td>
-              {% if dev.is_trusted %}<span class="text-success">Yes</span>
-                {% if dev.trust_category %}<span class="text-muted"> ({{ dev.trust_category }})</span>{% endif %}
-                {% if dev.trust_note %}<br><small class="text-muted">{{ dev.trust_note }}</small>{% endif %}
-              {% else %}<span class="text-muted">No</span>{% endif %}
-            </td></tr>
-            {% if dev.is_monitored %}
-            <tr><td>Monitored</td><td>
-              <span class="text-warning">Yes</span>
-              {% if dev.monitor_note %}<br><small class="text-muted">{{ dev.monitor_note }}</small>{% endif %}
-            </td></tr>
-            {% endif %}
-          </table>
-        </div>
-      </div>
+      {# Status removed — merged into Device Info card above #}
 
       {# ── Inventory ─────────────────────────────────────────────────────── #}
       {% if dev.asset_tag or dev.purchase_date or dev.purchase_vendor %}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">Inventory</div>
+        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center collapsible-header collapsed"
+             data-bs-toggle="collapse" data-bs-target="#collapseInventory"
+             aria-expanded="false" aria-controls="collapseInventory">
+          <span><i class="bi bi-box me-1"></i>Inventory</span>
+          <i class="bi bi-chevron-up collapse-icon"></i>
+        </div>
+        <div class="collapse" id="collapseInventory">
         <div class="card-body p-0">
           <table class="table table-sm mb-0 param-table">
             {% if dev.asset_tag %}<tr><td>Asset tag</td><td>{{ dev.asset_tag }}</td></tr>{% endif %}
@@ -359,15 +534,23 @@
             {% if dev.purchase_date %}<tr><td>Purchase date</td><td>{{ dev.purchase_date.strftime('%Y-%m-%d') }}</td></tr>{% endif %}
           </table>
         </div>
+        </div>{# /collapseInventory #}
       </div>
       {% endif %}
 
       {% if dev.asset_notes %}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">Notes</div>
+        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center collapsible-header collapsed"
+             data-bs-toggle="collapse" data-bs-target="#collapseNotes"
+             aria-expanded="false" aria-controls="collapseNotes">
+          <span><i class="bi bi-journal-text me-1"></i>Notes</span>
+          <i class="bi bi-chevron-up collapse-icon"></i>
+        </div>
+        <div class="collapse" id="collapseNotes">
         <div class="card-body">
           <pre class="mb-0 small" style="white-space:pre-wrap">{{ dev.asset_notes }}</pre>
         </div>
+        </div>{# /collapseNotes #}
       </div>
       {% endif %}
 
@@ -417,14 +600,18 @@
       {% set up_count   = interfaces | selectattr('oper_status', 'equalto', true)  | list | length %}
       {% set down_count = interfaces | selectattr('oper_status', 'equalto', false) | list | length %}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center">
+        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center collapsible-header"
+             data-bs-toggle="collapse" data-bs-target="#collapseInterfaces"
+             aria-expanded="true" aria-controls="collapseInterfaces">
           <span><i class="bi bi-ethernet me-1"></i>Interfaces
             <span class="badge bg-secondary ms-1">{{ interfaces|length }}</span>
             {% if up_count %}<span class="badge bg-success ms-1">{{ up_count }} up</span>{% endif %}
             {% if down_count %}<span class="badge bg-danger ms-1">{{ down_count }} down</span>{% endif %}
+            {% if dev.snmp_ok_at %}<small class="text-muted fw-normal ms-2">SNMP {{ dev.snmp_ok_at.strftime('%H:%M') }}</small>{% endif %}
           </span>
-          {% if dev.snmp_ok_at %}<small class="text-muted fw-normal">SNMP {{ dev.snmp_ok_at.strftime('%H:%M') }}</small>{% endif %}
+          <i class="bi bi-chevron-up collapse-icon"></i>
         </div>
+        <div class="collapse show" id="collapseInterfaces">
         <div class="card-body p-0">
           <table class="table table-sm table-hover mb-0" style="font-size:.85rem">
             <thead class="table-light">
@@ -479,198 +666,11 @@
             </tbody>
           </table>
         </div>
+        </div>{# /collapseInterfaces #}
       </div>
       {% endif %}
 
-      {# ── Network Role Analysis — tylko dla urządzeń sieciowych (infrastruktura) #}
-      {% set _is_network_dev_detail = not dev.device_type or dev.device_type.value in ('router','switch','firewall','ap','unknown') %}
-      {% if _is_network_dev_detail %}
-      <div class="card mb-3" id="card-network-role">
-        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center">
-          <span><i class="bi bi-diagram-3 me-1"></i>Network Role</span>
-          <div class="d-flex align-items-center gap-2">
-            <span id="tier-badge-header"></span>
-            <button class="btn btn-outline-secondary btn-sm py-0 px-2" id="btn-tier-analyze"
-                    onclick="tierAnalyze()" title="Re-analyze network role">
-              <i class="bi bi-arrow-repeat"></i>
-            </button>
-          </div>
-        </div>
-        <div class="card-body p-3" id="tier-card-body">
-          <div class="text-center text-muted py-3" id="tier-loading">
-            <div class="spinner-border spinner-border-sm me-1"></div> Analyzing…
-          </div>
-        </div>
-      </div>
-
-      <script>
-      (function() {
-        const DEVICE_ID = {{ dev.id }};
-        const TIER_LABELS = {
-          core: "Core", dist: "Distribution", access: "Access",
-          edge: "Edge / WAN", undef: "Unknown"
-        };
-        const TIER_COLORS = {
-          core: "danger", dist: "warning", access: "success",
-          edge: "info", undef: "secondary"
-        };
-
-        function renderTier(data) {
-          const tier   = data.network_tier || "undef";
-          const conf   = data.tier_confidence ?? 0;
-          const ev     = data.tier_evidence  || {signals: [], missing: []};
-          const label  = TIER_LABELS[tier] || tier;
-          const color  = TIER_COLORS[tier] || "secondary";
-          const over   = data.tier_overridden;
-          const ts     = data.tier_analyzed_at ? data.tier_analyzed_at.substring(0,16).replace("T"," ") : "";
-          const analyzed_at = ts ? `<small class="text-muted ms-2">Last: ${ts} UTC</small>` : "";
-
-          // Badge w nagłówku karty
-          document.getElementById("tier-badge-header").innerHTML =
-            `<span class="badge bg-${color}">${label}</span>` +
-            (over ? `<span class="badge bg-secondary ms-1" title="Ręcznie ustawiony">override</span>` : "") +
-            analyzed_at;
-
-          // Pasek pewności
-          let confColor = conf >= 70 ? "success" : conf >= 40 ? "warning" : "danger";
-          let confBar = `
-            <div class="mb-3">
-              <div class="d-flex justify-content-between mb-1">
-                <small class="text-muted">Confidence</small>
-                <small class="fw-bold text-${confColor}">${conf}%</small>
-              </div>
-              <div class="progress" style="height:6px">
-                <div class="progress-bar bg-${confColor}" style="width:${conf}%"></div>
-              </div>
-            </div>`;
-
-          // Sygnały (co wiemy)
-          let sigHtml = "";
-          if (ev.signals && ev.signals.length) {
-            sigHtml = `<div class="mb-3">
-              <div class="small fw-semibold text-muted mb-1 text-uppercase" style="letter-spacing:.05em">Detected signals</div>`;
-            ev.signals.forEach(s => {
-              sigHtml += `<div class="small py-1 border-bottom border-secondary border-opacity-25">
-                ${s.icon} ${s.text}</div>`;
-            });
-            sigHtml += `</div>`;
-          }
-
-          // Brakujące dane (co wymaga konfiguracji)
-          let misHtml = "";
-          if (ev.missing && ev.missing.length) {
-            misHtml = `<div class="mb-3">
-              <div class="small fw-semibold text-muted mb-1 text-uppercase" style="letter-spacing:.05em">Missing data — enable to improve accuracy</div>`;
-            ev.missing.forEach(m => {
-              let hintsHtml = "";
-              if (m.hints && m.hints.length) {
-                const hid = `tier-hint-${Math.random().toString(36).slice(2,7)}`;
-                hintsHtml = `
-                  <div>
-                    <a class="small text-info text-decoration-none" data-bs-toggle="collapse"
-                       href="#${hid}" role="button">
-                      <i class="bi bi-terminal me-1"></i>Show config commands
-                    </a>
-                    <div class="collapse" id="${hid}">
-                      <pre class="bg-dark text-success p-2 rounded mt-1 small"
-                           style="font-size:.78rem;white-space:pre-wrap">${m.hints.join("\n")}</pre>
-                    </div>
-                  </div>`;
-              }
-              misHtml += `<div class="py-1 border-bottom border-secondary border-opacity-25">
-                <div class="small">${m.icon} ${m.text}</div>
-                ${hintsHtml}
-              </div>`;
-            });
-            misHtml += `</div>`;
-          }
-
-          // Override form
-          let overrideHtml = `
-            <div class="mt-3 pt-2 border-top border-secondary border-opacity-25">
-              <div class="small fw-semibold text-muted mb-2 text-uppercase" style="letter-spacing:.05em">Manual override</div>
-              <div class="d-flex align-items-center gap-2 flex-wrap">
-                <select class="form-select form-select-sm" id="tier-override-select" style="max-width:180px">
-                  <option value="">— auto-detected —</option>
-                  ${Object.entries(TIER_LABELS).map(([v,l]) =>
-                    `<option value="${v}"${tier===v&&over?' selected':''}>${l}</option>`
-                  ).join("")}
-                </select>
-                <button class="btn btn-sm btn-outline-primary" onclick="tierOverride()">
-                  <i class="bi bi-lock me-1"></i>Save override
-                </button>
-                ${over ? `<button class="btn btn-sm btn-outline-secondary" onclick="tierClearOverride()" title="Remove override — let auto-detect run">
-                  <i class="bi bi-unlock me-1"></i>Clear
-                </button>` : ""}
-              </div>
-            </div>`;
-
-          document.getElementById("tier-card-body").innerHTML =
-            confBar + sigHtml + misHtml + overrideHtml;
-        }
-
-        function loadTier() {
-          fetch(`/api/devices/${DEVICE_ID}/tier`)
-            .then(r => r.json())
-            .then(data => {
-              if (data.error) {
-                document.getElementById("tier-card-body").innerHTML =
-                  `<div class="text-muted small p-2">Analysis not available: ${data.error}</div>`;
-              } else {
-                renderTier(data);
-              }
-            })
-            .catch(() => {
-              document.getElementById("tier-card-body").innerHTML =
-                `<div class="text-muted small p-2">Could not load tier analysis.</div>`;
-            });
-        }
-
-        window.tierAnalyze = function() {
-          const btn = document.getElementById("btn-tier-analyze");
-          btn.disabled = true;
-          btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-          fetch(`/api/devices/${DEVICE_ID}/tier/analyze`, {method:"POST"})
-            .then(r => r.json())
-            .then(data => { renderTier(data); })
-            .catch(() => {})
-            .finally(() => {
-              btn.disabled = false;
-              btn.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
-            });
-        };
-
-        window.tierOverride = function() {
-          const sel = document.getElementById("tier-override-select");
-          const tier = sel.value;
-          if (!tier) { tierClearOverride(); return; }
-          fetch(`/api/devices/${DEVICE_ID}/tier/override`, {
-            method: "POST",
-            headers: {"Content-Type":"application/json"},
-            body: JSON.stringify({network_tier: tier, tier_overridden: true})
-          })
-          .then(r => r.json())
-          .then(() => loadTier())
-          .catch(console.error);
-        };
-
-        window.tierClearOverride = function() {
-          const sel = document.getElementById("tier-override-select");
-          fetch(`/api/devices/${DEVICE_ID}/tier/override`, {
-            method: "POST",
-            headers: {"Content-Type":"application/json"},
-            body: JSON.stringify({network_tier: sel.value || "undef", tier_overridden: false})
-          })
-          .then(() => tierAnalyze())
-          .catch(console.error);
-        };
-
-        // Załaduj przy otwarciu strony
-        loadTier();
-      })();
-      </script>
-
-      {% endif %}{# _is_network_dev_detail #}
+      {# Network Role — moved to left column #}
 
       {# ── Diagnostics — CPU/mem + alerty portów ───────────────────────── #}
       {% if dev.snmp_community %}
@@ -785,8 +785,15 @@
       {# ── L2 Data tabs: FDB / VLAN / STP ──────────────────────────────── #}
       {% if dev.snmp_community and dev.device_type and dev.device_type.value == 'switch' %}
       <div class="card mb-3">
-        <div class="card-header py-0">
-          <ul class="nav nav-tabs card-header-tabs" id="l2-tabs">
+        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center collapsible-header collapsed"
+             data-bs-toggle="collapse" data-bs-target="#collapseL2Tabs"
+             aria-expanded="false" aria-controls="collapseL2Tabs">
+          <span><i class="bi bi-table me-1"></i>L2 Data (FDB / VLAN / STP)</span>
+          <i class="bi bi-chevron-up collapse-icon"></i>
+        </div>
+        <div class="collapse" id="collapseL2Tabs">
+        <div class="border-bottom py-0 bg-light">
+          <ul class="nav nav-tabs px-3" id="l2-tabs" style="margin-bottom:-1px;border-bottom:none">
             <li class="nav-item"><a class="nav-link active" href="#" data-l2tab="fdb">FDB <span class="badge bg-secondary ms-1" id="fdb-count">...</span></a></li>
             <li class="nav-item"><a class="nav-link" href="#" data-l2tab="vlan">VLANs <span class="badge bg-secondary ms-1" id="vlan-count">...</span></a></li>
             <li class="nav-item"><a class="nav-link" href="#" data-l2tab="stp">STP</a></li>
@@ -831,6 +838,7 @@
             </div>
           </div>
         </div>
+        </div>{# /collapseL2Tabs #}
       </div>
       {% endif %}
 
@@ -906,10 +914,14 @@
       {# ── Open ports ───────────────────────────────────────────────────── #}
       {% if latest_scan and latest_scan.open_ports %}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">
-          Open ports <span class="badge bg-secondary">{{ latest_scan.open_ports | length }}</span>
-          <small class="text-muted fw-normal ms-2">scan {{ latest_scan.scan_time.strftime('%Y-%m-%d %H:%M') }}</small>
+        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center collapsible-header collapsed"
+             data-bs-toggle="collapse" data-bs-target="#collapseOpenPorts"
+             aria-expanded="false" aria-controls="collapseOpenPorts">
+          <span>Open ports <span class="badge bg-secondary">{{ latest_scan.open_ports | length }}</span>
+          <small class="text-muted fw-normal ms-2">scan {{ latest_scan.scan_time.strftime('%Y-%m-%d %H:%M') }}</small></span>
+          <i class="bi bi-chevron-up collapse-icon"></i>
         </div>
+        <div class="collapse" id="collapseOpenPorts">
         <div class="card-body p-0">
           <table class="table table-sm mb-0">
             <thead class="table-light">
@@ -936,15 +948,20 @@
             </tbody>
           </table>
         </div>
+        </div>{# /collapseOpenPorts #}
       </div>
       {% endif %}
 
       {# ── Vulnerabilities ──────────────────────────────────────────────── #}
       {% if vulns %}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">
-          Active vulnerabilities <span class="badge bg-danger">{{ vulns|length }}</span>
+        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center collapsible-header collapsed"
+             data-bs-toggle="collapse" data-bs-target="#collapseVulns"
+             aria-expanded="false" aria-controls="collapseVulns">
+          <span>Active vulnerabilities <span class="badge bg-danger">{{ vulns|length }}</span></span>
+          <i class="bi bi-chevron-up collapse-icon"></i>
         </div>
+        <div class="collapse" id="collapseVulns">
         <div class="card-body p-0">
           <table class="table table-sm mb-0">
             <thead class="table-light">
@@ -962,6 +979,7 @@
             </tbody>
           </table>
         </div>
+        </div>{# /collapseVulns #}
       </div>
       {% endif %}
 
@@ -1000,15 +1018,15 @@
 
       {# ── Field change history ─────────────────────────────────────────── #}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center collapsible-header"
+        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center collapsible-header collapsed"
              data-bs-toggle="collapse" data-bs-target="#collapseFieldHistory"
-             aria-expanded="true" aria-controls="collapseFieldHistory">
+             aria-expanded="false" aria-controls="collapseFieldHistory">
           <span>Field change history (SNMP)
             {% if field_history %}<span class="badge bg-secondary ms-1">{{ field_history | length }}</span>{% endif %}
           </span>
           <i class="bi bi-chevron-up collapse-icon"></i>
         </div>
-        <div class="collapse show" id="collapseFieldHistory">
+        <div class="collapse" id="collapseFieldHistory">
           <div class="card-body p-0">
             {% if field_history %}
             <table class="table table-sm table-hover mb-0">
@@ -1035,15 +1053,15 @@
 
       {# ── Interface history ────────────────────────────────────────────── #}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center collapsible-header"
+        <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center collapsible-header collapsed"
              data-bs-toggle="collapse" data-bs-target="#collapseIfaceHistory"
-             aria-expanded="true" aria-controls="collapseIfaceHistory">
+             aria-expanded="false" aria-controls="collapseIfaceHistory">
           <span>Interface history (SNMP walk)
             {% if iface_history %}<span class="badge bg-secondary ms-1">{{ iface_history | length }}</span>{% endif %}
           </span>
           <i class="bi bi-chevron-up collapse-icon"></i>
         </div>
-        <div class="collapse show" id="collapseIfaceHistory">
+        <div class="collapse" id="collapseIfaceHistory">
           <div class="card-body p-0">
             {% if iface_history %}
             <table class="table table-sm table-hover mb-0">
@@ -1086,12 +1104,19 @@
 
   {# ── Syslog — full width ──────────────────────────────────────────────── #}
   <div class="card mb-3">
-    <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center">
-      <span>Recent syslog (48h)
+    <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center collapsible-header"
+         data-bs-toggle="collapse" data-bs-target="#collapseSyslog"
+         aria-expanded="true" aria-controls="collapseSyslog">
+      <span><i class="bi bi-file-text me-1"></i>Recent syslog (48h)
         {% if syslog_rows %}<span class="badge bg-secondary ms-1">{{ syslog_rows | length }}</span>{% endif %}
       </span>
-      <a href="{{ url_for('syslog') }}?src_ip={{ dev.ip }}" class="btn btn-sm btn-outline-secondary">Full syslog →</a>
+      <div class="d-flex align-items-center gap-2">
+        <a href="{{ url_for('syslog') }}?src_ip={{ dev.ip }}" class="btn btn-sm btn-outline-secondary"
+           onclick="event.stopPropagation()">Full syslog →</a>
+        <i class="bi bi-chevron-up collapse-icon"></i>
+      </div>
     </div>
+    <div class="collapse show" id="collapseSyslog">
     <div class="card-body p-0">
       {% if syslog_rows %}
       <div class="table-responsive">
@@ -1133,6 +1158,7 @@
       <p class="text-muted small p-3 mb-0">No syslog entries for this device in the last 48h.</p>
       {% endif %}
     </div>
+    </div>{# /collapseSyslog #}
   </div>
 
 </div>{# /container-fluid #}
@@ -1144,7 +1170,11 @@
 <script>
 (function () {
   const raw = {{ ping_history | tojson }};
-  const labels  = raw.map(r => r.bucket ? r.bucket.substring(11, 16) : '');
+  const labels  = raw.map(r => {
+    if (!r.bucket) return '';
+    const m = String(r.bucket).match(/(\d{2}:\d{2})/);
+    return m ? m[1] : '';
+  });
   const rttData = raw.map(r => r.avg_rtt_ms ?? null);
   const upPct   = raw.map(r => r.uptime_pct ?? 0);
 
@@ -1224,15 +1254,15 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
   // ── Traffic chart ───────────────────────────────────────────────────────
   function _fmtBucket(raw, hours) {
     if (!raw) return '';
-    // FastAPI serializes datetime as ISO: "2026-04-06T23:45:00+02:00"
-    // T jest na pozycji 10, więc HH:MM zaczyna się od 11
     const s = String(raw);
-    const hhmm = s.substring(11, 16);   // "23:45"
+    const tm = s.match(/(\d{2}:\d{2})/);
+    const hhmm = tm ? tm[1] : '';
     if (parseInt(hours) <= 24) {
       return hhmm;
     } else {
       // Pokaż dzień + czas: "04-06 23:45"
-      return s.substring(5, 10) + ' ' + hhmm;
+      const dm = s.match(/(\d{2}[-\/]\d{2})/);
+      return (dm ? dm[1] : s.substring(5, 10)) + ' ' + hhmm;
     }
   }
 
@@ -1725,6 +1755,129 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
   });
 })();
 </script>
+{% endif %}
+
+{% if pro_passport %}
+<!-- Passport Readiness Modal -->
+<div class="modal fade" id="passportReadinessModal" tabindex="-1" aria-labelledby="passportReadinessModalLabel">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="passportReadinessModalLabel"><i class="bi bi-file-earmark-text me-2"></i>Device Passport — Data readiness</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        {% set pr = passport_readiness %}
+        <table class="table table-sm mb-3">
+          <thead class="table-light"><tr><th>Data source</th><th>Status</th><th>Detail</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>SNMP</td>
+              <td>
+                {% if pr.snmp_ok %}
+                  <span class="badge bg-success">OK</span>
+                {% else %}
+                  <span class="badge bg-warning text-dark">missing</span>
+                {% endif %}
+              </td>
+              <td class="text-muted small">
+                {% if pr.snmp_ok_at %}last: {{ pr.snmp_ok_at }}
+                  {% if pr.snmp_age_h and pr.snmp_age_h > 24 %}
+                  <span class="text-warning">({{ pr.snmp_age_h }}h ago)</span>
+                  {% endif %}
+                {% else %}never{% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td>SSH login</td>
+              <td>
+                {% if pr.ssh_ok %}
+                  <span class="badge bg-success">found</span>
+                {% elif pr.ssh_cred %}
+                  <span class="badge bg-secondary">not yet</span>
+                {% else %}
+                  <span class="badge bg-light text-dark border">no creds</span>
+                {% endif %}
+              </td>
+              <td class="text-muted small">
+                {% if pr.ssh_ok %}credentials confirmed
+                {% elif pr.ssh_cred %}credentials exist, not yet confirmed
+                {% else %}add SSH credentials first
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td>Interfaces</td>
+              <td>
+                {% if pr.iface_count > 0 %}
+                  <span class="badge bg-success">{{ pr.iface_count }}</span>
+                {% else %}
+                  <span class="badge bg-warning text-dark">none</span>
+                {% endif %}
+              </td>
+              <td class="text-muted small">{% if pr.iface_count > 0 %}interfaces collected{% else %}no interface data{% endif %}</td>
+            </tr>
+            <tr>
+              <td>Sensors</td>
+              <td>
+                {% if pr.sensor_count > 0 %}
+                  <span class="badge bg-success">{{ pr.sensor_count }}</span>
+                {% else %}
+                  <span class="badge bg-warning text-dark">none</span>
+                {% endif %}
+              </td>
+              <td class="text-muted small">{% if pr.sensor_count > 0 %}hardware sensors available{% else %}no sensor data (temp/CPU/fan){% endif %}</td>
+            </tr>
+            <tr>
+              <td>RAM</td>
+              <td>
+                {% if pr.ram_mb %}
+                  <span class="badge bg-success">
+                    {% if pr.ram_mb >= 1024 %}{{ "%.0f"|format(pr.ram_mb / 1024) }} GB{% else %}{{ pr.ram_mb }} MB{% endif %}
+                  </span>
+                {% else %}
+                  <span class="badge bg-secondary">unknown</span>
+                {% endif %}
+              </td>
+              <td class="text-muted small">{% if not pr.ram_mb %}device may not expose memory via SNMP{% endif %}</td>
+            </tr>
+            <tr>
+              <td>Serial #</td>
+              <td>
+                {% if pr.serial %}
+                  <span class="badge bg-success">present</span>
+                {% else %}
+                  <span class="badge bg-secondary">missing</span>
+                {% endif %}
+              </td>
+              <td class="text-muted small">{% if pr.serial %}<code class="small">{{ pr.serial }}</code>{% else %}not available via SNMP{% endif %}</td>
+            </tr>
+          </tbody>
+        </table>
+        {% if not pr.snmp_ok or pr.sensor_count == 0 or pr.iface_count == 0 %}
+        <div class="alert alert-warning py-2 small mb-0">
+          <i class="bi bi-exclamation-triangle me-1"></i>
+          Some data is missing. The generated passport will include a coverage warning section.
+          You can regenerate it later when more data is available.
+        </div>
+        {% else %}
+        <div class="alert alert-success py-2 small mb-0">
+          <i class="bi bi-check-circle me-1"></i>
+          Data looks complete. The passport will include all hardware facts.
+        </div>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form method="post" action="{{ url_for('device_passport_generate', device_id=dev.id) }}" class="d-inline">
+          <button type="submit" class="btn btn-dark">
+            <i class="bi bi-file-earmark-text me-1"></i>Generate Passport
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
 {% endif %}
 
 {% endblock %}

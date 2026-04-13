@@ -1,0 +1,46 @@
+name: Synology NAS (DS/RS series)
+match_vendors: ["Synology"]
+match_os: ["Synology"]
+tested: true
+tested_at: "2026-04-12"
+notes: >
+  Testowane na Synology DS (Linux Synology 4.4.302+).
+  SYNOLOGY-DISK-MIB (1.3.6.1.4.1.6574.2) — dyski: temp, health, bad sectors.
+  SYNOLOGY-RAID-MIB (1.3.6.1.4.1.6574.3) — RAID/Storage Pool: status, free%.
+  Standard HOST-RESOURCES-MIB + UCD-SNMP-MIB działają normalnie (CPU, RAM, load avg).
+  Synology system temp (1.3.6.1.4.1.6574.1.2.0) dostępna.
+  Fan RPM i power status mogą być niedostępne na modelach desktop (1-bay/2-bay).
+  diskBadSectors = -1 oznacza brak danych (normalne dla HDD bez SMART licznika).
+  raidStatus 1=Normal, 11=Degrade, 12=Crashed — wartości >1 wymagają uwagi.
+  diskHealthStatus 1=Normal, 2=Warning, 3=Critical, 4=Failing.
+
+capabilities:
+  snmp: true
+  snmp_interfaces: true
+  snmp_fdb: false
+  snmp_vlan: false
+  snmp_stp: false
+  snmp_cpu: true          # hrProcessorLoad + UCD laLoadTable
+  snmp_ram: true          # UCD memTotalReal / memAvailReal
+  snmp_hc_counters: true  # ifHCInOctets dostępne
+  snmp_arp: false         # NAS, nie router
+  snmp_sensors: true      # dyski, RAID, temp systemu
+
+snmp_collection:
+  interfaces:
+    hc_counters: true
+  cpu:
+    enabled: true
+    method: host_resources
+  ram:
+    enabled: true
+    method: host_resources
+  arp:
+    enabled: false
+  sensors:
+    enabled: true
+    method: synology_mib   # SYNOLOGY-DISK-MIB + SYNOLOGY-RAID-MIB + standard
+
+relevant_protocols:
+  - snmp
+  - syslog

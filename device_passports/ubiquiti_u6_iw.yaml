@@ -1,7 +1,7 @@
 name: Ubiquiti U6 In-Wall
 match_vendors: [Ubiquiti, "Ubiquiti Networks"]
 match_models: ["U6-IW", "U6IW"]
-match_os: []
+match_os: ["U6-IW", "U6IW"]
 tested: true
 tested_at: "2026-04-07"
 notes: >
@@ -22,12 +22,29 @@ capabilities:
   snmp_stp: false
   snmp_cpu: true          # hrProcessorLoad działa
   snmp_ram: false
+  snmp_hc_counters: false # brak ifHCInOctets w ClickHouse — tylko 32-bit IF-MIB
+  snmp_arp: false         # AP, nie router
+  snmp_sensors: false
   lldp_snmp: false
   lldp_unifi: true        # przez UniFi API
   lldp_ssh: false         # brak IOS-style CLI
   syslog: true
   config_backup: false    # brak CLI dostępu do konfiguracji
   ssh: true               # UniFi firmware — dostępne SSH
+
+snmp_collection:
+  interfaces:
+    hc_counters: false       # brak ifHCInOctets — tylko 32-bit IF-MIB (potwierdzone w ClickHouse)
+  cpu:
+    enabled: true
+    method: host_resources   # hrProcessorLoad działa — testowane: 20-44%
+  ram:
+    enabled: false           # hrStorageTable puste
+  arp:
+    enabled: false           # AP, nie router — brak tablicy routingu
+  sensors:
+    enabled: true
+    method: ubnt_radio       # ubntRadioTable: noise floor, TX power, freq | ubntStaTable: avg RSSI
 
 relevant_protocols:
   - snmp

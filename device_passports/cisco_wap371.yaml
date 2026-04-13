@@ -20,11 +20,26 @@ capabilities:
   snmp_stp: false
   snmp_cpu: false
   snmp_ram: false
+  snmp_hc_counters: false # brak ifHCInOctets — podstawowy IF-MIB tylko
+  snmp_arp: false         # AP, nie router
+  snmp_sensors: false
   lldp_snmp: false
   lldp_unifi: false
   syslog: true
   config_backup: false
   ssh: false              # brak IOS CLI
+
+snmp_collection:
+  interfaces:
+    hc_counters: false       # podstawowy IF-MIB — brak ifHCInOctets
+  cpu:
+    enabled: false           # brak hrProcessorLoad/hrStorageTable — potwierdzone
+  ram:
+    enabled: false
+  arp:
+    enabled: false           # AP, nie router
+  sensors:
+    enabled: false
 
 relevant_protocols:
   - snmp

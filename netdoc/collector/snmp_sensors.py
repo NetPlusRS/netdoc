@@ -42,12 +42,23 @@ def _walk(ip: str, base_oid: str, community: str, timeout: float, max_iter: int 
 
 
 def _get(ip: str, oid: str, community: str, timeout: float):
-    """Single SNMP GET using snmp_walk with max_iter=1 (one GET-NEXT then verify OID)."""
+    """Single SNMP GET dla konkretnego OID (skalara lub wiersza tabeli).
+
+    Używa prawdziwego GET (nie GETNEXT/walk) żeby uderzyć dokładnie w podany OID.
+    Fallback na GETNEXT gdy GET nie zadziała (stare urządzenia / MIB subtree).
+    """
+    try:
+        from netdoc.collector.drivers.snmp import _snmp_get
+        val = _snmp_get(ip, community, oid, timeout=int(timeout))
+        if val is not None:
+            return val, None
+    except Exception:
+        pass
+    # Fallback: GETNEXT z weryfikacją OID
     from netdoc.collector.snmp_walk import snmp_walk
     rows = snmp_walk(ip, oid, community=community, timeout=timeout, max_iter=1)
     if rows:
         ret_oid, val, tag = rows[0]
-        # Accept only if exact OID or one level deeper (table row)
         if ret_oid == oid or ret_oid.startswith(oid + "."):
             return val, tag
     return None, None
@@ -1045,6 +1056,309 @@ _LINUX_HINTS = ["linux", "ubuntu", "debian", "centos", "fedora", "raspbian",
                 "synology", "qnap", "omv", "truenas"]
 
 
+# ─── CISCO-ENVMON-MIB ────────────────────────────────────────────────────────
+# Temperatura chassis, stan wentylatorów i zasilaczy na urządzeniach Cisco IOS.
+# Stany: 1=normal, 2=warning, 3=critical, 4=shutdown, 5=notPresent, 6=notFunctioning
+_CISCO_ENVMON_STATE_STR = {1: "normal", 2: "warning", 3: "critical",
+                           4: "shutdown", 5: "notPresent", 6: "notFunctioning"}
+
+
+def _cisco_envmon_mib(
+    ip: str, community: str, timeout: float, oids: Optional[dict] = None
+) -> list[dict]:
+    """Zbiera temperaturę, stan wentylatorów i zasilaczy z CISCO-ENVMON-MIB.
+
+    oids (z passport sensors.oids):
+      temp      — ciscoEnvMonTemperatureStatusValue (°C)
+      fan_state — ciscoEnvMonFanState (1=normal)
+      psu_state — ciscoEnvMonSupplyState (1=normal)
+    """
+    _default_oids = {
+        "temp":      "1.3.6.1.4.1.9.9.13.1.3.1.3.1",
+        "fan_state": "1.3.6.1.4.1.9.9.13.1.4.1.3.1",
+        "psu_state": "1.3.6.1.4.1.9.9.13.1.5.1.3.1",
+    }
+    merged = {**_default_oids, **(oids or {})}
+
+    results: list[dict] = []
+
+    def _get_int_oid(key: str) -> Optional[int]:
+        oid = merged.get(key)
+        if not oid:
+            return None
+        val, _tag = _get(ip, oid, community, timeout)
+        return _int_val(val)
+
+    # Temperatura chassis (°C)
+    temp = _get_int_oid("temp")
+    if temp is not None and -40 <= temp <= 150:
+        results.append(_sensor("temperature_celsius", float(temp), "°C", "cisco_envmon",
+                               str(temp)))
+
+    # Stan wentylatora (1=normal → OK, inne = problem)
+    fan = _get_int_oid("fan_state")
+    if fan is not None:
+        fan_str = _CISCO_ENVMON_STATE_STR.get(fan, str(fan))
+        # Wartość numeryczna: 1 (normal) i 5 (notPresent) traktujemy jako OK
+        fan_val = 1.0 if fan in (1, 5) else 0.0
+        results.append(_sensor("fan_ok", fan_val, "", "cisco_envmon", fan_str))
+
+    # Stan zasilacza (1=normal)
+    psu = _get_int_oid("psu_state")
+    if psu is not None:
+        psu_str = _CISCO_ENVMON_STATE_STR.get(psu, str(psu))
+        psu_val = 1.0 if psu in (1, 5) else 0.0
+        results.append(_sensor("psu_ok", psu_val, "", "cisco_envmon", psu_str))
+
+    return results
+
+
+# ─── Ubiquiti UniFi — radio stats + client RSSI ───────────────────────────────
+# ubntRadioTable (1.3.6.1.4.1.41112.1.6.1.4.1):
+#   .5 = ubntRadioFreq (MHz)  .6 = ubntRadioTxPower (dBm)
+#   .7 = ubntRadioNoise (dBm, negative)  .8 = ubntRadioChannel
+# ubntStaTable (1.3.6.1.4.1.41112.1.6.1.1.1):
+#   .11 = ubntStaRssi (dBm, unsigned — wymaga korekty na ujemne)
+_UBNT_RADIO_OID = "1.3.6.1.4.1.41112.1.6.1.4.1"
+_UBNT_STA_OID   = "1.3.6.1.4.1.41112.1.6.1.1.1"
+
+
+def _ubnt_radio_sta(ip: str, community: str, timeout: float) -> list[dict]:
+    """Zbiera statystyki radia i klientów WiFi z UniFi MIB.
+
+    Zwraca sensory:
+      noise_floor_db_[band]   — floor szumu per radio (dBm)
+      tx_power_dbm_[band]     — moc nadawania per radio (dBm)
+      wifi_rssi_avg_db        — średni RSSI wszystkich klientów (dBm)
+      wifi_rssi_min_db        — najsłabszy klient (dBm) — kluczowe dla troubleshootingu
+    """
+    results: list[dict] = []
+
+    def _band_label(freq_mhz: int) -> str:
+        if freq_mhz < 3000:
+            return "2g"
+        if freq_mhz < 6000:
+            return "5g"
+        return "6g"
+
+    # ── Radio stats ───────────────────────────────────────────────────────────
+    radios: dict[str, dict] = {}  # idx → {freq, tx_power, noise, channel}
+    try:
+        _RADIO_FIELDS = {"5": "freq", "6": "tx_power", "7": "noise", "8": "channel"}
+        for full_oid, raw_val, _ in _walk(ip, _UBNT_RADIO_OID, community, timeout):
+            suffix = full_oid[len(_UBNT_RADIO_OID):].lstrip(".")
+            parts = suffix.split(".", 1)
+            if len(parts) != 2:
+                continue
+            field, idx = parts[0], parts[1]
+            if field not in _RADIO_FIELDS:
+                continue
+            v = _int_val(raw_val)
+            if v is None:
+                continue
+            radios.setdefault(idx, {})[_RADIO_FIELDS[field]] = v
+    except Exception as exc:
+        logger.debug("ubnt_radio %s radio table: %s", ip, exc)
+
+    for idx, r in radios.items():
+        freq = r.get("freq", 0)
+        if freq < 2000:
+            continue  # nie wyglada na radiowa czestotliwosc
+        band = _band_label(freq)
+        noise = r.get("noise")
+        if noise is not None:
+            # noise moze byc przechowywany jako unsigned (np. 65436 = -100 dBm w uint8)
+            if noise > 200:
+                noise = noise - 256
+            if -120 <= noise <= -20:
+                results.append(_sensor(f"noise_floor_db_{band}", float(noise), "dBm",
+                                       "ubnt_radio", str(noise)))
+        tx = r.get("tx_power")
+        if tx is not None and 0 < tx <= 40:
+            results.append(_sensor(f"tx_power_dbm_{band}", float(tx), "dBm",
+                                   "ubnt_radio", str(tx)))
+
+    # ── Client RSSI ───────────────────────────────────────────────────────────
+    rssi_values: list[int] = []
+    try:
+        _STA_RSSI_FIELD = "11"
+        for full_oid, raw_val, _ in _walk(ip, _UBNT_STA_OID, community, timeout, max_iter=500):
+            suffix = full_oid[len(_UBNT_STA_OID):].lstrip(".")
+            if not suffix.startswith(_STA_RSSI_FIELD + "."):
+                continue
+            v = _int_val(raw_val)
+            if v is None:
+                continue
+            # RSSI w UniFi zwracany jako unsigned — konwertuj na dBm
+            if v > 200:
+                v = v - 256
+            if -120 <= v <= -10:  # sensowny zakres RSSI
+                rssi_values.append(v)
+    except Exception as exc:
+        logger.debug("ubnt_radio %s sta table: %s", ip, exc)
+
+    if rssi_values:
+        avg = round(sum(rssi_values) / len(rssi_values), 1)
+        results.append(_sensor("wifi_rssi_avg_db", float(avg), "dBm",
+                               "ubnt_radio", f"{len(rssi_values)} clients"))
+        results.append(_sensor("wifi_rssi_min_db", float(min(rssi_values)), "dBm",
+                               "ubnt_radio", str(min(rssi_values))))
+
+    return results
+
+
+# ─── Printer-MIB (RFC 3805) ───────────────────────────────────────────────────
+# Obsługuje drukarki z community public — zbiera stan tonera, bębna i licznik stron.
+# OID domyślne (prnMarkerSupplies index 1 = toner, index 2 = bęben):
+_PRINTER_MIB_DEFAULTS = {
+    "toner_level": "1.3.6.1.2.1.43.11.1.1.9.1.1",   # prnMarkerSuppliesLevel (toner)
+    "toner_max":   "1.3.6.1.2.1.43.11.1.1.8.1.1",   # prnMarkerSuppliesMaxCapacity
+    "drum_level":  "1.3.6.1.2.1.43.11.1.1.9.1.2",   # supplies index 2 (bęben, opcjonalny)
+    "drum_max":    "1.3.6.1.2.1.43.11.1.1.8.1.2",
+    "page_count":  "1.3.6.1.2.1.43.10.2.1.4.1.1",   # prtMarkerLifeCount
+}
+
+
+def _printer_mib(
+    ip: str, community: str, timeout: float, oids: Optional[dict] = None
+) -> list[dict]:
+    """Zbiera dane z Printer-MIB (RFC 3805) — toner, bęben, licznik stron.
+
+    Zwraca listę sensorów:
+      toner_pct   — poziom tonera w %
+      drum_pct    — poziom bębna w % (jeśli dostępny)
+      page_count  — łączna liczba wydrukowanych stron
+    """
+    merged = dict(_PRINTER_MIB_DEFAULTS)
+    if oids:
+        merged.update(oids)
+
+    results: list[dict] = []
+
+    def _get_int(oid_key: str) -> Optional[int]:
+        oid = merged.get(oid_key)
+        if not oid:
+            return None
+        val, _tag = _get(ip, oid, community, timeout)
+        return _int_val(val)
+
+    # Toner — procent (level/max * 100)
+    toner_level = _get_int("toner_level")
+    toner_max   = _get_int("toner_max")
+    if toner_level is not None and toner_max and toner_max > 0:
+        pct = round(toner_level / toner_max * 100, 1)
+        results.append(_sensor("toner_pct", pct, "%", "printer_mib",
+                                f"{toner_level}/{toner_max}"))
+    elif toner_level is not None and toner_level >= 0:
+        # Niektóre drukarki zwracają bezpośrednio procent (max=100)
+        results.append(_sensor("toner_pct", float(toner_level), "%", "printer_mib",
+                                str(toner_level)))
+
+    # Bęben — opcjonalny, taki sam schemat
+    drum_level = _get_int("drum_level")
+    drum_max   = _get_int("drum_max")
+    if drum_level is not None and drum_max and drum_max > 0:
+        pct = round(drum_level / drum_max * 100, 1)
+        results.append(_sensor("drum_pct", pct, "%", "printer_mib",
+                                f"{drum_level}/{drum_max}"))
+
+    # Licznik stron — zwracany jako surowa liczba
+    page_count = _get_int("page_count")
+    if page_count is not None and page_count >= 0:
+        results.append(_sensor("page_count", float(page_count), "pages", "printer_mib",
+                                str(page_count)))
+
+    return results
+
+
+def _synology_mib(ip: str, community: str, timeout: float) -> list[dict]:
+    """SYNOLOGY-DISK-MIB + SYNOLOGY-RAID-MIB — dyski, RAID, temperatura per dysk.
+
+    OIDs:
+      1.3.6.1.4.1.6574.2.1.1.{field}.{disk_idx}  — disk table
+      1.3.6.1.4.1.6574.3.1.1.{field}.{raid_idx}  — RAID table
+
+    diskHealthStatus: 1=Normal, 2=Warning, 3=Critical, 4=Failing
+    raidStatus:       1=Normal, 2+=problem (11=Degrade, 12=Crashed)
+    """
+    results: list[dict] = []
+
+    def _g(oid: str) -> Optional[str]:
+        """GET single OID via _get() helper (uses real SNMP GET)."""
+        val, _tag = _get(ip, oid, community, timeout)
+        return val if val not in (None, "") else None
+
+    # ── Disk table ──────────────────────────────────────────────────────────
+    for disk_idx in range(1, 9):
+        disk_id = _g(f"1.3.6.1.4.1.6574.2.1.1.2.{disk_idx}")
+        if not disk_id:
+            continue  # empty slot — skip, don't stop (slots can have gaps)
+
+        suffix = f"_{disk_idx}"
+
+        temp = _g(f"1.3.6.1.4.1.6574.2.1.1.6.{disk_idx}")
+        if temp is not None:
+            try:
+                tv = float(temp)
+                if 5 <= tv <= 80:
+                    results.append(_sensor(f"disk{suffix}_temp_c", tv, "C", "synology_disk",
+                                           f"disk={disk_id} temp={temp}"))
+            except (ValueError, TypeError):
+                pass
+
+        health = _g(f"1.3.6.1.4.1.6574.2.1.1.13.{disk_idx}")
+        if health is not None:
+            try:
+                hv = int(health)
+                results.append(_sensor(f"disk{suffix}_health", float(hv), "", "synology_disk",
+                                       f"disk={disk_id} health={hv}(1=Normal,2=Warn,3=Crit)"))
+            except (ValueError, TypeError):
+                pass
+
+        bad = _g(f"1.3.6.1.4.1.6574.2.1.1.11.{disk_idx}")
+        if bad is not None:
+            try:
+                bv = int(bad)
+                if bv >= 0:  # -1 = not available (HDDs without SMART counter)
+                    results.append(_sensor(f"disk{suffix}_bad_sectors", float(bv), "sectors",
+                                           "synology_disk", f"disk={disk_id} bad={bv}"))
+            except (ValueError, TypeError):
+                pass
+
+    # ── RAID/Volume table ───────────────────────────────────────────────────
+    for raid_idx in range(1, 9):
+        raid_name = _g(f"1.3.6.1.4.1.6574.3.1.1.2.{raid_idx}")
+        if not raid_name:
+            continue  # empty/missing RAID slot — skip, don't stop
+
+        suffix = f"_{raid_idx}"
+
+        raid_status = _g(f"1.3.6.1.4.1.6574.3.1.1.3.{raid_idx}")
+        if raid_status is not None:
+            try:
+                sv = int(raid_status)
+                results.append(_sensor(f"raid{suffix}_status", float(sv), "", "synology_raid",
+                                       f"pool={raid_name} status={sv}(1=Normal,11=Degrade,12=Crash)"))
+            except (ValueError, TypeError):
+                pass
+
+        free_raw = _g(f"1.3.6.1.4.1.6574.3.1.1.4.{raid_idx}")
+        total_raw = _g(f"1.3.6.1.4.1.6574.3.1.1.5.{raid_idx}")
+        if free_raw is not None and total_raw is not None:
+            try:
+                free_b = int(free_raw)
+                total_b = int(total_raw)
+                if total_b > 0:
+                    free_pct = round(free_b / total_b * 100, 1)
+                    results.append(_sensor(f"raid{suffix}_free_pct", free_pct, "%",
+                                           "synology_raid",
+                                           f"pool={raid_name} free={free_b/(1024**3):.1f}GB/{total_b/(1024**3):.1f}GB"))
+            except (ValueError, TypeError):
+                pass
+
+    return results
+
+
 # ─── MAIN ENTRY POINT ─────────────────────────────────────────────────────────
 
 def poll_sensors(
@@ -1053,15 +1367,19 @@ def poll_sensors(
     vendor_hint: str = "",
     os_hint: str = "",
     timeout: float = 3.0,
+    sensor_method: Optional[str] = None,
+    sensor_oids: Optional[dict] = None,
 ) -> list[dict]:
-    """Poll all applicable sensor sources for a device.
+    """Poll applicable sensor sources for a device.
 
     Args:
-        ip:          Device IP
-        community:   SNMP community string
-        vendor_hint: device.vendor or device.os_version (used to pick vendor-specific OIDs)
-        os_hint:     device.os_version (additional hint for Linux/Net-SNMP detection)
-        timeout:     SNMP timeout per individual GET/walk
+        ip:            Device IP
+        community:     SNMP community string
+        vendor_hint:   device.vendor or device.os_version (used to pick vendor-specific OIDs)
+        os_hint:       device.os_version (additional hint for Linux/Net-SNMP detection)
+        timeout:       SNMP timeout per individual GET/walk
+        sensor_method: Passport-specified method: "printer_mib" | None (= default auto-detect)
+        sensor_oids:   OID overrides from passport (used by e.g. printer_mib method)
 
     Returns:
         List of sensor dicts: {name, value, unit, source, raw}
@@ -1077,6 +1395,48 @@ def poll_sensors(
             if n not in seen_names and s.get("value") is not None:
                 seen_names.add(n)
                 results.append(s)
+
+    # Passport-driven dispatch — when sensor_method specified, use only that method
+    if sensor_method == "printer_mib":
+        try:
+            _add(_printer_mib(ip, community, timeout, oids=sensor_oids))
+        except Exception as e:
+            logger.debug("printer_mib %s: %s", ip, e)
+        return _sanitize_sensors(results)
+
+    if sensor_method == "cisco_envmon":
+        try:
+            _add(_cisco_envmon_mib(ip, community, timeout, oids=sensor_oids))
+        except Exception as e:
+            logger.debug("cisco_envmon %s: %s", ip, e)
+        return _sanitize_sensors(results)
+
+    if sensor_method == "ubnt_radio":
+        try:
+            _add(_ubnt_radio_sta(ip, community, timeout))
+        except Exception as e:
+            logger.debug("ubnt_radio %s: %s", ip, e)
+        return _sanitize_sensors(results)
+
+    if sensor_method == "synology_mib":
+        try:
+            _add(_synology_mib(ip, community, timeout))
+        except Exception as e:
+            logger.debug("synology_mib %s: %s", ip, e)
+        # Also collect standard sensors (CPU/RAM/temp via HOST-RESOURCES + UCD)
+        try:
+            _add(_host_resources_mib(ip, community, timeout))
+        except Exception:
+            pass
+        try:
+            _add(_ucd_snmp_mib(ip, community, timeout))
+        except Exception:
+            pass
+        try:
+            _add(_synology(ip, community, timeout))
+        except Exception:
+            pass
+        return _sanitize_sensors(results)
 
     # Layer 1: ENTITY-SENSOR-MIB — RFC standard, try always
     try:

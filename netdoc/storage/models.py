@@ -699,7 +699,7 @@ class DevicePortAlert(Base):
     device_id       = Column(Integer,    ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
     if_index        = Column(Integer,    nullable=False, default=0)   # 0 = urządzenie (CPU/mem)
     interface_name  = Column(String(64), nullable=True)
-    alert_type      = Column(String(20), nullable=False)  # error_rate|error_trend|cpu_high|mem_high
+    alert_type      = Column(String(80), nullable=False)  # error_rate|error_trend|cpu_high|mem_high|sensor_*
     severity        = Column(String(10), nullable=False)  # warning|critical
     value_current   = Column(Float,      nullable=True)   # aktualna wartość (err/h, %)
     value_baseline  = Column(Float,      nullable=True)   # wartość bazowa (7d średnia)

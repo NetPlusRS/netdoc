@@ -22,12 +22,27 @@ capabilities:
   snmp_stp: true          # STP MIB dostępne
   snmp_cpu: false         # hrProcessorLoad niedostępne (Linux-based)
   snmp_ram: false
+  snmp_hc_counters: true  # ifHCInOctets/ifHCOutOctets potwierdzone w ClickHouse (jedyne urządzenie w sieci z HC)
+  snmp_arp: true          # ipNetToMediaTable dostępne (switch L3)
+  snmp_sensors: false
   lldp_snmp: false        # nextCmd broken w pysnmp 6.x
   lldp_ssh: true          # 'show lldp neighbors' przez SSH (Small Business CLI)
   cdp: false              # SG300 nie obsługuje CDP
   syslog: true
   config_backup: true     # 'show running-config' przez SSH
   ssh: true               # Cisco Small Business CLI
+
+snmp_collection:
+  interfaces:
+    hc_counters: true        # ifHCInOctets/ifHCOutOctets — potwierdzone w ClickHouse
+  cpu:
+    enabled: false           # hrProcessorLoad niedostępne (Linux-based SG300)
+  ram:
+    enabled: false
+  arp:
+    enabled: true            # ipNetToMediaTable dostępne (switch L3)
+  sensors:
+    enabled: false
 
 relevant_protocols:
   - snmp

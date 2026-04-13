@@ -2194,15 +2194,22 @@ def upsert_device(db, device_data):
         device.last_seen = now
         device.is_active = True
         if device_data.hostname and device_data.hostname != device.hostname:
-            conflict = _hostname_conflict(db, device_data.hostname, device_data.ip)
-            if conflict:
-                logger.warning(
-                    "Hostname collision przy aktualizacji: '%s' juz przypisany do %s — "
-                    "pomijam aktualizacje hostname dla %s",
-                    device_data.hostname, conflict.ip, device_data.ip,
-                )
+            # Case-insensitive comparison: nie nadpisuj "Synology" → "SYNOLOGY" (NBNS uppercase)
+            # gdy nowa wartość różni się tylko wielkością liter od obecnej.
+            # SNMP sysName ma priorytet nad NBNS — jeśli hostname pochodzi z SNMP,
+            # zostanie ustawiony w SNMP workerze bezpośrednio.
+            if (device.hostname or "").lower() == (device_data.hostname or "").lower():
+                pass  # tylko case różny — nie aktualizuj, nie generuj historii
             else:
-                device.hostname = device_data.hostname
+                conflict = _hostname_conflict(db, device_data.hostname, device_data.ip)
+                if conflict:
+                    logger.warning(
+                        "Hostname collision przy aktualizacji: '%s' juz przypisany do %s — "
+                        "pomijam aktualizacje hostname dla %s",
+                        device_data.hostname, conflict.ip, device_data.ip,
+                    )
+                else:
+                    device.hostname = device_data.hostname
         # vendor: aktualizuj tylko gdy urzadzenie nie ma jeszcze vendor
         # lub gdy nowy vendor jest bogatszy w informacje (dluzszy string)
         # Nie nadpisuj "Cisco Systems" oui-generic "Hon Hai Precision Ind. Co.,Ltd."

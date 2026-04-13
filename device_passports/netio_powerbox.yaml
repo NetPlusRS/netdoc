@@ -26,4 +26,16 @@ capabilities:
   config_backup: false
   ssh: false
 
+snmp_collection:
+  interfaces:
+    hc_counters: false
+  cpu:
+    enabled: false
+  ram:
+    enabled: false
+  arp:
+    enabled: false
+  sensors:
+    enabled: false
+
 relevant_protocols: []

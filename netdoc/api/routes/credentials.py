@@ -111,6 +111,26 @@ def update_credential(cred_id: int, body: CredentialIn, db: Session = Depends(ge
     )
 
 
+@router.delete("/bulk/all", status_code=200)
+def bulk_delete_credentials(
+    method: Optional[str] = None,
+    include_device: bool = False,
+    db: Session = Depends(get_db),
+):
+    """Bulk delete credentials. method=None -> wszystkie typy. include_device=True -> rowniez per-device."""
+    q = db.query(Credential)
+    if not include_device:
+        q = q.filter(Credential.device_id.is_(None))
+    if method:
+        valid = {m.value for m in CredentialMethod}
+        if method not in valid:
+            raise HTTPException(400, f"Unknown method: {method}")
+        q = q.filter(Credential.method == CredentialMethod(method))
+    count = q.delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": count}
+
+
 @router.delete("/{cred_id}", status_code=204)
 def delete_credential(cred_id: int, db: Session = Depends(get_db)):
     """Usun credential."""
@@ -264,7 +284,6 @@ def snmp_fallback_list(db: Session = Depends(get_db)):
     Jesli baza pusta — fallback do hardcoded listy.
     """
     from netdoc.collector.pipeline import SNMP_COMMUNITY_FALLBACK
-    from netdoc.storage.models import CredentialMethod
     db_communities = [
         c.username for c in
         db.query(Credential)
