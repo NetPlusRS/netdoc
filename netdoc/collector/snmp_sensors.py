@@ -1405,8 +1405,10 @@ def poll_sensors(
         return _sanitize_sensors(results)
 
     if sensor_method == "cisco_envmon":
+        # _cisco_envmon = full Cisco collector: CPU (CISCO-PROCESS-MIB) +
+        # RAM (CISCO-MEMORY-POOL-MIB) + temp/fan/PSU (CISCO-ENVMON-MIB)
         try:
-            _add(_cisco_envmon_mib(ip, community, timeout, oids=sensor_oids))
+            _add(_cisco_envmon(ip, community, timeout))
         except Exception as e:
             logger.debug("cisco_envmon %s: %s", ip, e)
         return _sanitize_sensors(results)
