@@ -303,7 +303,19 @@ def main() -> None:
     while True:
         next_run = time.monotonic() + interval
         try:
-            scan_once()
+            from netdoc.storage.models import SystemStatus
+            db = SessionLocal()
+            try:
+                _row = db.query(SystemStatus).filter(
+                    SystemStatus.key == "community_scanning_enabled"
+                ).first()
+                _enabled = (_row.value if _row else "0") != "0"
+            finally:
+                db.close()
+            if _enabled:
+                scan_once()
+            else:
+                logger.info("Community scanning disabled (community_scanning_enabled=0) — skipping cycle")
         except Exception as exc:
             logger.exception("Unhandled exception in scan_once (community): %s", exc)
         interval, *_ = _get_settings()

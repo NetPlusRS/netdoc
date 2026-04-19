@@ -71,10 +71,26 @@
   {# ── Full port scan ──────────────────────────────── #}
   <div class="col-12 col-md-4">
     <div class="card h-100">
-      <div class="card-header d-flex align-items-center gap-2">
-        <i class="bi bi-hdd-network"></i> Full port scan
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-hdd-network me-1"></i>Full port scan (1–65535)</span>
+        <form method="post" action="/scan/full-scan-toggle" class="mb-0">
+          {% if full_scan_enabled %}
+          <button type="submit" class="btn btn-success btn-sm py-0">
+            <i class="bi bi-toggle-on me-1"></i>ON
+          </button>
+          {% else %}
+          <button type="submit" class="btn btn-outline-secondary btn-sm py-0">
+            <i class="bi bi-toggle-off me-1"></i>OFF
+          </button>
+          {% endif %}
+        </form>
       </div>
       <div class="card-body d-flex flex-column">
+        {% if not full_scan_enabled %}
+        <div class="alert alert-warning py-1 px-2 mb-2 small">
+          <i class="bi bi-pause-circle me-1"></i>Auto full scan <strong>disabled</strong> — scanner skips TCP 1–65535.
+        </div>
+        {% endif %}
         <p class="small text-muted mb-2">
           TCP 1–65535 for devices without a current full scan.<br>
           Multi-threaded: <strong>{{ status.get("full_scan_workers","4") }} workers</strong>
@@ -83,19 +99,44 @@
         {% set fpb = status.get("full_scan_port_batch_size","5000")|int %}
         <div class="small text-muted mb-3">
           <i class="bi bi-layers me-1"></i>Ports per batch: <strong>{{ fpb if fpb > 0 else "1–65535 (single batch)" }}</strong>
-          &nbsp;·&nbsp;
-          {% if status.get("scan_resume_enabled","1") == "1" %}
-            <i class="bi bi-arrow-repeat me-1 text-success"></i><span class="text-success">resume enabled</span>
-          {% else %}
-            <i class="bi bi-x-circle me-1 text-muted"></i><span class="text-muted">resume disabled</span>
-          {% endif %}
         </div>
         <form method="post" action="/scan/trigger" class="mt-auto">
           <input type="hidden" name="type" value="full">
           <button class="btn btn-warning w-100">
-            <i class="bi bi-search me-2"></i>Run full scan
+            <i class="bi bi-search me-2"></i>Run full scan now
           </button>
         </form>
+      </div>
+    </div>
+  </div>
+
+  {# ── SNMP Community scanning ─────────────────────── #}
+  <div class="col-12 col-md-4">
+    <div class="card h-100">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-shield-lock me-1"></i>SNMP community scanning</span>
+        <form method="post" action="/scan/community-scan-toggle" class="mb-0">
+          {% if community_scanning_enabled %}
+          <button type="submit" class="btn btn-success btn-sm py-0">
+            <i class="bi bi-toggle-on me-1"></i>ON
+          </button>
+          {% else %}
+          <button type="submit" class="btn btn-outline-secondary btn-sm py-0">
+            <i class="bi bi-toggle-off me-1"></i>OFF
+          </button>
+          {% endif %}
+        </form>
+      </div>
+      <div class="card-body d-flex flex-column">
+        {% if not community_scanning_enabled %}
+        <div class="alert alert-warning py-1 px-2 mb-2 small">
+          <i class="bi bi-pause-circle me-1"></i>Community scanning <strong>disabled</strong> — brute-force of SNMP community strings paused.
+        </div>
+        {% endif %}
+        <p class="small text-muted mb-2">
+          Tries known SNMP community strings (public, private, etc.) to find working SNMP access.<br>
+          Runs in <strong>community-worker</strong> Docker container.
+        </p>
       </div>
     </div>
   </div>

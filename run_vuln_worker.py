@@ -15,7 +15,7 @@ from prometheus_client import Gauge, start_http_server
 from netdoc.storage.database import SessionLocal, init_db
 from netdoc.storage.models import (
     Device, DeviceType, Credential, CredentialMethod,
-    Event, EventType, Vulnerability, VulnType, VulnSeverity,
+    Event, EventType, Vulnerability, VulnType, VulnSeverity, SystemStatus,
 )
 from netdoc.config.settings import settings
 logging.basicConfig(level=logging.INFO,
@@ -1913,7 +1913,18 @@ def main() -> None:
     while True:
         next_run = time.monotonic() + interval
         try:
-            scan_once()
+            db = SessionLocal()
+            try:
+                _row = db.query(SystemStatus).filter(
+                    SystemStatus.key == "vuln_scanning_enabled"
+                ).first()
+                _enabled = (_row.value if _row else "0") != "0"
+            finally:
+                db.close()
+            if _enabled:
+                scan_once()
+            else:
+                logger.info("Vulnerability scanning disabled (vuln_scanning_enabled=0) — skipping cycle")
         except Exception as exc:
             logger.exception("Unhandled exception in scan_once (vuln): %s", exc)
         interval, *_ = _read_settings()

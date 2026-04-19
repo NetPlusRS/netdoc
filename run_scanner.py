@@ -2852,7 +2852,7 @@ def main():
         from netdoc.storage.models import SystemStatus
         _config_defaults = {
             "full_scan_max_age_days":  ("7",  "config"),
-            "full_scan_enabled":       ("1",  "config"),
+            "full_scan_enabled":       ("0",  "config"),
             "inventory_enabled":       ("1",  "config"),
             "cred_snmp_enabled":       ("1",  "config"),
             "cred_ssh_enabled":        ("1",  "config"),
@@ -2863,6 +2863,8 @@ def main():
             "cred_mysql_enabled":      ("1",  "config"),
             "cred_postgres_enabled":   ("1",  "config"),
             "cred_scanning_enabled":    ("0",  "config"),
+            "vuln_scanning_enabled":    ("0",  "config"),
+            "community_scanning_enabled": ("0", "config"),
             "screenshot_ttl_hours":    ("12", "config"),
             "ai_assessment_enabled":   ("1",  "config"),
             # Network discovery overrides (empty = use .env / auto-detect)

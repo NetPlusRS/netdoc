@@ -570,7 +570,7 @@ def create_app():
     try:
         _cfg_defaults_web = {
             "full_scan_max_age_days":  ("7",  "config"),
-            "full_scan_enabled":       ("1",  "config"),
+            "full_scan_enabled":       ("0",  "config"),
             "inventory_enabled":       ("1",  "config"),
             "cred_snmp_enabled":       ("1",  "config"),
             "cred_ssh_enabled":        ("1",  "config"),
@@ -581,6 +581,8 @@ def create_app():
             "cred_mysql_enabled":      ("1",  "config"),
             "cred_postgres_enabled":   ("1",  "config"),
             "cred_scanning_enabled":   ("0",  "config"),
+            "vuln_scanning_enabled":   ("0",  "config"),
+            "community_scanning_enabled": ("0", "config"),
             "screenshot_ttl_hours":    ("12", "config"),
             "ai_assessment_enabled":   ("1",  "config"),
             "lab_monitoring_enabled":  ("0",  "config"),
@@ -2901,8 +2903,12 @@ def create_app():
             status = {r.key: r.value for r in db.query(SystemStatus).all()}
         finally:
             db.close()
+        full_scan_enabled    = status.get("full_scan_enabled",        "0") != "0"
+        community_scanning_enabled = status.get("community_scanning_enabled", "0") != "0"
         oui_status, _ = _api("get", "/api/scan/oui-status")
-        return render_template("scan.html", status=status, oui_status=oui_status or {})
+        return render_template("scan.html", status=status, oui_status=oui_status or {},
+                               full_scan_enabled=full_scan_enabled,
+                               community_scanning_enabled=community_scanning_enabled)
 
     @app.route("/scan/trigger", methods=["POST"])
     def scan_trigger():
@@ -2921,6 +2927,29 @@ def create_app():
         else:
             flash(f"Uruchomiono {label} w tle.", "success")
         return redirect(url_for("scan"))
+
+    def _toggle_config_flag(key: str, referrer: str) -> str:
+        """Toggles a 0/1 config flag in SystemStatus and returns redirect URL."""
+        db = SessionLocal()
+        try:
+            row = db.query(SystemStatus).filter(
+                SystemStatus.key == key,
+                SystemStatus.category == "config",
+            ).first()
+            if row:
+                row.value = "0" if row.value != "0" else "1"
+                db.commit()
+        finally:
+            db.close()
+        return request.referrer or referrer
+
+    @app.route("/scan/full-scan-toggle", methods=["POST"])
+    def full_scan_toggle():
+        return redirect(_toggle_config_flag("full_scan_enabled", "/scan"))
+
+    @app.route("/scan/community-scan-toggle", methods=["POST"])
+    def community_scan_toggle():
+        return redirect(_toggle_config_flag("community_scanning_enabled", "/scan"))
 
     # ── settings ───────────────────────────────────────────────────────────────
     @app.route("/settings")
@@ -4402,6 +4431,10 @@ def create_app():
                            .filter(Credential.last_success_at.isnot(None))
                            .order_by(Credential.last_success_at.desc())
                            .all())
+            _ve_row = db.query(SystemStatus).filter(
+                SystemStatus.key == "vuln_scanning_enabled"
+            ).first()
+            vuln_scanning_enabled = (_ve_row.value if _ve_row else "0") != "0"
         finally:
             db.close()
 
@@ -4446,6 +4479,7 @@ def create_app():
             closed_vulns=closed_vulns,
             suppressed_vulns=suppressed_vulns,
             working_creds=working_creds,
+            vuln_scanning_enabled=vuln_scanning_enabled,
             vuln_hints=_VULN_HINTS,
             summary=summary,
             vuln_type_counts=vuln_type_counts,
@@ -4489,6 +4523,21 @@ def create_app():
             flash(f"Podatnosc #{vuln_id} zamknieta.", "success")
         return redirect(url_for("security"))
 
+    @app.route("/security/vuln-scan-toggle", methods=["POST"])
+    def vuln_scan_toggle():
+        """Włącz/wyłącz skanowanie podatności (vuln_scanning_enabled) i wróć do referrera."""
+        db = SessionLocal()
+        try:
+            row = db.query(SystemStatus).filter(
+                SystemStatus.key == "vuln_scanning_enabled",
+                SystemStatus.category == "config",
+            ).first()
+            if row:
+                row.value = "0" if row.value != "0" else "1"
+                db.commit()
+        finally:
+            db.close()
+        return redirect(request.referrer or "/security")
 
     # -- Diagnostics alerts page -----------------------------------------------
     @app.route("/alerts")

@@ -16,6 +16,28 @@
 {% endmacro %}
 
 {% block content %}
+
+{# ── Toggle skanowania podatności ───────────────────────────────────────── #}
+{% if vuln_scanning_enabled %}
+<div class="alert alert-success py-2 mb-3 d-flex align-items-center justify-content-between">
+  <span><i class="bi bi-shield-check me-2"></i>Vulnerability scanning is <strong>enabled</strong> — vuln-worker is actively scanning</span>
+  <form method="post" action="/security/vuln-scan-toggle" class="mb-0">
+    <button type="submit" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-pause-circle me-1"></i>Disable
+    </button>
+  </form>
+</div>
+{% else %}
+<div class="alert alert-warning py-2 mb-3 d-flex align-items-center justify-content-between">
+  <span><i class="bi bi-pause-circle me-2"></i>Vulnerability scanning is <strong>disabled</strong> — vuln-worker is idle</span>
+  <form method="post" action="/security/vuln-scan-toggle" class="mb-0">
+    <button type="submit" class="btn btn-success btn-sm">
+      <i class="bi bi-play-circle me-1"></i>Enable scanning
+    </button>
+  </form>
+</div>
+{% endif %}
+
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h5 class="mb-0"><i class="bi bi-shield-exclamation me-2"></i>Bezpieczenstwo</h5>
   <span class="text-muted small">{{ now }}</span>

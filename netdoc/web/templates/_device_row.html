@@ -223,11 +223,8 @@
                   {% set _snmp_ago = (_snmp_diff // 86400) | string ~ ' days ago' %}
                 {% endif %}
               {% endif %}
-              <span class="badge bg-success"
-                    style="cursor:default;font-family:monospace;font-size:.75rem"
-                    title="SNMP OK — community: {{ d.snmp_community }}{% if _snmp_ago %} ({{ _snmp_ago }}){% endif %}">
-                {{ d.snmp_community }}
-              </span>
+              <i class="bi bi-wifi text-success fs-5"
+                 title="SNMP OK{% if _snmp_ago %} ({{ _snmp_ago }}){% endif %}"></i>
             {% else %}
               <span class="text-muted" style="font-size:.8rem" title="SNMP — no access or not tested">—</span>
             {% endif %}
