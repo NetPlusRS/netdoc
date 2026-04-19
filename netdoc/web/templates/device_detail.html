@@ -1693,7 +1693,19 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
         const ctx = document.getElementById('diagResourceChart');
         if (!ctx) return;
         if (_diagChart) { _diagChart.destroy(); _diagChart = null; }
-        if (rows.length === 0) return;
+        const _noData = ctx.parentElement?.querySelector('.ch-no-data');
+        if (rows.length === 0) {
+          ctx.style.display = 'none';
+          if (!_noData) {
+            const m = document.createElement('p');
+            m.className = 'text-muted small text-center ch-no-data py-3';
+            m.innerHTML = '<i class="bi bi-bar-chart me-1"></i>No data for this period — metrics are collected every 5 min';
+            ctx.parentElement.appendChild(m);
+          }
+          return;
+        }
+        if (_noData) _noData.remove();
+        ctx.style.display = '';
 
         _diagChart = new Chart(ctx.getContext('2d'), {
           type: 'line',

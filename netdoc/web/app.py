@@ -656,28 +656,62 @@ def create_app():
     # ── index ──────────────────────────────────────────────────────────────────
     @app.route("/")
     def index():
+        from netdoc.storage.models import DevicePortAlert
+        from sqlalchemy import func as _func
+        import json as _json
         db = SessionLocal()
         try:
-            device_count = db.query(Device).count()
-            network_count = db.query(DiscoveredNetwork).count()
-            credential_count = db.query(Credential).count()
+            device_count   = db.query(Device).count()
+            network_count  = db.query(DiscoveredNetwork).count()
             active_devices = db.query(Device).filter(Device.is_active.is_(True)).count()
             credentialed_devices = db.query(Device).filter(
                 Device.is_active.is_(True),
                 Device.last_credential_ok_at.isnot(None)
             ).count()
-            status = {r.key: r.value for r in db.query(SystemStatus).all()}
 
-            # Parsuj dane internet-workera (JSON) do oddzielnych zmiennych
-            import json as _json
+            # Alerty diagnostyczne (aktywne, niepotwierdzane)
+            alert_critical = db.query(DevicePortAlert).filter(
+                DevicePortAlert.acknowledged_at.is_(None),
+                DevicePortAlert.severity == "critical"
+            ).count()
+            alert_warning = db.query(DevicePortAlert).filter(
+                DevicePortAlert.acknowledged_at.is_(None),
+                DevicePortAlert.severity == "warning"
+            ).count()
+
+            # Typy urządzeń — sorted by count desc
+            _type_rows = (
+                db.query(Device.device_type, _func.count(Device.id))
+                .group_by(Device.device_type)
+                .order_by(_func.count(Device.id).desc())
+                .all()
+            )
+            device_type_counts = {
+                (t.value if hasattr(t, "value") else str(t)): c
+                for t, c in _type_rows
+            }
+
+            # Scanner status — tylko przydatne klucze
+            _SCANNER_KEYS = {
+                "scanner_last_at", "scanner_last_devices", "scanner_last_duration_s",
+                "scanner_last_type", "scanner_job", "scan_progress",
+                "scanner_started_at", "scanning_ips",
+            }
+            _status_rows = db.query(SystemStatus).filter(
+                SystemStatus.key.in_(_SCANNER_KEYS | {"internet_status", "internet_speed"})
+            ).all()
+            _status = {r.key: r.value for r in _status_rows}
+
             try:
-                internet_status = _json.loads(status.get("internet_status", "{}")) or {}
+                internet_status = _json.loads(_status.get("internet_status", "{}")) or {}
             except Exception:
                 internet_status = {}
             try:
-                internet_speed = _json.loads(status.get("internet_speed", "{}")) or {}
+                internet_speed = _json.loads(_status.get("internet_speed", "{}")) or {}
             except Exception:
                 internet_speed = {}
+
+            scanner_status = {k: _status.get(k, "") for k in _SCANNER_KEYS}
 
             vuln_critical = db.query(Vulnerability).filter(
                 Vulnerability.is_open.is_(True), Vulnerability.suppressed.is_(False),
@@ -696,10 +730,12 @@ def create_app():
             "index.html",
             device_count=device_count,
             network_count=network_count,
-            credential_count=credential_count,
             active_devices=active_devices,
             credentialed_devices=credentialed_devices,
-            status=status,
+            alert_critical=alert_critical,
+            alert_warning=alert_warning,
+            device_type_counts=device_type_counts,
+            scanner_status=scanner_status,
             vuln_critical=vuln_critical,
             vuln_high=vuln_high,
             vuln_open=vuln_open,

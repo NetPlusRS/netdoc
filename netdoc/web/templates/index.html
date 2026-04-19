@@ -2,7 +2,9 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<div class="row g-3 mb-4">
+
+{# ── Rząd 1: Kluczowe liczniki ──────────────────────────────────────────── #}
+<div class="row g-3 mb-3">
   <div class="col-6 col-lg-3">
     <div class="card stat-card text-center py-3">
       <div class="display-6 fw-bold">{{ device_count }}</div>
@@ -23,104 +25,208 @@
   </div>
   <div class="col-6 col-lg-3">
     <div class="card stat-card text-center py-3">
-      <div class="display-6 fw-bold" style="color:var(--accent)">{{ credentialed_devices }}<span class="fs-5 text-muted fw-normal">/{{ active_devices }}</span></div>
-      <div class="text-muted small"><i class="bi bi-key-fill me-1"></i>With access (active)</div>
+      <div class="display-6 fw-bold" style="color:var(--accent)">
+        {{ credentialed_devices }}<span class="fs-5 text-muted fw-normal">/{{ active_devices }}</span>
+      </div>
+      <div class="text-muted small"><i class="bi bi-key-fill me-1"></i>With access</div>
     </div>
   </div>
 </div>
 
-<div class="row g-3 mb-4">
-  <div class="col-6 col-lg-4">
-    <div class="card stat-card text-center py-3" style="border-color: {% if vuln_critical > 0 %}#da3633{% else %}var(--border){% endif %}">
-      <div class="display-6 fw-bold" style="color: {% if vuln_critical > 0 %}#ff7b72{% else %}var(--text-muted){% endif %}">{{ vuln_critical }}</div>
-      <div class="text-muted small"><i class="bi bi-shield-fill-exclamation me-1"></i>Critical vulnerabilities</div>
-    </div>
+{# ── Rząd 2: Podatności + alerty diagnostyczne ──────────────────────────── #}
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-2">
+    <a href="/security?severity=critical" class="text-decoration-none">
+      <div class="card stat-card text-center py-3" style="border-color: {% if vuln_critical > 0 %}#da3633{% else %}var(--border){% endif %}">
+        <div class="display-6 fw-bold" style="color: {% if vuln_critical > 0 %}#ff7b72{% else %}var(--text-muted){% endif %}">{{ vuln_critical }}</div>
+        <div class="text-muted small"><i class="bi bi-shield-fill-exclamation me-1"></i>Critical vulns</div>
+      </div>
+    </a>
   </div>
-  <div class="col-6 col-lg-4">
-    <div class="card stat-card text-center py-3" style="border-color: {% if vuln_high > 0 %}#e3b341{% else %}var(--border){% endif %}">
-      <div class="display-6 fw-bold" style="color: {% if vuln_high > 0 %}#e3b341{% else %}var(--text-muted){% endif %}">{{ vuln_high }}</div>
-      <div class="text-muted small"><i class="bi bi-shield-exclamation me-1"></i>High vulnerabilities</div>
-    </div>
+  <div class="col-6 col-md-2">
+    <a href="/security?severity=high" class="text-decoration-none">
+      <div class="card stat-card text-center py-3" style="border-color: {% if vuln_high > 0 %}#e3b341{% else %}var(--border){% endif %}">
+        <div class="display-6 fw-bold" style="color: {% if vuln_high > 0 %}#e3b341{% else %}var(--text-muted){% endif %}">{{ vuln_high }}</div>
+        <div class="text-muted small"><i class="bi bi-shield-exclamation me-1"></i>High vulns</div>
+      </div>
+    </a>
   </div>
-  <div class="col-12 col-lg-4">
-    <div class="card stat-card text-center py-3">
-      <div class="display-6 fw-bold text-muted">{{ vuln_open }}</div>
-      <div class="text-muted small"><a href="/security" class="text-decoration-none text-muted"><i class="bi bi-shield me-1"></i>All open &rarr;</a></div>
-    </div>
+  <div class="col-6 col-md-2">
+    <a href="/security" class="text-decoration-none">
+      <div class="card stat-card text-center py-3">
+        <div class="display-6 fw-bold text-muted">{{ vuln_open }}</div>
+        <div class="text-muted small"><i class="bi bi-shield me-1"></i>All open</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-2">
+    <a href="/alerts" class="text-decoration-none">
+      <div class="card stat-card text-center py-3" style="border-color: {% if alert_critical > 0 %}#da3633{% else %}var(--border){% endif %}">
+        <div class="display-6 fw-bold" style="color: {% if alert_critical > 0 %}#ff7b72{% else %}var(--text-muted){% endif %}">{{ alert_critical }}</div>
+        <div class="text-muted small"><i class="bi bi-cpu me-1"></i>Critical alerts</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-2">
+    <a href="/alerts" class="text-decoration-none">
+      <div class="card stat-card text-center py-3" style="border-color: {% if alert_warning > 0 %}#e3b341{% else %}var(--border){% endif %}">
+        <div class="display-6 fw-bold" style="color: {% if alert_warning > 0 %}#e3b341{% else %}var(--text-muted){% endif %}">{{ alert_warning }}</div>
+        <div class="text-muted small"><i class="bi bi-exclamation-triangle me-1"></i>Warning alerts</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-2">
+    <a href="/alerts" class="text-decoration-none">
+      <div class="card stat-card text-center py-3">
+        <div class="display-6 fw-bold {% if (alert_critical + alert_warning) == 0 %}text-success{% else %}text-muted{% endif %}">
+          {% if (alert_critical + alert_warning) == 0 %}<i class="bi bi-check-circle" style="font-size:2rem"></i>{% else %}{{ alert_critical + alert_warning }}{% endif %}
+        </div>
+        <div class="text-muted small"><i class="bi bi-bell me-1"></i>Total alerts</div>
+      </div>
+    </a>
   </div>
 </div>
 
-<div class="row g-3 mb-4">
-  <div class="col-12 col-lg-6">
-    <div class="card">
-      <div class="card-header"><i class="bi bi-activity me-2"></i>System status</div>
-      <div class="card-body">
-        <table class="table table-sm mb-0">
-          <tbody>
-            {% for k, v in status.items() %}
-            <tr><td class="text-muted small" style="width:50%">{{ k }}</td><td class="small">{{ v }}</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
+{# ── Rząd 3: Typy urządzeń + Scanner status + Quick links ───────────────── #}
+<div class="row g-3 mb-3">
+
+  <div class="col-12 col-lg-5">
+    <div class="card h-100">
+      <div class="card-header"><i class="bi bi-diagram-3 me-2"></i>Device types</div>
+      <div class="card-body py-2">
+        {% set _type_icons = {
+          'router':      ('bi-router',         'text-primary'),
+          'switch':      ('bi-hdd-network',    'text-info'),
+          'ap':          ('bi-wifi',           'text-success'),
+          'server':      ('bi-server',         'text-secondary'),
+          'printer':     ('bi-printer',        'text-muted'),
+          'workstation': ('bi-pc-display',     'text-muted'),
+          'camera':      ('bi-camera-video',   'text-warning'),
+          'phone':       ('bi-phone',          'text-muted'),
+          'iot':         ('bi-cpu',            'text-danger'),
+          'plc':         ('bi-gear-wide',      'text-danger'),
+          'firewall':    ('bi-shield-shaded',  'text-danger'),
+          'nas':         ('bi-device-hdd',     'text-secondary'),
+          'unknown':     ('bi-question-circle','text-muted'),
+        } %}
+        <div class="row g-2">
+          {% for dtype, cnt in device_type_counts.items() %}
+          {% if cnt > 0 %}
+          {% set _ic = _type_icons.get(dtype, ('bi-question-circle', 'text-muted')) %}
+          <div class="col-6 col-md-4">
+            <a href="/devices?type={{ dtype }}" class="text-decoration-none">
+              <div class="d-flex align-items-center gap-2 p-2 rounded" style="background:var(--bg-subtle)">
+                <i class="bi {{ _ic[0] }} {{ _ic[1] }} fs-5"></i>
+                <div>
+                  <div class="fw-semibold small">{{ cnt }}</div>
+                  <div class="text-muted" style="font-size:.72rem">{{ dtype }}</div>
+                </div>
+              </div>
+            </a>
+          </div>
+          {% endif %}
+          {% endfor %}
+        </div>
       </div>
     </div>
   </div>
-  <div class="col-12 col-lg-6">
-    <div class="card">
+
+  <div class="col-12 col-lg-4">
+    <div class="card h-100">
+      <div class="card-header"><i class="bi bi-radar me-2"></i>Scanner status</div>
+      <div class="card-body py-2 d-flex flex-column">
+        {% set _last_at    = scanner_status.get('scanner_last_at', '') %}
+        {% set _started_at = scanner_status.get('scanner_started_at', '') %}
+        {% set _job        = scanner_status.get('scanner_job', '') %}
+        {% set _progress   = scanner_status.get('scan_progress', '') %}
+        {% set _devices    = scanner_status.get('scanner_last_devices', '') %}
+        {% set _dur        = scanner_status.get('scanner_last_duration_s', '') %}
+        {% set _type       = scanner_status.get('scanner_last_type', '') %}
+        {% set _scanning   = _started_at and _last_at and _started_at > _last_at %}
+
+        {% if _scanning %}
+        <div class="alert alert-info py-2 mb-2 small">
+          <i class="bi bi-arrow-repeat me-1"></i><strong>Scanning…</strong>
+          {% if _job %} {{ _job }}{% endif %}
+          {% if _progress %}<span class="text-muted"> ({{ _progress }})</span>{% endif %}
+        </div>
+        {% else %}
+        <div class="mb-1 small">
+          <span class="text-muted">Last scan:</span>
+          <strong>{{ _last_at[:16] if _last_at else '—' }}</strong>
+          {% if _type %}<span class="badge bg-secondary ms-1">{{ _type }}</span>{% endif %}
+        </div>
+        {% endif %}
+        {% if _devices %}
+        <div class="mb-1 small"><span class="text-muted">Devices:</span> <strong>{{ _devices }}</strong></div>
+        {% endif %}
+        {% if _dur %}
+        <div class="mb-2 small"><span class="text-muted">Duration:</span>
+          <strong>{{ (_dur | float / 60) | round(1) }} min</strong></div>
+        {% endif %}
+        <div class="mt-auto">
+          <a href="/scan" class="btn btn-outline-success btn-sm w-100">
+            <i class="bi bi-radar me-1"></i>Run scan
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-3">
+    <div class="card h-100">
       <div class="card-header"><i class="bi bi-link-45deg me-2"></i>Quick links</div>
       <div class="card-body d-grid gap-2">
-        <a href="{{ grafana_url }}" target="_blank" class="btn btn-outline-warning">
-          <i class="bi bi-bar-chart-fill me-2"></i>Grafana — Dashboards
+        <a href="{{ grafana_url }}/d/netdoc-main" target="_blank" class="btn btn-outline-warning btn-sm">
+          <i class="bi bi-bar-chart-fill me-2"></i>Grafana dashboard
         </a>
-        <a href="{{ grafana_url }}/d/netdoc-main" target="_blank" class="btn btn-outline-info">
-          <i class="bi bi-grid-1x2 me-2"></i>Grafana — NetDoc Main Dashboard
+        <a href="/alerts" class="btn btn-outline-danger btn-sm">
+          <i class="bi bi-bell me-2"></i>Diagnostic alerts
         </a>
-        <a href="/scan" class="btn btn-outline-success">
-          <i class="bi bi-radar me-2"></i>Run scan
+        <a href="/credentials" class="btn btn-outline-secondary btn-sm">
+          <i class="bi bi-key me-2"></i>Credentials
         </a>
-        <a href="/credentials" class="btn btn-outline-secondary">
-          <i class="bi bi-key me-2"></i>Manage credentials
+        <a href="/security" class="btn btn-outline-info btn-sm">
+          <i class="bi bi-shield me-2"></i>Vulnerabilities
         </a>
       </div>
     </div>
   </div>
+
 </div>
 
 {# ── Internet / DNS / Speed ─────────────────────────────────────────────── #}
 {% if internet_status or internet_speed %}
-<div class="row g-3 mb-4">
+<div class="row g-3 mb-3">
   <div class="col-12">
     <div class="card">
       <div class="card-header d-flex align-items-center justify-content-between">
         <span><i class="bi bi-globe me-2"></i>Internet connectivity</span>
         {% if internet_status.get('updated_at') %}
-          <span class="text-muted small">Checked: {{ internet_status.updated_at }}</span>
+          <span class="text-muted small">{{ internet_status.updated_at }}</span>
         {% endif %}
       </div>
       <div class="card-body py-2">
-        <div class="row g-3 text-center">
+        <div class="row g-2 text-center">
 
-          {# DNS Google #}
           {% set dg = internet_status.get('dns_google', {}) %}
           <div class="col-6 col-md-3">
             <div class="fw-bold {% if dg.get('ok') %}text-success{% elif internet_status %}text-danger{% else %}text-muted{% endif %}">
               {% if dg.get('ok') %}<i class="bi bi-check-circle-fill"></i>{% elif internet_status %}<i class="bi bi-x-circle-fill"></i>{% else %}&mdash;{% endif %}
               Google DNS
             </div>
-            <div class="text-muted small">8.8.8.8:53{% if dg.get('ms') is not none %} &middot; {{ dg.ms }}ms{% endif %}</div>
+            <div class="text-muted small">8.8.8.8{% if dg.get('ms') is not none %} &middot; {{ dg.ms }}ms{% endif %}</div>
           </div>
 
-          {# DNS Cloudflare #}
           {% set dc = internet_status.get('dns_cloudflare', {}) %}
           <div class="col-6 col-md-3">
             <div class="fw-bold {% if dc.get('ok') %}text-success{% elif internet_status %}text-danger{% else %}text-muted{% endif %}">
               {% if dc.get('ok') %}<i class="bi bi-check-circle-fill"></i>{% elif internet_status %}<i class="bi bi-x-circle-fill"></i>{% else %}&mdash;{% endif %}
               Cloudflare DNS
             </div>
-            <div class="text-muted small">1.1.1.1:53{% if dc.get('ms') is not none %} &middot; {{ dc.ms }}ms{% endif %}</div>
+            <div class="text-muted small">1.1.1.1{% if dc.get('ms') is not none %} &middot; {{ dc.ms }}ms{% endif %}</div>
           </div>
 
-          {# HTTP latencja + jitter #}
           {% set hc = internet_status.get('http_cloudflare', {}) %}
           <div class="col-6 col-md-3">
             <div class="fw-bold {% if hc.get('ok') %}text-success{% elif internet_status %}text-danger{% else %}text-muted{% endif %}">
@@ -128,30 +234,20 @@
               HTTP Latency
             </div>
             {% if hc.get('avg_ms') is not none %}
-              <div class="text-muted small">
-                avg {{ hc.avg_ms }}ms &middot; min {{ hc.min_ms }}ms &middot; max {{ hc.max_ms }}ms
-              </div>
-              <div class="text-muted small">Jitter: {{ hc.jitter_ms }}ms ({{ hc.pings }} pings)</div>
+              <div class="text-muted small">avg {{ hc.avg_ms }}ms &middot; jitter {{ hc.jitter_ms }}ms</div>
             {% else %}
               <div class="text-muted small">1.1.1.1{% if hc.get('ms') is not none %} &middot; {{ hc.ms }}ms{% endif %}</div>
             {% endif %}
           </div>
 
-          {# Download + upload speed #}
           {% set spd = internet_speed %}
           <div class="col-6 col-md-3">
-            {% if spd.get('download_mbps') is not none or spd.get('upload_mbps') is not none %}
+            {% if spd.get('download_mbps') is not none %}
               <div class="fw-bold {% if spd.get('ok') %}text-success{% else %}text-danger{% endif %}">
-                <i class="bi bi-speedometer2"></i>
-                {% if spd.get('download_mbps') is not none %}
-                  <i class="bi bi-arrow-down-circle text-info" title="Download"></i> {{ spd.download_mbps }} Mbps
-                {% endif %}
+                <i class="bi bi-arrow-down-circle text-info"></i> {{ spd.download_mbps }} Mbps
               </div>
               <div class="text-muted small">
-                {% if spd.get('upload_mbps') is not none %}
-                  <i class="bi bi-arrow-up-circle text-warning"></i> {{ spd.upload_mbps }} Mbps upload
-                {% endif %}
-                {% if spd.get('updated_at') %}&middot; {{ spd.updated_at[:16] }}{% endif %}
+                <i class="bi bi-arrow-up-circle text-warning"></i> {{ spd.get('upload_mbps', '—') }} Mbps upload
               </div>
             {% else %}
               <div class="fw-bold text-muted"><i class="bi bi-speedometer2"></i> &mdash;</div>
@@ -165,4 +261,5 @@
   </div>
 </div>
 {% endif %}
+
 {% endblock %}

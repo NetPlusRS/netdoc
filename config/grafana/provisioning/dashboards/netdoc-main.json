@@ -1373,6 +1373,324 @@
         },
         "overrides": []
       }
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "Alerty diagnostyczne",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 57
+      },
+      "collapsed": false
+    },
+    {
+      "id": 31,
+      "type": "table",
+      "title": "Aktywne alerty — CPU / RAM / bledy portow",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 58
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "netdoc_pg"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  CASE a.severity WHEN 'critical' THEN '🔴' ELSE '🟡' END AS sev,\n  COALESCE(d.hostname, d.ip) AS device,\n  d.ip,\n  a.alert_type AS type,\n  COALESCE(i.ifname, CASE WHEN a.if_index = 0 THEN 'device' ELSE 'if#'||a.if_index::text END) AS interface,\n  ROUND(a.value_current::numeric, 1) AS value,\n  TO_CHAR(a.first_seen, 'MM-DD HH24:MI') AS since\nFROM device_port_alerts a\nJOIN devices d ON a.device_id = d.id\nLEFT JOIN device_interfaces i ON i.device_id = a.device_id AND i.if_index = a.if_index\nWHERE a.acknowledged_at IS NULL\nORDER BY CASE a.severity WHEN 'critical' THEN 0 ELSE 1 END, a.first_seen DESC\nLIMIT 50",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "netdoc_pg"
+          }
+        }
+      ],
+      "options": {
+        "sortBy": [],
+        "footer": {
+          "show": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "sev"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": ""
+              },
+              {
+                "id": "custom.width",
+                "value": 36
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "value"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 32,
+      "type": "row",
+      "title": "Typy urzadzen i zasoby",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 67
+      },
+      "collapsed": false
+    },
+    {
+      "id": 33,
+      "type": "piechart",
+      "title": "Urzadzenia wg typu",
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 0,
+        "y": 68
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "netdoc_pg"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT device_type::text AS type, COUNT(*) AS count\nFROM devices\nGROUP BY device_type\nORDER BY count DESC",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "netdoc_pg"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ]
+        },
+        "pieType": "pie",
+        "displayLabels": [
+          "name",
+          "value"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "value",
+            "percent"
+          ]
+        }
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 34,
+      "type": "table",
+      "title": "CPU & RAM — biezace wartosci (ostatnie 2h)",
+      "gridPos": {
+        "h": 9,
+        "w": 16,
+        "x": 8,
+        "y": 68
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "netdoc_pg"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  COALESCE(d.hostname, d.ip) AS device,\n  d.device_type::text AS type,\n  MAX(CASE WHEN s.sensor_name = 'cpu_used_pct' THEN ROUND(s.value::numeric,1) END) AS \"CPU %\",\n  MAX(CASE WHEN s.sensor_name IN ('mem_used_pct','mem_io_used_pct') THEN ROUND(s.value::numeric,1) END) AS \"RAM %\",\n  TO_CHAR(MAX(s.polled_at), 'HH24:MI') AS updated\nFROM device_sensors s\nJOIN devices d ON s.device_id = d.id\nWHERE s.sensor_name IN ('cpu_used_pct','mem_used_pct','mem_io_used_pct')\n  AND s.polled_at >= NOW() - INTERVAL '2 hours'\nGROUP BY d.id, d.hostname, d.ip, d.device_type\nORDER BY MAX(CASE WHEN s.sensor_name = 'cpu_used_pct' THEN s.value END) DESC NULLS LAST\nLIMIT 20",
+          "format": "table",
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "netdoc_pg"
+          }
+        }
+      ],
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "CPU %",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "displayMode": "color-background-solid"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 80
+                    },
+                    {
+                      "color": "red",
+                      "value": 95
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "RAM %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 80
+                    },
+                    {
+                      "color": "red",
+                      "value": 90
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 35,
+      "type": "row",
+      "title": "Historia CPU & RAM",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 77
+      },
+      "collapsed": false
+    },
+    {
+      "id": 36,
+      "type": "timeseries",
+      "title": "Srednia CPU & RAM — wszystkie urzadzenia (ClickHouse)",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 78
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "netdoc_ch"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  toStartOfInterval(ts, INTERVAL 10 MINUTE) AS time,\n  round(avgIf(value, metric='cpu_percent'), 1) AS \"Avg CPU %\",\n  round(avgIf(value, metric='mem_used_pct'), 1) AS \"Avg RAM %\"\nFROM netdoc_logs.device_metrics\nWHERE ts >= $__fromTime AND ts <= $__toTime\n  AND if_index = 0\n  AND metric IN ('cpu_percent', 'mem_used_pct')\nGROUP BY time\nORDER BY time",
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "netdoc_ch"
+          }
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "lineWidth": 1.5,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
     }
   ],
   "templating": {
