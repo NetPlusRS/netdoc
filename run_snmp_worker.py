@@ -1567,7 +1567,7 @@ def scan_once() -> None:
 
     if not devices:
         logger.info("No devices with known community — nothing to poll")
-        g_polled.set(0); g_success.set(0); g_failed.set(0)
+        g_polled.set(0); g_success.set(0); g_failed.set(0); g_duration.set(0)
         return
 
     # Paszport cache — jeden lookup per device na cały cykl

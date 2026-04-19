@@ -164,6 +164,7 @@ def scan_once() -> None:
         communities = _get_db_communities(db)
         if not communities:
             logger.warning("No communities in database — skipping cycle")
+            g_scanned.set(0); g_found.set(0); g_stale.set(0); g_total_q.set(0); g_duration.set(0)
             return
 
         stale_threshold = datetime.utcnow() - timedelta(days=recheck_days)

@@ -1900,9 +1900,24 @@ def scan_once() -> None:
                 open_count, new_t, closed_t, elapsed)
 
 
+def _wait_for_schema(max_retries: int = 12, wait_s: int = 10) -> None:
+    from sqlalchemy import text
+    from netdoc.storage.database import engine
+    for attempt in range(1, max_retries + 1):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1 FROM devices LIMIT 1"))
+            return
+        except Exception:
+            logger.warning("Schema not ready (attempt %d/%d) — waiting %ds...", attempt, max_retries, wait_s)
+            time.sleep(wait_s)
+    logger.warning("Schema still unavailable after %ds — continuing anyway", max_retries * wait_s)
+
+
 def main() -> None:
     logger.info("Netdoc Vuln Worker start metrics=:%d default_interval=%ds",
                 METRICS_PORT, _DEFAULT_INTERVAL)
+    _wait_for_schema()
     init_db()
     start_http_server(METRICS_PORT)
     logger.info("Metrics: http://0.0.0.0:%d/metrics", METRICS_PORT)

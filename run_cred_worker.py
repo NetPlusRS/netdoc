@@ -598,6 +598,7 @@ def _read_method_flags() -> dict:
         "cred_ssh_enabled", "cred_ftp_enabled", "cred_web_enabled",
         "cred_rdp_enabled", "cred_vnc_enabled",
         "cred_mssql_enabled", "cred_mysql_enabled", "cred_postgres_enabled",
+        "cred_rtsp_enabled",
     )
     db = SessionLocal()
     try:
@@ -1993,7 +1994,7 @@ def _process_device(device_id: int, ip: str,
 
         # Wyfiltruj do nieprobowanych (max pairs_per_cycle per protokol)
         ssh_to_try      = _filter_untried(ssh_pairs,      tried.get("ssh",      set()), pairs_per_cycle)
-        telnet_to_try   = _filter_untried(ssh_pairs,      tried.get("telnet",   set()), pairs_per_cycle)
+        telnet_to_try   = _filter_untried(telnet_pairs,   tried.get("telnet",   set()), pairs_per_cycle)
         web_to_try      = _filter_untried(web_pairs,      tried.get("api",      set()), pairs_per_cycle)
         ftp_to_try      = _filter_untried(ftp_pairs,      tried.get("ftp",      set()), pairs_per_cycle)
         rdp_to_try      = _filter_untried(rdp_pairs,      tried.get("rdp",      set()), pairs_per_cycle)
@@ -2218,6 +2219,7 @@ def _process_device(device_id: int, ip: str,
 
 
 _dangling_threads: list = []  # BUG-CONC-2: sledzenie watkow po timeout (daemon, nie mozna zabic)
+_dangling_lock = threading.Lock()
 _MAX_DANGLING = 50            # limit zanim zaczniemy spowalniać
 
 
@@ -2237,11 +2239,13 @@ def _process_device_with_timeout(timeout_s: int, device_id: int, ip: str,
 
     # BUG-CONC-2: prune zakończonych wątków z listy dangling przed dodaniem nowych
     global _dangling_threads
-    _dangling_threads = [t for t in _dangling_threads if t.is_alive()]
-    if len(_dangling_threads) >= _MAX_DANGLING:
+    with _dangling_lock:
+        _dangling_threads = [t for t in _dangling_threads if t.is_alive()]
+        dangling_count = len(_dangling_threads)
+    if dangling_count >= _MAX_DANGLING:
         logger.warning(
             "BUG-CONC-2: %d watkow nadal aktywnych po timeout — mozliwy OOM/wyczerpanie fd. "
-            "Pomijam %s.", len(_dangling_threads), ip,
+            "Pomijam %s.", dangling_count, ip,
         )
         return {"ssh": False, "telnet": False, "web": False, "ftp": False, "rdp": False,
                 "mssql": False, "mysql": False, "postgres": False, "new": 0, "timeout": True}
@@ -2259,7 +2263,8 @@ def _process_device_with_timeout(timeout_s: int, device_id: int, ip: str,
     t.join(timeout=timeout_s)
     if t.is_alive():
         logger.warning("TIMEOUT   %-18s exceeded %ds — skipping device", ip, timeout_s)
-        _dangling_threads.append(t)  # śledź wątek — może nadal trzymać socket SSH
+        with _dangling_lock:
+            _dangling_threads.append(t)  # śledź wątek — może nadal trzymać socket SSH
         return {"ssh": False, "telnet": False, "web": False, "ftp": False, "rdp": False,
                 "mssql": False, "mysql": False, "postgres": False, "rtsp": False, "new": 0, "timeout": True}
     return result[0] or {"ssh": False, "telnet": False, "web": False, "ftp": False, "rdp": False,
@@ -2301,7 +2306,7 @@ def scan_once() -> None:
             ).all()
             if d.ip not in _self_ips
         ]
-        # SSH/Telnet — wczytaj pary lub wyczysc jesli wylaczone
+        # SSH — wczytaj pary lub wyczysc jesli wylaczone
         if method_flags.get("cred_ssh_enabled", True):
             _ssh_db = [(r.username or "", r.password_encrypted or "") for r in
                        db.query(Credential).filter(
@@ -2309,9 +2314,17 @@ def scan_once() -> None:
                            Credential.method    == CredentialMethod.ssh,
                        ).order_by(Credential.priority).limit(max_creds).all()]
             ssh_pairs = _ssh_db if _ssh_db else SSH_CREDENTIAL_FALLBACK[:max_creds]
+            # Telnet: dedykowane creds z DB, fallback do ssh_pairs
+            _tel_db = [(r.username or "", r.password_encrypted or "") for r in
+                       db.query(Credential).filter(
+                           Credential.device_id.is_(None),
+                           Credential.method    == CredentialMethod.telnet,
+                       ).order_by(Credential.priority).limit(max_creds).all()]
+            telnet_pairs = _tel_db if _tel_db else ssh_pairs
         else:
-            logger.info("SSH credential testing WYLACZONY (cred_ssh_enabled=0)")
+            logger.info("SSH/Telnet credential testing WYLACZONY (cred_ssh_enabled=0)")
             ssh_pairs = []
+            telnet_pairs = []
         # Web/HTTP — wczytaj pary lub wyczysc jesli wylaczone
         if method_flags.get("cred_web_enabled", True):
             _web_db = [(r.username or "", r.password_encrypted or "") for r in
@@ -2557,9 +2570,24 @@ def _seed_default_credentials() -> None:
         db.close()
 
 
+def _wait_for_schema(max_retries: int = 12, wait_s: int = 10) -> None:
+    from sqlalchemy import text
+    from netdoc.storage.database import engine
+    for attempt in range(1, max_retries + 1):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1 FROM devices LIMIT 1"))
+            return
+        except Exception:
+            logger.warning("Schema not ready (attempt %d/%d) — waiting %ds...", attempt, max_retries, wait_s)
+            time.sleep(wait_s)
+    logger.warning("Schema still unavailable after %ds — continuing anyway", max_retries * wait_s)
+
+
 def main() -> None:
     logger.info("Netdoc Cred Worker start metrics=:%d default_interval=%ds",
                 METRICS_PORT, _DEFAULT_INTERVAL)
+    _wait_for_schema()
     init_db()
     _seed_default_credentials()
     start_http_server(METRICS_PORT)
