@@ -1437,9 +1437,9 @@ def create_app():
                 Event.device_id.in_(dev_id_set),
             ).order_by(Event.device_id, Event.event_time.asc()).all():
                 et = e.event_type.value if hasattr(e.event_type, "value") else str(e.event_type)
-                if et == "device_disappeared" and e.device_id not in last_down:
+                if et == "device_disappeared":
                     last_down[e.device_id] = e.event_time
-                if et == "device_appeared" and e.device_id not in last_up:
+                if et == "device_appeared":
                     last_up[e.device_id] = e.event_time
                 dev_events_map[e.device_id].append(e)
             period_sec = 30 * 24 * 3600

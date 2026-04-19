@@ -1714,15 +1714,15 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
         + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
     }
 
-    // Zawsze aktualizuj "Ostatni kontakt" w tresci popovera (niezaleznie od zmiany statusu)
+    // Zawsze aktualizuj "Last contact" w tresci popovera (niezaleznie od zmiany statusu)
     if (lastSeenLocal) {
       let content = badge.getAttribute('data-bs-content') || '';
-      const updated = content.replace(/<b>Ostatni kontakt:<\/b>[^<]*<br>/,
-        '<b>Ostatni kontakt:</b> ' + lastSeenLocal + '<br>');
+      const updated = content.replace(/<b>Last contact:<\/b>[^<]*<br>/,
+        '<b>Last contact:</b> ' + lastSeenLocal + '<br>');
       if (updated !== content) {
         badge.setAttribute('data-bs-content', updated);
         const popInst = bootstrap.Popover.getInstance(badge);
-        if (popInst) { popInst.dispose(); new bootstrap.Popover(badge, { trigger: 'hover focus', html: true }); }
+        if (popInst) { popInst.dispose(); new bootstrap.Popover(badge, { trigger: 'hover focus', html: true, sanitize: false }); }
       }
     }
 
@@ -1733,7 +1733,7 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
       badge.className = newClass;
       badge.textContent = newText;
       badge.setAttribute('data-bs-title', newTitle);
-      new bootstrap.Popover(badge, { trigger: 'hover focus', html: true });
+      new bootstrap.Popover(badge, { trigger: 'hover focus', html: true, sanitize: false });
     }
 
     // Zaktualizuj data-active i data-lastseen na wierszu (uzywane przez filtry)
@@ -1745,7 +1745,7 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
   function fetchAndApplyRows(ids, replaceExisting) {
     if (!ids || ids.length === 0 || !tbody) return;
     fetch('/devices/rows?ids=' + ids.join(','))
-      .then(r => r.ok ? r.text() : null)
+      .then(r => r.ok ? r.text() : (console.warn('devices/rows error:', r.status), null))
       .then(html => {
         if (!html || !html.trim()) return;
         const tpl = document.createElement('template');

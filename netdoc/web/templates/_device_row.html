@@ -82,8 +82,9 @@
               "printer":     "bi-printer",
               "iot":         "bi-cpu",
               "nas":         "bi-hdd-stack",
-              "inverter":    "bi-lightning-charge",
-              "unknown":     "bi-question-circle",
+              "inverter":          "bi-lightning-charge",
+              "domain_controller": "bi-building-lock",
+              "unknown":           "bi-question-circle",
             } -%}
             {%- set _dt_color = {
               "router":      "bg-primary",
@@ -97,8 +98,9 @@
               "printer":     "bg-info text-dark",
               "iot":         "bg-warning text-dark",
               "nas":         "bg-secondary",
-              "inverter":    "bg-warning text-dark",
-              "unknown":     "bg-dark",
+              "inverter":          "bg-warning text-dark",
+              "domain_controller": "bg-primary",
+              "unknown":           "bg-dark",
             } -%}
             <span class="badge {{ _dt_color.get(_dt, 'bg-dark') }}" title="{{ _dt }}">
               <i class="bi {{ _dt_icon.get(_dt, 'bi-question-circle') }} me-1"></i>{{ _dt }}

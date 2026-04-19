@@ -43,7 +43,7 @@
         <label class="form-label form-label-sm mb-1">Typ</label>
         <select id="filter-type" class="form-select form-select-sm" style="min-width:120px" aria-label="Filtruj typ urządzenia">
           <option value="">Wszystkie</option>
-          {% set types = inv_rows | map(attribute='device') | map(attribute='device_type') | map(attribute='value') | unique | sort %}
+          {% set types = inv_rows | map(attribute='device') | selectattr('device_type') | map(attribute='device_type') | map(attribute='value') | unique | sort %}
           {% for t in types %}
           <option value="{{ t }}">{{ t }}</option>
           {% endfor %}
@@ -246,13 +246,23 @@
       }
     });
 
+    function ipToNum(s) {
+      const p = s.split('.').map(Number);
+      return p.length === 4 ? ((p[0]<<24)|(p[1]<<16)|(p[2]<<8)|p[3]) >>> 0 : NaN;
+    }
     const sorted = [...allRows].sort((a, b) => {
       const av = cellText(a, col), bv = cellText(b, col);
-      // numeric sort for IP and port-like columns
-      const numA = parseFloat(av), numB = parseFloat(bv);
-      let cmp = (!isNaN(numA) && !isNaN(numB))
-        ? numA - numB
-        : av.localeCompare(bv, 'pl', { numeric: true });
+      // IP address sort (col 0 or any dotted-quad)
+      const ipA = ipToNum(av), ipB = ipToNum(bv);
+      let cmp;
+      if (!isNaN(ipA) && !isNaN(ipB)) {
+        cmp = ipA - ipB;
+      } else {
+        const numA = parseFloat(av), numB = parseFloat(bv);
+        cmp = (!isNaN(numA) && !isNaN(numB))
+          ? numA - numB
+          : av.localeCompare(bv, 'pl', { numeric: true });
+      }
       return sortAsc ? cmp : -cmp;
     });
     sorted.forEach(r => tbody.appendChild(r));
