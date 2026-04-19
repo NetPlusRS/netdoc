@@ -720,7 +720,7 @@ def create_app():
             _started_at_raw = _status.get("scanner_started_at", "")
             _last_at_raw    = _status.get("scanner_last_at", "")
             _scanner_is_scanning = False
-            if _started_at_raw and _last_at_raw and _started_at_raw > _last_at_raw:
+            if _started_at_raw and (not _last_at_raw or _started_at_raw > _last_at_raw):
                 try:
                     from datetime import datetime as _dt
                     _start = _dt.fromisoformat(_started_at_raw[:19])
@@ -1723,10 +1723,18 @@ def create_app():
             )
 
             # Podatności (aktywne)
+            from sqlalchemy import case as _case_d
+            _sev_ord = _case_d(
+                (Vulnerability.severity == "critical", 0),
+                (Vulnerability.severity == "high", 1),
+                (Vulnerability.severity == "medium", 2),
+                (Vulnerability.severity == "low", 3),
+                else_=4,
+            )
             vulns = (
                 db.query(Vulnerability)
-                .filter(Vulnerability.device_id == device_id, Vulnerability.is_open == True)
-                .order_by(Vulnerability.severity, Vulnerability.title)
+                .filter(Vulnerability.device_id == device_id, Vulnerability.is_open.is_(True))
+                .order_by(_sev_ord, Vulnerability.title)
                 .all()
             )
 
@@ -2832,6 +2840,9 @@ def create_app():
                 db.add(row)
             row.value = "0" if row.value != "0" else "1"
             db.commit()
+        except Exception:
+            db.rollback()
+            raise
         finally:
             db.close()
         return redirect(request.referrer or "/credentials")
@@ -2957,6 +2968,9 @@ def create_app():
                 db.add(row)
             row.value = "0" if row.value != "0" else "1"
             db.commit()
+        except Exception:
+            db.rollback()
+            raise
         finally:
             db.close()
         return request.referrer or referrer
@@ -4448,8 +4462,15 @@ def create_app():
                 (Vulnerability.severity == "low", 3),
                 else_=4,
             )
+            from datetime import datetime as _dt2, timedelta as _td
+            _closed_cutoff = _dt2.utcnow() - _td(days=30)
             rows = (db.query(Vulnerability, Device)
                       .join(Device, Vulnerability.device_id == Device.id)
+                      .filter(
+                          (Vulnerability.is_open.is_(True)) |
+                          (Vulnerability.suppressed.is_(True)) |
+                          (Vulnerability.last_seen >= _closed_cutoff)
+                      )
                       .order_by(_sev_order, Vulnerability.last_seen.desc())
                       .all())
             cred_rows = (db.query(Credential, Device)
@@ -4563,6 +4584,9 @@ def create_app():
                 db.add(row)
             row.value = "0" if row.value != "0" else "1"
             db.commit()
+        except Exception:
+            db.rollback()
+            raise
         finally:
             db.close()
         return redirect(request.referrer or "/security")

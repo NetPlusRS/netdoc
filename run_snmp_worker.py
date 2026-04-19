@@ -1960,7 +1960,9 @@ def _collect_resource_metrics(
     from netdoc.storage.models import SystemStatus
     db_cfg = SessionLocal()
     try:
-        r = db_cfg.query(SystemStatus).filter(SystemStatus.key == "diag_enabled").first()
+        r = db_cfg.query(SystemStatus).filter(
+            SystemStatus.key == "diag_enabled", SystemStatus.category == "config"
+        ).first()
         if r and r.value == "0":
             return
     except Exception:
@@ -2028,7 +2030,8 @@ def _compute_alerts(devices) -> None:
                 "diag_error_trend_pct", "diag_error_trend_days",
                 "diag_cpu_warn_pct", "diag_cpu_critical_pct",
                 "diag_mem_warn_pct", "diag_mem_critical_pct",
-            ])
+            ]),
+            SystemStatus.category == "config",
         ).all()
         cfg = {r.key: r.value for r in cfg_rows}
     finally:
