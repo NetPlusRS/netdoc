@@ -599,6 +599,7 @@ def create_app():
             "network_ranges":          ("",   "worker_settings"),
             "scan_vpn_networks":       ("0",  "worker_settings"),
             "scan_virtual_networks":   ("0",  "worker_settings"),
+            "ignore_laa_macs":         ("1",  "worker_settings"),
         }
         _db_init = SessionLocal()
         try:

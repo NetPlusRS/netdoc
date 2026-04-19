@@ -2871,6 +2871,7 @@ def main():
             "network_ranges":          ("",   "worker_settings"),
             "scan_vpn_networks":       ("0",  "worker_settings"),
             "scan_virtual_networks":   ("0",  "worker_settings"),
+            "ignore_laa_macs":         ("1",  "worker_settings"),
             "lab_monitoring_enabled":  ("0",  "config"),
             # Diagnostics / alerting
             "diag_enabled":                  ("1",   "config"),

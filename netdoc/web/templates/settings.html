@@ -26,17 +26,17 @@
         {% set _cse = _cse_rows[0].value if _cse_rows else '0' %}
         <div class="col-12 d-flex align-items-center justify-content-between border-bottom pb-1 mb-0">
           <h6 class="text-muted mb-0">Credential Worker — SSH/Web/RDP/FTP password testing</h6>
-          <form method="post" action="/credentials/cred-scan-toggle" class="mb-0">
-            {% if _cse != '0' %}
-            <button type="submit" class="btn btn-success btn-sm">
-              <i class="bi bi-shield-check me-1"></i>Scanning ON — click to disable
-            </button>
-            {% else %}
-            <button type="submit" class="btn btn-outline-warning btn-sm">
-              <i class="bi bi-pause-circle me-1"></i>Scanning OFF — click to enable
-            </button>
-            {% endif %}
-          </form>
+          {% if _cse != '0' %}
+          <button type="button" class="btn btn-success btn-sm"
+                  onclick="fetch('/credentials/cred-scan-toggle',{method:'POST'}).then(()=>location.reload())">
+            <i class="bi bi-shield-check me-1"></i>Scanning ON — click to disable
+          </button>
+          {% else %}
+          <button type="button" class="btn btn-outline-warning btn-sm"
+                  onclick="fetch('/credentials/cred-scan-toggle',{method:'POST'}).then(()=>location.reload())">
+            <i class="bi bi-pause-circle me-1"></i>Scanning OFF — click to enable
+          </button>
+          {% endif %}
         </div>
 
         <div class="col-6 col-md-3">
@@ -742,10 +742,10 @@
     "0 = diagnostics module disabled — no CPU/mem collection, no alerts."),
   "diag_error_warn_per_hour": ("Port errors — warning threshold [err/h]",
     "Interface error rate (In+Out errors per hour) that triggers a WARNING alert. "
-    "Default: 10 errors/h. Applies to each interface independently."),
+    "Default: 200 errors/h. Applies to each interface independently."),
   "diag_error_critical_per_hour": ("Port errors — critical threshold [err/h]",
     "Interface error rate (In+Out errors per hour) that triggers a CRITICAL alert. "
-    "Default: 100 errors/h. Applies to each interface independently."),
+    "Default: 1000 errors/h. Applies to each interface independently."),
   "diag_error_trend_pct": ("Port error trend — growth alert [%]",
     "Percentage increase in error rate (last 24h vs. 7-day baseline) that triggers a TREND alert. "
     "Default: 50 — alert fires when error rate grows by 50% or more vs. the baseline. "
@@ -763,6 +763,18 @@
     "Collected from HOST-RESOURCES-MIB (hrStorageUsed / hrStorageSize). Default: 80%."),
   "diag_mem_critical_pct": ("Memory — critical threshold [%]",
     "Device memory utilization (%) that triggers a CRITICAL alert. Default: 90%."),
+  "cred_scanning_enabled": ("Credential scanning — enabled/disabled",
+    "1 = cred-worker actively tests SSH/Web/RDP/FTP passwords in every cycle. "
+    "0 = disabled by default — no login attempts are made until enabled. "
+    "Toggle also available on the Credentials page."),
+  "vuln_scanning_enabled": ("Vulnerability scanning — enabled/disabled",
+    "1 = vuln-worker actively scans for open dangerous services and default credentials. "
+    "0 = disabled by default — no vulnerability probing until enabled. "
+    "Toggle also available on the Security page."),
+  "community_scanning_enabled": ("SNMP community autodiscovery — enabled/disabled",
+    "1 = community-worker tries all known community strings against devices without a working community. "
+    "0 = disabled by default — no community brute-force. "
+    "Toggle also available on the Scan page."),
 } %}
 
 {# Klucze konfiguracyjne z widgetem select (0/1) #}
@@ -770,7 +782,9 @@
                        "cred_snmp_enabled", "cred_ssh_enabled",
                        "cred_ftp_enabled", "cred_web_enabled", "cred_rdp_enabled",
                        "cred_mssql_enabled", "cred_mysql_enabled", "cred_postgres_enabled",
-                       "ai_assessment_enabled", "diag_enabled"] %}
+                       "ai_assessment_enabled", "diag_enabled",
+                       "cred_scanning_enabled", "vuln_scanning_enabled",
+                       "community_scanning_enabled"] %}
 
 <p class="text-muted small">The <strong>config</strong> section is editable. Other settings are read-only (change in <code>.env</code> and restart the service).</p>
 
