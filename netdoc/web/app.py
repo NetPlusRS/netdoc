@@ -691,6 +691,7 @@ def create_app():
             device_type_counts = {
                 (t.value if hasattr(t, "value") else str(t)): c
                 for t, c in _type_rows
+                if t is not None
             }
 
             # Scanner status — tylko przydatne klucze
@@ -715,6 +716,18 @@ def create_app():
 
             scanner_status = {k: _status.get(k, "") for k in _SCANNER_KEYS}
 
+            # Detect active scan: started_at > last_at AND started within last 30 min
+            _started_at_raw = _status.get("scanner_started_at", "")
+            _last_at_raw    = _status.get("scanner_last_at", "")
+            _scanner_is_scanning = False
+            if _started_at_raw and _last_at_raw and _started_at_raw > _last_at_raw:
+                try:
+                    from datetime import datetime as _dt
+                    _start = _dt.fromisoformat(_started_at_raw[:19])
+                    _scanner_is_scanning = (_dt.utcnow() - _start).total_seconds() < 1800
+                except Exception:
+                    _scanner_is_scanning = True
+
             vuln_critical = db.query(Vulnerability).filter(
                 Vulnerability.is_open.is_(True), Vulnerability.suppressed.is_(False),
                 Vulnerability.severity == "critical"
@@ -738,6 +751,7 @@ def create_app():
             alert_warning=alert_warning,
             device_type_counts=device_type_counts,
             scanner_status=scanner_status,
+            scanner_is_scanning=_scanner_is_scanning,
             vuln_critical=vuln_critical,
             vuln_high=vuln_high,
             vuln_open=vuln_open,
@@ -2813,9 +2827,11 @@ def create_app():
                 SystemStatus.key == "cred_scanning_enabled",
                 SystemStatus.category == "config",
             ).first()
-            if row:
-                row.value = "0" if row.value != "0" else "1"
-                db.commit()
+            if not row:
+                row = SystemStatus(key="cred_scanning_enabled", category="config", value="0")
+                db.add(row)
+            row.value = "0" if row.value != "0" else "1"
+            db.commit()
         finally:
             db.close()
         return redirect(request.referrer or "/credentials")
@@ -2936,9 +2952,11 @@ def create_app():
                 SystemStatus.key == key,
                 SystemStatus.category == "config",
             ).first()
-            if row:
-                row.value = "0" if row.value != "0" else "1"
-                db.commit()
+            if not row:
+                row = SystemStatus(key=key, category="config", value="0")
+                db.add(row)
+            row.value = "0" if row.value != "0" else "1"
+            db.commit()
         finally:
             db.close()
         return request.referrer or referrer
@@ -4419,12 +4437,20 @@ def create_app():
     def security():
         from collections import Counter
         from datetime import datetime as dt
+        from sqlalchemy import case as _case
         db = SessionLocal()
         try:
             from netdoc.storage.models import Vulnerability, Device
+            _sev_order = _case(
+                (Vulnerability.severity == "critical", 0),
+                (Vulnerability.severity == "high", 1),
+                (Vulnerability.severity == "medium", 2),
+                (Vulnerability.severity == "low", 3),
+                else_=4,
+            )
             rows = (db.query(Vulnerability, Device)
                       .join(Device, Vulnerability.device_id == Device.id)
-                      .order_by(Vulnerability.severity, Vulnerability.last_seen.desc())
+                      .order_by(_sev_order, Vulnerability.last_seen.desc())
                       .all())
             cred_rows = (db.query(Credential, Device)
                            .join(Device, Credential.device_id == Device.id)
@@ -4532,9 +4558,11 @@ def create_app():
                 SystemStatus.key == "vuln_scanning_enabled",
                 SystemStatus.category == "config",
             ).first()
-            if row:
-                row.value = "0" if row.value != "0" else "1"
-                db.commit()
+            if not row:
+                row = SystemStatus(key="vuln_scanning_enabled", category="config", value="0")
+                db.add(row)
+            row.value = "0" if row.value != "0" else "1"
+            db.commit()
         finally:
             db.close()
         return redirect(request.referrer or "/security")

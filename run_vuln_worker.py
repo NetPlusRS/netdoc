@@ -1916,7 +1916,8 @@ def main() -> None:
             db = SessionLocal()
             try:
                 _row = db.query(SystemStatus).filter(
-                    SystemStatus.key == "vuln_scanning_enabled"
+                    SystemStatus.key == "vuln_scanning_enabled",
+                    SystemStatus.category == "config",
                 ).first()
                 _enabled = (_row.value if _row else "0") != "0"
             finally:

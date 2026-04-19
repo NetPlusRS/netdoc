@@ -95,19 +95,20 @@
       <div class="card-header"><i class="bi bi-diagram-3 me-2"></i>Device types</div>
       <div class="card-body py-2">
         {% set _type_icons = {
-          'router':      ('bi-router',         'text-primary'),
-          'switch':      ('bi-hdd-network',    'text-info'),
-          'ap':          ('bi-wifi',           'text-success'),
-          'server':      ('bi-server',         'text-secondary'),
-          'printer':     ('bi-printer',        'text-muted'),
-          'workstation': ('bi-pc-display',     'text-muted'),
-          'camera':      ('bi-camera-video',   'text-warning'),
-          'phone':       ('bi-phone',          'text-muted'),
-          'iot':         ('bi-cpu',            'text-danger'),
-          'plc':         ('bi-gear-wide',      'text-danger'),
-          'firewall':    ('bi-shield-shaded',  'text-danger'),
-          'nas':         ('bi-device-hdd',     'text-secondary'),
-          'unknown':     ('bi-question-circle','text-muted'),
+          'router':            ('bi-router',         'text-primary'),
+          'switch':            ('bi-hdd-network',    'text-info'),
+          'ap':                ('bi-wifi',           'text-success'),
+          'firewall':          ('bi-shield-shaded',  'text-danger'),
+          'server':            ('bi-server',         'text-secondary'),
+          'nas':               ('bi-device-hdd',     'text-secondary'),
+          'workstation':       ('bi-pc-display',     'text-muted'),
+          'domain_controller': ('bi-building-lock',  'text-primary'),
+          'camera':            ('bi-camera-video',   'text-warning'),
+          'printer':           ('bi-printer',        'text-muted'),
+          'phone':             ('bi-phone',          'text-muted'),
+          'iot':               ('bi-cpu',            'text-danger'),
+          'inverter':          ('bi-lightning-charge','text-warning'),
+          'unknown':           ('bi-question-circle','text-muted'),
         } %}
         <div class="row g-2">
           {% for dtype, cnt in device_type_counts.items() %}
@@ -142,7 +143,7 @@
         {% set _devices    = scanner_status.get('scanner_last_devices', '') %}
         {% set _dur        = scanner_status.get('scanner_last_duration_s', '') %}
         {% set _type       = scanner_status.get('scanner_last_type', '') %}
-        {% set _scanning   = _started_at and _last_at and _started_at > _last_at %}
+        {% set _scanning   = scanner_is_scanning %}
 
         {% if _scanning %}
         <div class="alert alert-info py-2 mb-2 small">
