@@ -2205,6 +2205,21 @@ def _compute_device_alerts(
                         "severity": "warning", "value_current": sval,
                         "value_baseline": None, "trend_pct": None})
 
+        # Cisco IOS: HOST-RESOURCES-MIB mem_used_pct (~87%) is a false positive —
+        # Cisco pre-allocates pool memory at boot, so it always looks high.
+        # Replace ClickHouse-based mem_high alert with CISCO-PROCESS-MIB data.
+        if "mem_total_mb" in _sensors and "mem_io_used_pct" in _sensors:
+            # Remove any ClickHouse-based mem_high alert
+            alerts_to_upsert = [a for a in alerts_to_upsert if a["alert_type"] != "mem_high"]
+            # Alert on I/O pool usage (mem_io_used_pct) — packet drop risk when high
+            _io_pct = _sensors["mem_io_used_pct"]
+            if _io_pct >= mem_crit:
+                alerts_to_upsert.append({"if_index": 0, "alert_type": "mem_high",
+                    "severity": "critical", "value_current": _io_pct, "value_baseline": None, "trend_pct": None})
+            elif _io_pct >= mem_warn:
+                alerts_to_upsert.append({"if_index": 0, "alert_type": "mem_high",
+                    "severity": "warning", "value_current": _io_pct, "value_baseline": None, "trend_pct": None})
+
         # RAID status != 1 (Synology: 11=Degrade, 12=Crashed)
         for sname, sval in _sensors.items():
             if sname.endswith("_status") and "raid" in sname:

@@ -59,7 +59,7 @@
             <li>
               <a class="dropdown-item" href="/device_passports/{{ passports[0].html_filename }}" target="_blank">
                 <i class="bi bi-box-arrow-up-right me-2"></i>Open latest
-                <span class="text-muted ms-1 small">{{ passports[0].generated_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                <span class="text-muted ms-1 small">{{ passports[0].generated_at | localtime }}</span>
               </a>
             </li>
           </ul>
@@ -111,17 +111,17 @@
               <small class="text-muted text-uppercase fw-semibold" style="letter-spacing:.05em">Status</small>
             </td></tr>
             <tr><td>First seen</td><td>
-              {% if dev.first_seen %}{{ dev.first_seen.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}
+              {% if dev.first_seen %}{{ dev.first_seen | localtime }}{% else %}—{% endif %}
             </td></tr>
             <tr><td>Last seen</td><td>
-              {% if dev.last_seen %}{{ dev.last_seen.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}
+              {% if dev.last_seen %}{{ dev.last_seen | localtime }}{% else %}—{% endif %}
             </td></tr>
             <tr><td>Last ping OK</td><td>
-              {% if dev.last_ping_ok_at %}{{ dev.last_ping_ok_at.strftime('%Y-%m-%d %H:%M') }}
+              {% if dev.last_ping_ok_at %}{{ dev.last_ping_ok_at | localtime }}
               {% else %}<span class="text-muted">—</span>{% endif %}
             </td></tr>
             <tr><td>Last cred OK</td><td>
-              {% if dev.last_credential_ok_at %}{{ dev.last_credential_ok_at.strftime('%Y-%m-%d %H:%M') }}
+              {% if dev.last_credential_ok_at %}{{ dev.last_credential_ok_at | localtime }}
               {% else %}<span class="text-muted">—</span>{% endif %}
             </td></tr>
             <tr><td>Trusted</td><td>
@@ -168,7 +168,7 @@
           <span><i class="bi bi-diagram-3 me-1"></i>SNMP
             {% if dev.snmp_ok_at %}<span class="badge bg-success ms-1">OK</span>{% endif %}
           </span>
-          {% if dev.snmp_ok_at %}<small class="text-muted fw-normal">{{ dev.snmp_ok_at.strftime('%Y-%m-%d %H:%M') }}</small>{% endif %}
+          {% if dev.snmp_ok_at %}<small class="text-muted fw-normal">{{ dev.snmp_ok_at | localtime }}</small>{% endif %}
         </div>
         <div class="card-body p-0">
           <table class="table table-sm mb-0 param-table">
@@ -607,7 +607,7 @@
             <span class="badge bg-secondary ms-1">{{ interfaces|length }}</span>
             {% if up_count %}<span class="badge bg-success ms-1">{{ up_count }} up</span>{% endif %}
             {% if down_count %}<span class="badge bg-danger ms-1">{{ down_count }} down</span>{% endif %}
-            {% if dev.snmp_ok_at %}<small class="text-muted fw-normal ms-2">SNMP {{ dev.snmp_ok_at.strftime('%H:%M') }}</small>{% endif %}
+            {% if dev.snmp_ok_at %}<small class="text-muted fw-normal ms-2">SNMP {{ (dev.snmp_ok_at | localtime)[11:16] }}</small>{% endif %}
           </span>
           <i class="bi bi-chevron-up collapse-icon"></i>
         </div>

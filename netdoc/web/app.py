@@ -526,9 +526,22 @@ def _start_screenshot_fill_worker(interval_s: int = 1800, startup_delay_s: int =
     t.start()
 
 
+def _localtime_filter(dt):
+    """Convert a naive UTC datetime to local time for display in templates."""
+    if dt is None:
+        return ""
+    import time as _time
+    from datetime import timedelta as _td
+    _offset = _td(seconds=(-_time.altzone
+                            if _time.daylight and _time.localtime().tm_isdst
+                            else -_time.timezone))
+    return (dt + _offset).strftime("%Y-%m-%d %H:%M")
+
+
 def create_app():
     app = Flask(__name__, template_folder="templates", static_folder="static")
     app.secret_key = os.getenv("FLASK_SECRET_KEY", "netdoc-dev-secret")
+    app.jinja_env.filters["localtime"] = _localtime_filter
 
     # Upewnij sie ze tabele istnieja + dodaj kolumny jesli brakuje (bezpieczna migracja)
     try:
@@ -5102,6 +5115,42 @@ def create_app():
                 "impact": "Nieautoryzowany dostep do plikow konfiguracyjnych, mozliwosc nadpisania firmware, ujawnienie hasel i kluczy sieci.",
                 "fix": "Wylacz usluge TFTP jezeli nie jest wymagana. Ogranicz dostep do TFTP przez ACL/firewall tylko do adresow IP uprawnionych systemow (NMS, serwer backupu). Rozważ uzycie SFTP/SCP zamiast TFTP.",
                 "cvss": "7.5",
+            },
+            {
+                "id": "cisco_smart_install",
+                "title": "Cisco Smart Install (TCP 4786) — zdalny dostep bez auth",
+                "severity": "critical",
+                "icon": "bi-cpu",
+                "short": "Protokol Cisco Smart Install dostepny bez uwierzytelnienia — atakujacy moze zdalnie przejac konfiguracje switcha i wgrac dowolny firmware (CVE-2018-0171).",
+                "why": (
+                    "Cisco Smart Install to protokol ulatwiajacy zdalna instalacje i konfiguracje switchow Catalyst. "
+                    "Po otwarciu portu TCP 4786 urzadzenie przyjmuje polecenia bez jakiegokolwiek uwierzytelnienia. "
+                    "CVE-2018-0171 (CVSS 9.8) pozwala atakujacemu: pobrac lub nadpisac plik konfiguracyjny, "
+                    "zmienic haslo enable, uruchomic dowolne polecenia IOS, wgrac zmodyfikowany firmware. "
+                    "Skanowanie internetu ujawnilo tysiace niezabezpieczonych switchow Cisco — tata metoda "
+                    "przejecia calej infrastruktury sieciowej organizacji."
+                ),
+                "impact": "Pelne przejecie switcha: zmiana konfiguracji, haseł, firmware. Mozliwosc wejscia do calej sieci VLAN.",
+                "fix": "Wylacz Smart Install: 'no vstack' w konfiguracji IOS. Zablokuj port TCP 4786 na firewallu brzegowym. Aktualizuj IOS do wersji z fixem CVE-2018-0171.",
+                "cvss": "9.8",
+            },
+            {
+                "id": "cisco_web_exec",
+                "title": "Cisco IOS HTTP — zdalne wykonanie polecen bez auth (/exec)",
+                "severity": "critical",
+                "icon": "bi-terminal-dash",
+                "short": "Interfejs HTTP Cisco IOS umozliwia wykonanie polecen CLI z poziomem uprawnien 15 bez uwierzytelnienia przez endpoint /level/15/exec/.",
+                "why": (
+                    "Stare wersje Cisco IOS udostepnialy web-based command executor dostepny przez HTTP. "
+                    "Endpoint /level/15/exec/-/show/version i podobne umozliwialy wykonanie polecen "
+                    "z najwyzszym poziomem uprawnien (enable level 15) bez podania hasla. "
+                    "Atakujacy moze: odczytac pelna konfiguracje ('show running-config'), "
+                    "zmienic hasla i konfiguracje, wylaczyc interfejsy, zebrać dane o calej topologii sieci. "
+                    "Blad wynika z braku sprawdzania uprawnien w module HTTP serwera IOS."
+                ),
+                "impact": "Pelna kontrola nad routerem/switchem: odczyt konfiguracji, haseł, mozliwosc blokowania ruchu sieciowego.",
+                "fix": "Wylacz HTTP server: 'no ip http server' oraz 'no ip http secure-server' w konfiguracji IOS. Jesli HTTP jest wymagany, uzyj ip http authentication local i ogranicz dostep przez ACL.",
+                "cvss": "9.8",
             },
             {
                 "id": "firewall_disabled",

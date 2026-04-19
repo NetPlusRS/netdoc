@@ -312,14 +312,14 @@ def test_ubiquiti_custom_hostname_default_ap():
                               hostname="Krasnicza-W") == DeviceType.ap
 
 
-def test_moxa_technologies_classified_as_router():
-    """Moxa Technologies -> router (network vendor), nie IoT."""
-    assert _guess_device_type({22: {}, 80: {}}, None, vendor="Moxa Technologies") == DeviceType.router
+def test_moxa_technologies_classified_as_switch():
+    """Moxa Technologies -> switch (industrial Ethernet switch), nie IoT ani router."""
+    assert _guess_device_type({22: {}, 80: {}}, None, vendor="Moxa Technologies") == DeviceType.switch
 
 
-def test_moxa_inc_classified_as_router():
-    """Moxa Inc -> router (vendor zawiera 'moxa'), nie IoT."""
-    assert _guess_device_type({}, None, vendor="Moxa Inc.") == DeviceType.router
+def test_moxa_inc_classified_as_switch():
+    """Moxa Inc -> switch (EDS/IKS/PT series = industrial switch), nie IoT."""
+    assert _guess_device_type({}, None, vendor="Moxa Inc.") == DeviceType.switch
 
 
 def test_industrial_hirschmann_classified_as_router():
