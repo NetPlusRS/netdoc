@@ -2569,7 +2569,18 @@ def main() -> None:
     while True:
         next_run = time.monotonic() + interval
         try:
-            scan_once()
+            db = SessionLocal()
+            try:
+                _row = db.query(SystemStatus).filter(
+                    SystemStatus.key == "cred_scanning_enabled"
+                ).first()
+                _enabled = (_row.value if _row else "0") != "0"
+            finally:
+                db.close()
+            if _enabled:
+                scan_once()
+            else:
+                logger.info("Credential scanning disabled (cred_scanning_enabled=0) — skipping cycle")
         except Exception as exc:
             logger.exception("Unhandled exception in scan_once (cred): %s", exc)
         interval, *_ = _read_settings()

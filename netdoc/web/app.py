@@ -580,6 +580,7 @@ def create_app():
             "cred_mssql_enabled":      ("1",  "config"),
             "cred_mysql_enabled":      ("1",  "config"),
             "cred_postgres_enabled":   ("1",  "config"),
+            "cred_scanning_enabled":   ("0",  "config"),
             "screenshot_ttl_hours":    ("12", "config"),
             "ai_assessment_enabled":   ("1",  "config"),
             "lab_monitoring_enabled":  ("0",  "config"),
@@ -2728,6 +2729,10 @@ def create_app():
             mysql_creds    = _gcreds("mysql")
             rtsp_creds     = _gcreds("rtsp")
             snmp_fallback, _ = _api("get", "/api/credentials/snmp-fallback-list")
+            _ce_row = db.query(SystemStatus).filter(
+                SystemStatus.key == "cred_scanning_enabled"
+            ).first()
+            cred_scanning_enabled = (_ce_row.value if _ce_row else "0") != "0"
         finally:
             db.close()
         # Statystyki uzycia globalnych credentiali na urzadzeniach
@@ -2758,7 +2763,24 @@ def create_app():
             global_cred_usage=global_cred_usage,
             cred_scan_meta=cred_scan_meta,
             cred_scan_devices=cred_scan_devices,
+            cred_scanning_enabled=cred_scanning_enabled,
         )
+
+    @app.route("/credentials/cred-scan-toggle", methods=["POST"])
+    def cred_scan_toggle():
+        """Włącz/wyłącz skanowanie credentiali (cred_scanning_enabled) i wróć do referrera."""
+        db = SessionLocal()
+        try:
+            row = db.query(SystemStatus).filter(
+                SystemStatus.key == "cred_scanning_enabled",
+                SystemStatus.category == "config",
+            ).first()
+            if row:
+                row.value = "0" if row.value != "0" else "1"
+                db.commit()
+        finally:
+            db.close()
+        return redirect(request.referrer or "/credentials")
 
     @app.route("/credentials/add", methods=["POST"])
     def credential_add():

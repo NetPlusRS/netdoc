@@ -2862,6 +2862,7 @@ def main():
             "cred_mssql_enabled":      ("1",  "config"),
             "cred_mysql_enabled":      ("1",  "config"),
             "cred_postgres_enabled":   ("1",  "config"),
+            "cred_scanning_enabled":    ("0",  "config"),
             "screenshot_ttl_hours":    ("12", "config"),
             "ai_assessment_enabled":   ("1",  "config"),
             # Network discovery overrides (empty = use .env / auto-detect)

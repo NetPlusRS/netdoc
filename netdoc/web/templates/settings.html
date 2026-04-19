@@ -22,7 +22,22 @@
       <div class="row g-3">
 
         {# Credential Worker #}
-        <div class="col-12"><h6 class="text-muted border-bottom pb-1 mb-0">Credential Worker — SSH/Web/RDP/FTP password testing</h6></div>
+        {% set _cse_rows = grouped.get('config', []) | selectattr('key', 'equalto', 'cred_scanning_enabled') | list %}
+        {% set _cse = _cse_rows[0].value if _cse_rows else '0' %}
+        <div class="col-12 d-flex align-items-center justify-content-between border-bottom pb-1 mb-0">
+          <h6 class="text-muted mb-0">Credential Worker — SSH/Web/RDP/FTP password testing</h6>
+          <form method="post" action="/credentials/cred-scan-toggle" class="mb-0">
+            {% if _cse != '0' %}
+            <button type="submit" class="btn btn-success btn-sm">
+              <i class="bi bi-shield-check me-1"></i>Scanning ON — click to disable
+            </button>
+            {% else %}
+            <button type="submit" class="btn btn-outline-warning btn-sm">
+              <i class="bi bi-pause-circle me-1"></i>Scanning OFF — click to enable
+            </button>
+            {% endif %}
+          </form>
+        </div>
 
         <div class="col-6 col-md-3">
           <label class="form-label small mb-1">Interval [s]</label>
