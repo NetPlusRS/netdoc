@@ -218,7 +218,9 @@ def collect_fdb(ip: str, community: str, timeout: int = 2) -> list[dict]:
     for mac, bridge_port in mac_to_port.items():
         if_index = port_to_ifindex.get(bridge_port)
         status   = mac_to_status.get(mac, 3)  # default: learned
-        # Filtruj broadcast i multicast MAC
+        # Filtruj: broadcast/multicast, invalid (2), self — własny MAC switcha (4)
+        if status in (2, 4):
+            continue
         first_octet = int(mac.split(":")[0], 16) if mac else 0
         if first_octet & 0x01:
             continue

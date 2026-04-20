@@ -82,7 +82,7 @@ VENDOR_PROFILES: dict[str, dict] = {
     },
     "cisco_asa": {
         "display_name": "Cisco ASA",
-        "sysObjectID_prefix": ["1.3.6.1.4.1.9.1.745", "1.3.6.1.4.1.9.1.1"],
+        "sysObjectID_prefix": ["1.3.6.1.4.1.9.1.745.", "1.3.6.1.4.1.9.1.1."],
         "sysdescr_regex": r"cisco adaptive security|cisco asa",
         "fdb_supported": False,   # firewall — brak bridge FDB
         "vlan_supported": False,
