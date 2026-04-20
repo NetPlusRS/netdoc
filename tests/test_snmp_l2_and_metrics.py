@@ -138,7 +138,7 @@ class TestCollectFdb:
         assert entry["bridge_port"] == 1
         assert entry["if_index"] == 3
         assert entry["fdb_status"] == 3
-        assert entry["vlan_id"] is None
+        assert entry["vlan_id"] == 1  # domyślna instancja bridge = VLAN 1
 
     def test_multicast_mac_filtered(self):
         """MAC z pierwszym bajtem nieparzystym (multicast) musi byc odfiltrowany."""

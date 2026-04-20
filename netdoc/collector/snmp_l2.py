@@ -229,7 +229,7 @@ def collect_fdb(ip: str, community: str, timeout: int = 2) -> list[dict]:
             "bridge_port": bridge_port,
             "if_index":    if_index,
             "fdb_status":  status,
-            "vlan_id":     None,
+            "vlan_id":     1,  # bez community@vlanId odpytujemy domyślną instancję bridge (VLAN 1)
         })
 
     logger.debug("collect_fdb %s: %d entries (bridge port map: %d)", ip, len(result), len(port_to_ifindex))
@@ -284,7 +284,7 @@ def collect_vlan_port(ip: str, community: str, timeout: int = 2) -> list[dict]:
             if v and 1 <= v <= 4094:
                 pvid_by_bp[bp] = v
 
-    # ── VLAN nazwy (static table — nie ma w current table) ────────────────────
+    # ── VLAN nazwy: dot1qVlanStaticName → fallback VTP (Cisco) ──────────────
     vlan_names: dict[int, str] = {}
     for full_oid, raw_val, _ in _walk_safe(_OID_VLAN_STATIC_NAME):
         vlan_id = _oid_suffix_int(full_oid, _OID_VLAN_STATIC_NAME)
@@ -295,6 +295,16 @@ def collect_vlan_port(ip: str, community: str, timeout: int = 2) -> list[dict]:
                     vlan_names[vlan_id] = name
             except Exception:
                 pass
+    if not vlan_names:
+        for full_oid, raw_val, _ in _walk_safe(_OID_CISCO_VTP_NAME, max_iter=512):
+            vlan_id = _oid_suffix_int(full_oid, _OID_CISCO_VTP_NAME)
+            if vlan_id is not None:
+                try:
+                    name = raw_val.decode("utf-8", errors="replace").strip() if isinstance(raw_val, (bytes, bytearray)) else str(raw_val).strip()
+                    if name:
+                        vlan_names[vlan_id] = name
+                except Exception:
+                    pass
 
     # ── Strategia 1: dot1qVlanStaticEgressPorts (bitstring per VLAN) ──────────
     vlan_egress:   dict[int, list[int]] = {}

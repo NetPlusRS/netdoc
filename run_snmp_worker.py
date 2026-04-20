@@ -324,7 +324,7 @@ def _enrich_cdp(ip: str, community: str, timeout: int = 2) -> list[dict]:
             else:
                 val_str = str(raw_val).strip() if raw_val is not None else ""
 
-            entry = rows.setdefault(key, {"local_port_idx": if_idx})
+            entry = rows.setdefault(key, {"local_port": if_idx})
 
             if field_id == 3:   # cdpCacheAddressType
                 entry["addr_type"] = int(raw_val) if isinstance(raw_val, int) else (
