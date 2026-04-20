@@ -1476,6 +1476,11 @@ def _save_stp_ports(db, device_id: int, ports: list[dict],
         if p.get("stp_port_num") is not None
     ]
     if not rows:
+        try:
+            db.commit()
+        except Exception as exc:
+            logger.warning("_save_stp_ports device_id=%s commit (no ports): %s", device_id, exc)
+            db.rollback()
         return 0
     try:
         stmt = pg_insert(DeviceStpPort.__table__).values(rows)
