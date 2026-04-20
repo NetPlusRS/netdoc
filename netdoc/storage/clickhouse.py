@@ -534,10 +534,10 @@ def query_broadcast_top_devices(since_hours: int = 24, limit: int = 30) -> list[
 
         out = []
         for device_id, row in per_device.items():
-            # prefer split (bcast+mcast) over combined nucast
-            in_split  = row["in_bcast_pkts"] + row["in_mcast_pkts"]
-            out_split = row["out_bcast_pkts"] + row["out_mcast_pkts"]
-            total_in  = (in_split if in_split > 0 else row["in_nucast_pkts"]) + row["passive_bcast_pkts"]
+            # sum all three — ifInBroadcastPkts/ifInMulticastPkts come from newer interfaces
+            # that report 0 for ifInNUcastPkts, so there is no double-counting across interfaces
+            total_in = (row["in_bcast_pkts"] + row["in_mcast_pkts"]
+                        + row["in_nucast_pkts"] + row["passive_bcast_pkts"])
             out.append({
                 "device_id":    device_id,
                 "in_bcast":     row["in_bcast_pkts"],

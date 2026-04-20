@@ -4163,7 +4163,7 @@ def create_app():
         since_hours = request.args.get("since_hours", 24, type=int)
         limit = request.args.get("limit", 30, type=int)
         threshold = request.args.get("threshold", 0, type=float)
-        data, err = _api(f"api/metrics/broadcast-summary?since_hours={since_hours}&limit={limit}&threshold={threshold}")
+        data, err = _api("get", f"/api/metrics/broadcast-summary?since_hours={since_hours}&limit={limit}&threshold={threshold}")
         if err:
             return jsonify({"error": err, "devices": []}), 500
         return jsonify(data)
@@ -4173,7 +4173,7 @@ def create_app():
         """Proxy do FastAPI /api/devices/{id}/broadcast-history."""
         hours = request.args.get("hours", 24, type=int)
         step = request.args.get("step_minutes", 5, type=int)
-        data, err = _api(f"api/devices/{device_id}/broadcast-history?hours={hours}&step_minutes={step}")
+        data, err = _api("get", f"/api/devices/{device_id}/broadcast-history?hours={hours}&step_minutes={step}")
         if err:
             return jsonify({"error": err, "buckets": []}), 500
         return jsonify(data)
