@@ -23,6 +23,7 @@ import queue
 import re
 import socket
 import struct
+import subprocess
 import sys
 import threading
 import time
@@ -31,6 +32,15 @@ from datetime import datetime
 from typing import Optional
 
 sys.path.insert(0, os.path.dirname(__file__))
+
+# Hide console windows when running as pythonw.exe (no parent console)
+if sys.platform == "win32":
+    _OrigPopen = subprocess.Popen
+    class _NoWindowPopen(_OrigPopen):
+        def __init__(self, *args, **kwargs):
+            kwargs.setdefault("creationflags", subprocess.CREATE_NO_WINDOW)
+            super().__init__(*args, **kwargs)
+    subprocess.Popen = _NoWindowPopen
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -948,7 +958,7 @@ def main() -> None:
     def _current_gateways() -> set:
         gws = set()
         try:
-            import subprocess, platform, re as _re
+            import platform, re as _re
             if platform.system() == "Windows":
                 r = subprocess.run(["route", "print", "0.0.0.0"],
                                    capture_output=True, text=True, timeout=3)
