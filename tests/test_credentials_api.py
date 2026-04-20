@@ -123,3 +123,23 @@ def test_cred_scan_stats_interval_fallback(client):
     r = client.get("/api/credentials/cred-scan-stats")
     d = r.json()
     assert d["interval_s"] >= 10
+
+
+# ─── BUG-API-13: duplikat credential → 409 ────────────────────────────────────
+
+def test_create_credential_duplicate_returns_409(client):
+    """BUG-API-13: drugi identyczny POST credential zwraca 409 Conflict."""
+    payload = {"method": "snmp", "username": "public", "priority": 100}
+    r1 = client.post("/api/credentials/", json=payload)
+    assert r1.status_code == 201
+    r2 = client.post("/api/credentials/", json=payload)
+    assert r2.status_code == 409
+
+
+def test_create_credential_different_password_is_not_duplicate(client):
+    """Inne haslo → nie duplikat → 201."""
+    client.post("/api/credentials/", json={"method": "ssh", "username": "admin",
+                                           "password": "pass1", "priority": 100})
+    r = client.post("/api/credentials/", json={"method": "ssh", "username": "admin",
+                                               "password": "pass2", "priority": 100})
+    assert r.status_code == 201

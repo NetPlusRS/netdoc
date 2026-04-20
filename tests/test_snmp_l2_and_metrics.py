@@ -336,10 +336,11 @@ class TestSanitizeSensors:
         result = sens._sanitize_sensors(sensors)
         assert result == []
 
-    def test_removes_one_celsius(self):
+    def test_keeps_one_celsius(self):
+        """BUG-L4: 1°C to prawidlowa temp. outdoor gear — nie jest sentinel."""
         sensors = [self._s("sensor_x", 1.0, "°C")]
         result = sens._sanitize_sensors(sensors)
-        assert result == []
+        assert len(result) == 1
 
     def test_keeps_valid_temperature(self):
         sensors = [self._s("cpu_temp", 45.0, "°C")]

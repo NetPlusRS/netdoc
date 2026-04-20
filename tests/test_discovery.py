@@ -1078,8 +1078,9 @@ def test_guess_fortinet_vendor_firewall():
     assert _guess_device_type({}, "", vendor="Fortinet") == DeviceType.firewall
 
 
-def test_guess_linux_ssh_only_is_router():
-    assert _guess_device_type({22}, "Linux 5.x") == DeviceType.router
+def test_guess_linux_ssh_only_is_server():
+    """BUG-L6: SSH-only Linux = headless server, nie router."""
+    assert _guess_device_type({22}, "Linux 5.x") == DeviceType.server
 
 
 def test_guess_linux_ssh_and_http_is_server():

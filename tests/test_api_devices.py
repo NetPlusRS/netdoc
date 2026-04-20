@@ -497,3 +497,22 @@ def test_api_device_out_snmp_null_by_default(client, db):
     assert dev is not None
     assert dev["snmp_community"] is None
     assert dev["snmp_ok_at"] is None
+
+
+# ─── BUG-API-5: exclude_unset w PATCH ────────────────────────────────────────
+
+def test_patch_device_without_device_type_does_not_zero_it(client, db):
+    """BUG-API-5: PATCH bez device_type nie zeruje istniejacego typu (exclude_unset)."""
+    device = _add_device(db, "10.9.0.1", dtype=DeviceType.switch)
+    resp = client.patch(f"/api/devices/{device.id}", json={"hostname": "sw-test"})
+    assert resp.status_code == 200
+    assert resp.json()["device_type"] == "switch"
+    assert resp.json()["hostname"] == "sw-test"
+
+
+def test_patch_device_type_explicitly(client, db):
+    """PATCH z jawnym device_type zmienia typ."""
+    device = _add_device(db, "10.9.0.2", dtype=DeviceType.switch)
+    resp = client.patch(f"/api/devices/{device.id}", json={"device_type": "router"})
+    assert resp.status_code == 200
+    assert resp.json()["device_type"] == "router"

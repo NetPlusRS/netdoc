@@ -433,7 +433,7 @@ def test_process_device_with_timeout_returns_timeout_on_hang():
         return {"ssh": False, "web": False, "ftp": False, "rdp": False, "new": 0}
 
     with patch.object(w, "_process_device", side_effect=_slow):
-        result = w._process_device_with_timeout(0.1, 1, "10.0.0.1", [], [], [], [], [], 1)
+        result = w._process_device_with_timeout(0.1, 1, "10.0.0.1", [], [], [], [], [], [], 1)
     assert result.get("timeout") is True
     assert result["new"] == 0
 
@@ -1992,7 +1992,7 @@ def test_process_device_uses_single_session():
          patch.object(w, "_mark_checked"), \
          patch.object(w, "_clear_tried"), \
          patch.object(w, "_process_protection_events"):
-        w._process_device(1, "10.0.0.1", [], [], [], pairs_per_cycle=1)
+        w._process_device(1, "10.0.0.1", [], [], [], [], pairs_per_cycle=1)
 
     assert session_open_count == [1], (
         f"PERF-09: otworzono {len(session_open_count)} sesji zamiast 1"
@@ -2405,7 +2405,8 @@ def test_process_device_rdp_skips_when_port_3389_closed():
                                 with patch.object(w, "_save_tried"):
                                     w._process_device(
                                         1, "10.0.0.1",
-                                        [], [], [], [("admin", "admin")],
+                                        [], [], [], [],
+                                        rdp_pairs=[("admin", "admin")],
                                         pairs_per_cycle=1)
     assert 3389 in probed_ports, "Pre-check RDP powinien testowac port 3389"
     mock_rdp.assert_not_called()
