@@ -78,6 +78,7 @@
         <li class="nav-item"><a class="nav-link {% if request.path == '/inventory' %}active{% endif %}" href="/inventory"><i class="bi bi-box-seam me-1"></i>Inventory</a></li>
         {% endif %}
         <li class="nav-item"><a class="nav-link {% if '/networks' in request.path %}active{% endif %}" href="/networks"><i class="bi bi-diagram-3 me-1"></i>Networks</a></li>
+        <li class="nav-item"><a class="nav-link {% if '/broadcast-traffic' in request.path %}active{% endif %}" href="/broadcast-traffic"><i class="bi bi-broadcast-pin me-1"></i>Broadcast</a></li>
         <li class="nav-item"><a class="nav-link {% if '/credentials' in request.path %}active{% endif %}" href="/credentials"><i class="bi bi-key me-1"></i>Credentials</a></li>
         <li class="nav-item"><a class="nav-link {% if '/security' in request.path %}active{% endif %}" href="/security"><i class="bi bi-shield-exclamation me-1"></i>Security</a></li>
         <li class="nav-item"><a class="nav-link {% if request.path == '/alerts' %}active{% endif %}" href="/alerts"><i class="bi bi-activity me-1"></i>Alerts</a></li>

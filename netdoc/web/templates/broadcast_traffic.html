@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% block title %}Broadcast / Multicast Traffic{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-broadcast-pin me-2"></i>Broadcast &amp; Multicast Traffic</h4>
+  <div class="d-flex gap-2 align-items-center">
+    <select id="hoursSelect" class="form-select form-select-sm" style="width:auto">
+      <option value="1">Last 1h</option>
+      <option value="6">Last 6h</option>
+      <option value="24" selected>Last 24h</option>
+      <option value="72">Last 3 days</option>
+      <option value="168">Last 7 days</option>
+    </select>
+    <input id="thresholdInput" type="number" class="form-control form-control-sm" style="width:120px"
+           placeholder="Spam threshold" min="0" value="0" title="Packets above this value are flagged as spammers">
+    <button class="btn btn-sm btn-primary" id="refreshBtn">
+      <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+    </button>
+  </div>
+</div>
+
+<!-- Summary cards -->
+<div class="row g-3 mb-4" id="summaryCards">
+  <div class="col-md-3">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <div class="fs-4 fw-bold" id="cardTotalDevices">—</div>
+        <div class="text-muted small">Devices with broadcast data</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <div class="fs-4 fw-bold text-warning" id="cardSpammers">—</div>
+        <div class="text-muted small">Spammers (above threshold)</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <div class="fs-4 fw-bold" id="cardTopDevice">—</div>
+        <div class="text-muted small">Top broadcaster</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <div class="fs-4 fw-bold" id="cardTotalPkts">—</div>
+        <div class="text-muted small">Total broadcast pkts (period)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Top devices chart -->
+<div class="card mb-4">
+  <div class="card-header fw-semibold py-2">
+    <i class="bi bi-bar-chart-fill me-1"></i>Top Broadcast Sources
+    <span class="text-muted fw-normal small ms-2">(in_broadcast + in_multicast packets, cumulative over period)</span>
+  </div>
+  <div class="card-body" style="height:260px;position:relative">
+    <canvas id="topChart"></canvas>
+  </div>
+</div>
+
+<!-- Per-device table -->
+<div class="card">
+  <div class="card-header fw-semibold py-2 d-flex justify-content-between">
+    <span><i class="bi bi-table me-1"></i>Per-Device Breakdown</span>
+    <input type="search" id="tableSearch" class="form-control form-control-sm" style="width:200px" placeholder="Filter IP / hostname…">
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0" id="bcastTable">
+      <thead class="table-secondary">
+        <tr>
+          <th>#</th>
+          <th>Device</th>
+          <th class="text-end" title="Broadcast packets in (SNMP)">In Bcast</th>
+          <th class="text-end" title="Multicast packets in (SNMP)">In Mcast</th>
+          <th class="text-end" title="Combined non-unicast in (older devices)">NUcast In</th>
+          <th class="text-end" title="Packets seen by passive broadcast listener">Passive</th>
+          <th class="text-end fw-bold" title="Total inbound broadcast+multicast">Total In</th>
+          <th class="text-end" title="Broadcast packets out (SNMP)">Out Bcast</th>
+          <th class="text-end" title="Multicast packets out (SNMP)">Out Mcast</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="bcastTbody">
+        <tr><td colspan="10" class="text-center text-muted py-4">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Detail modal -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-graph-up me-2"></i><span id="modalTitle">Device broadcast history</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <canvas id="historyChart" height="100"></canvas>
+        <div id="historyEmpty" class="text-center text-muted py-3 d-none">No historical data available yet (SNMP counters require at least 2 collection cycles)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  let _topChart = null;
+  let _historyChart = null;
+  let _allRows = [];
+
+  const fmt = n => n >= 1e9 ? (n/1e9).toFixed(1)+'G'
+              : n >= 1e6 ? (n/1e6).toFixed(1)+'M'
+              : n >= 1e3 ? (n/1e3).toFixed(1)+'K'
+              : String(Math.round(n));
+
+  function deviceLabel(d) {
+    if (d.hostname) return d.hostname;
+    return d.ip || ('dev#' + d.device_id);
+  }
+
+  async function load() {
+    const hours = document.getElementById('hoursSelect').value;
+    const threshold = parseFloat(document.getElementById('thresholdInput').value) || 0;
+    document.getElementById('bcastTbody').innerHTML =
+      '<tr><td colspan="10" class="text-center text-muted py-4">Loading…</td></tr>';
+
+    let data;
+    try {
+      const r = await fetch(`/api/metrics/broadcast-summary?since_hours=${hours}&limit=100&threshold=${threshold}`);
+      data = await r.json();
+    } catch(e) {
+      document.getElementById('bcastTbody').innerHTML =
+        `<tr><td colspan="10" class="text-danger text-center py-3">${e}</td></tr>`;
+      return;
+    }
+
+    _allRows = data.devices || [];
+    updateSummary(threshold);
+    renderTable(_allRows);
+    renderTopChart(_allRows.slice(0, 15));
+  }
+
+  function updateSummary(threshold) {
+    const total = _allRows.length;
+    const spammers = threshold > 0 ? _allRows.filter(r => r.is_spammer).length : '—';
+    const top = _allRows[0] ? deviceLabel(_allRows[0]) : '—';
+    const totalPkts = _allRows.reduce((s, r) => s + (r.total_in || 0), 0);
+    document.getElementById('cardTotalDevices').textContent = total;
+    document.getElementById('cardSpammers').textContent = spammers;
+    document.getElementById('cardTopDevice').textContent = top;
+    document.getElementById('cardTotalPkts').textContent = fmt(totalPkts);
+  }
+
+  function renderTable(rows) {
+    const q = document.getElementById('tableSearch').value.toLowerCase();
+    const filtered = q ? rows.filter(r =>
+      (r.ip||'').includes(q) || (r.hostname||'').toLowerCase().includes(q)
+    ) : rows;
+
+    if (!filtered.length) {
+      document.getElementById('bcastTbody').innerHTML =
+        '<tr><td colspan="10" class="text-center text-muted py-4">No broadcast data collected yet — SNMP worker needs at least one cycle</td></tr>';
+      return;
+    }
+
+    const html = filtered.map((r, i) => {
+      const spam = r.is_spammer ? ' table-warning' : '';
+      const spamBadge = r.is_spammer
+        ? '<span class="badge bg-warning text-dark ms-1" title="Above spam threshold">SPAM</span>' : '';
+      const link = `/devices/${r.device_id}`;
+      const label = deviceLabel(r);
+      return `<tr class="${spam}">
+        <td class="text-muted">${i+1}</td>
+        <td><a href="${link}" class="text-decoration-none fw-semibold">${label}</a>
+            <span class="text-muted small ms-1">${r.ip && r.hostname ? r.ip : ''}</span>${spamBadge}</td>
+        <td class="text-end">${fmt(r.in_bcast||0)}</td>
+        <td class="text-end">${fmt(r.in_mcast||0)}</td>
+        <td class="text-end text-muted">${r.in_nucast > 0 ? fmt(r.in_nucast) : '—'}</td>
+        <td class="text-end text-muted">${r.passive_pkts > 0 ? fmt(r.passive_pkts) : '—'}</td>
+        <td class="text-end fw-bold">${fmt(r.total_in||0)}</td>
+        <td class="text-end">${fmt(r.out_bcast||0)}</td>
+        <td class="text-end">${fmt(r.out_mcast||0)}</td>
+        <td class="text-end">
+          <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="showHistory(${r.device_id},'${label.replace(/'/g,"\\'")}')">
+            <i class="bi bi-graph-up"></i>
+          </button>
+        </td>
+      </tr>`;
+    }).join('');
+    document.getElementById('bcastTbody').innerHTML = html;
+  }
+
+  function renderTopChart(rows) {
+    const labels = rows.map(deviceLabel);
+    const inBcast = rows.map(r => r.in_bcast || 0);
+    const inMcast = rows.map(r => r.in_mcast || 0);
+    const inNucast = rows.map(r => (r.in_bcast === 0 && r.in_mcast === 0) ? (r.in_nucast || 0) : 0);
+
+    const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+    const gridColor = isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.08)';
+    const textColor = isDark ? '#c9d1d9' : '#333';
+
+    if (_topChart) _topChart.destroy();
+    _topChart = new Chart(document.getElementById('topChart'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Broadcast In', data: inBcast, backgroundColor: 'rgba(13,110,253,.7)', stack: 'in' },
+          { label: 'Multicast In', data: inMcast, backgroundColor: 'rgba(25,135,84,.7)', stack: 'in' },
+          { label: 'NUcast In (fallback)', data: inNucast, backgroundColor: 'rgba(108,117,125,.5)', stack: 'in' },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: textColor } } },
+        scales: {
+          x: { stacked: true, ticks: { color: textColor }, grid: { color: gridColor } },
+          y: { stacked: true, ticks: { color: textColor, callback: v => fmt(v) }, grid: { color: gridColor } },
+        },
+      },
+    });
+  }
+
+  window.showHistory = async function(deviceId, label) {
+    document.getElementById('modalTitle').textContent = label + ' — broadcast history';
+    const hours = document.getElementById('hoursSelect').value;
+    const modal = new bootstrap.Modal(document.getElementById('detailModal'));
+    modal.show();
+
+    let data;
+    try {
+      const r = await fetch(`/api/devices/${deviceId}/broadcast-history?hours=${hours}&step_minutes=5`);
+      data = await r.json();
+    } catch(e) { return; }
+
+    const buckets = data.buckets || [];
+    const noData = buckets.every(b => (b.in_bcast_rate + b.in_mcast_rate + b.in_nucast_rate + b.passive_rate) === 0);
+    document.getElementById('historyEmpty').classList.toggle('d-none', !noData);
+
+    const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+    const textColor = isDark ? '#c9d1d9' : '#333';
+    const gridColor = isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.08)';
+
+    const labels = buckets.map(b => b.bucket.replace('T', ' ').slice(0, 16));
+    if (_historyChart) _historyChart.destroy();
+    _historyChart = new Chart(document.getElementById('historyChart'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Bcast In (pkt/s)', data: buckets.map(b => b.in_bcast_rate), borderColor: '#0d6efd', tension: .3, pointRadius: 0 },
+          { label: 'Mcast In (pkt/s)', data: buckets.map(b => b.in_mcast_rate), borderColor: '#198754', tension: .3, pointRadius: 0 },
+          { label: 'NUcast In (pkt/s)', data: buckets.map(b => b.in_nucast_rate), borderColor: '#6c757d', tension: .3, pointRadius: 0, borderDash: [4,2] },
+          { label: 'Passive (pkt/s)',   data: buckets.map(b => b.passive_rate), borderColor: '#fd7e14', tension: .3, pointRadius: 0, borderDash: [2,2] },
+        ],
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { labels: { color: textColor } } },
+        scales: {
+          x: { ticks: { color: textColor, maxTicksLimit: 12 }, grid: { color: gridColor } },
+          y: { ticks: { color: textColor }, grid: { color: gridColor }, title: { display: true, text: 'pkts/s', color: textColor } },
+        },
+      },
+    });
+  };
+
+  document.getElementById('refreshBtn').addEventListener('click', load);
+  document.getElementById('hoursSelect').addEventListener('change', load);
+  document.getElementById('tableSearch').addEventListener('input', () => renderTable(_allRows));
+
+  load();
+})();
+</script>
+{% endblock %}

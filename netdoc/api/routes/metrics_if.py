@@ -9,8 +9,10 @@ Endpointy:
     GET /api/devices/{id}/stp                — stan STP + root bridge
     GET /api/devices/{id}/alerts             — aktywne alerty diagnostyczne dla urządzenia
     GET /api/devices/{id}/resource-history   — historia CPU/mem z ClickHouse
+    GET /api/devices/{id}/broadcast-history  — historia ruchu broadcast/multicast z ClickHouse
     POST /api/devices/{id}/alerts/{alert_id}/ack — potwierdzenie alertu
     GET /api/alerts                          — wszystkie aktywne alerty (sieciowe)
+    GET /api/metrics/broadcast-summary       — top-N urzadzen wg ruchu broadcast/multicast
 """
 import logging
 from datetime import datetime
@@ -522,3 +524,65 @@ def get_all_alerts(
             for alert, hostname, ip in rows
         ],
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Broadcast / multicast analytics
+# ─────────────────────────────────────────────────────────────────────────────
+
+broadcast_router = APIRouter(prefix="/api/metrics", tags=["broadcast"])
+
+
+@broadcast_router.get("/broadcast-summary")
+def get_broadcast_summary(
+    since_hours: int = Query(24, ge=1, le=720, description="Okno czasu w godzinach"),
+    limit: int = Query(30, ge=1, le=200, description="Max liczba urzadzen"),
+    threshold: float = Query(0, ge=0, description="Prog pkts/okno — urzadzenia powyzej sa spam"),
+    db: Session = Depends(get_db),
+):
+    """Top-N urzadzen wg ruchu broadcast+multicast z ClickHouse.
+
+    Uzupelnia device_id -> ip + hostname z PostgreSQL.
+    Pole `is_spammer` = True gdy total_in > threshold (i threshold > 0).
+    """
+    try:
+        from netdoc.storage.clickhouse import query_broadcast_top_devices
+        rows = query_broadcast_top_devices(since_hours=since_hours, limit=limit)
+    except Exception as exc:
+        logger.warning("broadcast-summary clickhouse error: %s", exc)
+        rows = []
+
+    if not rows:
+        return {"since_hours": since_hours, "devices": []}
+
+    device_ids = [r["device_id"] for r in rows]
+    devices = {d.id: d for d in db.query(Device).filter(Device.id.in_(device_ids)).all()}
+
+    result = []
+    for row in rows:
+        dev = devices.get(row["device_id"])
+        result.append({
+            **row,
+            "ip":         str(dev.ip) if dev else None,
+            "hostname":   dev.hostname if dev else None,
+            "is_spammer": threshold > 0 and row["total_in"] > threshold,
+        })
+    return {"since_hours": since_hours, "threshold": threshold, "devices": result}
+
+
+@router.get("/{device_id}/broadcast-history")
+def get_broadcast_history(
+    device_id: int,
+    hours: int = Query(24, ge=1, le=720),
+    step_minutes: int = Query(5, ge=1, le=60),
+    db: Session = Depends(get_db),
+):
+    """Historia ruchu broadcast+multicast dla jednego urzadzenia (serie czasowe)."""
+    _get_device_or_404(device_id, db)
+    try:
+        from netdoc.storage.clickhouse import query_broadcast_history
+        buckets = query_broadcast_history(device_id, since_hours=hours, step_minutes=step_minutes)
+    except Exception as exc:
+        logger.warning("broadcast-history device=%d: %s", device_id, exc)
+        buckets = []
+    return {"device_id": device_id, "hours": hours, "step_minutes": step_minutes, "buckets": buckets}

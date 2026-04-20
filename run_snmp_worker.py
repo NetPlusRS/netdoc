@@ -2361,14 +2361,21 @@ def _collect_if_metrics(ip: str, community: str, timeout: int = 2) -> list[tuple
 
     _OID_GROUPS = [
         # (oid_prefix, metric_name, is_hc)
-        ("1.3.6.1.2.1.31.1.1.1.6",  "in_octets_hc",  True),
-        ("1.3.6.1.2.1.31.1.1.1.10", "out_octets_hc", True),
-        ("1.3.6.1.2.1.2.2.1.10",    "in_octets",     False),
-        ("1.3.6.1.2.1.2.2.1.16",    "out_octets",    False),
-        ("1.3.6.1.2.1.2.2.1.14",    "in_errors",     False),
-        ("1.3.6.1.2.1.2.2.1.20",    "out_errors",    False),
-        ("1.3.6.1.2.1.2.2.1.13",    "in_discards",   False),
-        ("1.3.6.1.2.1.2.2.1.19",    "out_discards",  False),
+        ("1.3.6.1.2.1.31.1.1.1.6",  "in_octets_hc",   True),
+        ("1.3.6.1.2.1.31.1.1.1.10", "out_octets_hc",  True),
+        ("1.3.6.1.2.1.2.2.1.10",    "in_octets",      False),
+        ("1.3.6.1.2.1.2.2.1.16",    "out_octets",     False),
+        ("1.3.6.1.2.1.2.2.1.14",    "in_errors",      False),
+        ("1.3.6.1.2.1.2.2.1.20",    "out_errors",     False),
+        ("1.3.6.1.2.1.2.2.1.13",    "in_discards",    False),
+        ("1.3.6.1.2.1.2.2.1.19",    "out_discards",   False),
+        # broadcast/multicast — RFC 2863 ifXTable (split) + fallback ifTable (combined nucast)
+        ("1.3.6.1.2.1.31.1.1.1.3",  "in_bcast_pkts",  False),  # ifInBroadcastPkts
+        ("1.3.6.1.2.1.31.1.1.1.5",  "out_bcast_pkts", False),  # ifOutBroadcastPkts
+        ("1.3.6.1.2.1.31.1.1.1.2",  "in_mcast_pkts",  False),  # ifInMulticastPkts
+        ("1.3.6.1.2.1.31.1.1.1.4",  "out_mcast_pkts", False),  # ifOutMulticastPkts
+        ("1.3.6.1.2.1.2.2.1.11",    "in_nucast_pkts", False),  # ifInNUcastPkts (fallback)
+        ("1.3.6.1.2.1.2.2.1.12",    "out_nucast_pkts",False),  # ifOutNUcastPkts (fallback)
     ]
 
     # Zbieramy ktore if_index maja HC (by pominac 32-bit duplikaty gdy HC dostepne)

@@ -493,3 +493,129 @@ def count_syslog_by_severity(device_id: int, since_hours: int = 24) -> dict[int,
     except Exception as exc:
         logger.warning("count_syslog_by_severity failed: %s", exc)
         return {}
+
+
+# ---------------------------------------------------------------------------
+# Broadcast / multicast traffic analytics
+# ---------------------------------------------------------------------------
+
+_BCAST_METRICS_IN  = ("in_bcast_pkts", "in_mcast_pkts", "in_nucast_pkts", "passive_bcast_pkts")
+_BCAST_METRICS_OUT = ("out_bcast_pkts", "out_mcast_pkts", "out_nucast_pkts")
+
+
+def query_broadcast_top_devices(since_hours: int = 24, limit: int = 30) -> list[dict]:
+    """Top-N urządzeń wg łącznego ruchu broadcast+multicast z ClickHouse.
+
+    Dla urządzeń z osobnymi licznikami (in_bcast_pkts + in_mcast_pkts) używa ich sumy.
+    Dla urządzeń ze starszym in_nucast_pkts (łączony bcast+mcast) używa tego jako fallback.
+    Zwraca: [{device_id, in_bcast, out_bcast, in_mcast, out_mcast, in_nucast, out_nucast, passive, total_in}]
+    """
+    params = {
+        "since_hours": since_hours,
+        "limit": limit,
+    }
+    all_metrics = _BCAST_METRICS_IN + _BCAST_METRICS_OUT
+    metrics_tuple = "(" + ",".join(f"'{m}'" for m in all_metrics) + ")"
+    sql = (
+        f"SELECT device_id, metric,"
+        f"  greatest(0, max(value) - min(value)) AS delta"
+        f" FROM netdoc_logs.device_metrics"
+        f" WHERE ts >= now() - INTERVAL {{since_hours:UInt32}} HOUR"
+        f"   AND metric IN {metrics_tuple}"
+        f" GROUP BY device_id, if_index, metric"
+    )
+    try:
+        result = _get_client().query(sql, parameters=params)
+        # Agreguj delta per device_id (sumuj po if_index)
+        per_device: dict[int, dict[str, float]] = {}
+        for device_id, metric, delta in result.result_rows:
+            row = per_device.setdefault(int(device_id), {m: 0.0 for m in all_metrics})
+            row[metric] = row[metric] + float(delta)
+
+        out = []
+        for device_id, row in per_device.items():
+            # prefer split (bcast+mcast) over combined nucast
+            in_split  = row["in_bcast_pkts"] + row["in_mcast_pkts"]
+            out_split = row["out_bcast_pkts"] + row["out_mcast_pkts"]
+            total_in  = (in_split if in_split > 0 else row["in_nucast_pkts"]) + row["passive_bcast_pkts"]
+            out.append({
+                "device_id":    device_id,
+                "in_bcast":     row["in_bcast_pkts"],
+                "out_bcast":    row["out_bcast_pkts"],
+                "in_mcast":     row["in_mcast_pkts"],
+                "out_mcast":    row["out_mcast_pkts"],
+                "in_nucast":    row["in_nucast_pkts"],
+                "out_nucast":   row["out_nucast_pkts"],
+                "passive_pkts": row["passive_bcast_pkts"],
+                "total_in":     total_in,
+            })
+        out.sort(key=lambda r: r["total_in"], reverse=True)
+        return out[:limit]
+    except Exception as exc:
+        logger.warning("query_broadcast_top_devices failed: %s", exc)
+        return []
+
+
+def query_broadcast_history(device_id: int, since_hours: int = 24, step_minutes: int = 5) -> list[dict]:
+    """Historia ruchu broadcast+multicast per urządzenie (wszystkie interfejsy łącznie).
+
+    Zwraca serię czasową: [{bucket, in_bcast_rate, out_bcast_rate, in_mcast_rate, out_mcast_rate}]
+    Wartości = pkts/s (pochodna licznika kumulatywnego).
+    """
+    all_metrics = _BCAST_METRICS_IN + _BCAST_METRICS_OUT
+    metrics_tuple = "(" + ",".join(f"'{m}'" for m in all_metrics) + ")"
+    params = {
+        "device_id":   device_id,
+        "since_hours": since_hours,
+        "step":        step_minutes * 60,
+    }
+    sql = (
+        f"SELECT bucket, metric, prev_max, cur_max, step"
+        f" FROM ("
+        f"  SELECT bucket, metric,"
+        f"    sum_max AS cur_max,"
+        f"    lagInFrame(sum_max, 1, toFloat64(-1))"
+        f"      OVER (PARTITION BY metric ORDER BY bucket"
+        f"            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS prev_max,"
+        f"    {{step:Float64}} AS step"
+        f"  FROM ("
+        f"    SELECT"
+        f"      toStartOfInterval(ts, toIntervalSecond({{step:UInt32}})) AS bucket,"
+        f"      metric,"
+        f"      sum(max(value)) AS sum_max"
+        f"    FROM netdoc_logs.device_metrics"
+        f"    WHERE device_id = {{device_id:UInt32}}"
+        f"      AND ts >= now() - INTERVAL {{since_hours:UInt32}} HOUR"
+        f"      AND metric IN {metrics_tuple}"
+        f"    GROUP BY bucket, if_index, metric"
+        f"  )"
+        f"  GROUP BY bucket, metric"
+        f" )"
+        f" ORDER BY bucket"
+    )
+    try:
+        result = _get_client().query(sql, parameters=params)
+        buckets: dict[str, dict[str, float]] = {}
+        for bucket, metric, prev_max, cur_max, step in result.result_rows:
+            key = bucket.isoformat() if hasattr(bucket, "isoformat") else str(bucket)
+            if prev_max >= 0 and cur_max >= prev_max and step > 0:
+                rate = round((cur_max - prev_max) / step, 4)
+            else:
+                rate = 0.0
+            buckets.setdefault(key, {})[metric] = rate
+        out = []
+        for key in sorted(buckets):
+            row = buckets[key]
+            out.append({
+                "bucket":         key,
+                "in_bcast_rate":  row.get("in_bcast_pkts", 0.0),
+                "out_bcast_rate": row.get("out_bcast_pkts", 0.0),
+                "in_mcast_rate":  row.get("in_mcast_pkts", 0.0),
+                "out_mcast_rate": row.get("out_mcast_pkts", 0.0),
+                "in_nucast_rate": row.get("in_nucast_pkts", 0.0),
+                "passive_rate":   row.get("passive_bcast_pkts", 0.0),
+            })
+        return out
+    except Exception as exc:
+        logger.warning("query_broadcast_history(%d) failed: %s", device_id, exc)
+        return []

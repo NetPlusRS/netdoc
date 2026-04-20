@@ -991,15 +991,16 @@ def main() -> None:
                         logger.warning("Nie mogę utworzyć scan_now.flag: %s", _fe)
                     _prev_gateways = cur_gws
 
-            # Zapisz statystyki co 30s do logs/broadcast_stats.json
+            # Zapisz statystyki co 30s do logs/broadcast_stats.json + ClickHouse
             if now - _last_stats_flush >= 30:
                 _last_stats_flush = now
+                stats_rows = get_broadcast_stats()
                 try:
                     import json as _json
                     payload = {
                         "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
                         "uptime_s":     int(time.time() - _bcast_stats_start),
-                        "rows":         get_broadcast_stats(),
+                        "rows":         stats_rows,
                     }
                     tmp = _stats_path + ".tmp"
                     with open(tmp, "w", encoding="utf-8") as _f:
@@ -1007,6 +1008,25 @@ def main() -> None:
                     os.replace(tmp, _stats_path)
                 except Exception as _e:
                     logger.debug("stats flush error: %s", _e)
+                # Zapisz do ClickHouse — passive_bcast_pkts per device
+                try:
+                    from netdoc.storage.database import SessionLocal as _SL
+                    from netdoc.storage.models import Device as _Dev
+                    from netdoc.storage.clickhouse import insert_if_metrics as _insert
+                    _now_dt = datetime.utcnow()
+                    _ch_rows = []
+                    _db2 = _SL()
+                    try:
+                        for _sr in stats_rows:
+                            _dev = _db2.query(_Dev).filter(_Dev.ip == _sr["ip"]).first()
+                            if _dev:
+                                _ch_rows.append((_now_dt, _dev.id, 0, "passive_bcast_pkts", float(_sr["total_pkts"])))
+                    finally:
+                        _db2.close()
+                    if _ch_rows:
+                        _insert(_ch_rows)
+                except Exception as _ce:
+                    logger.debug("broadcast ClickHouse flush error: %s", _ce)
     except KeyboardInterrupt:
         logger.info("Shutdown requested")
         stop_event.set()

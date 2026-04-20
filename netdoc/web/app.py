@@ -4152,6 +4152,32 @@ def create_app():
         finally:
             db.close()
 
+    @app.route("/broadcast-traffic")
+    def broadcast_traffic():
+        """Strona analizy ruchu broadcast/multicast per urzadzenie."""
+        return render_template("broadcast_traffic.html")
+
+    @app.route("/api/metrics/broadcast-summary")
+    def broadcast_summary_proxy():
+        """Proxy do FastAPI /api/metrics/broadcast-summary."""
+        since_hours = request.args.get("since_hours", 24, type=int)
+        limit = request.args.get("limit", 30, type=int)
+        threshold = request.args.get("threshold", 0, type=float)
+        data, err = _api(f"api/metrics/broadcast-summary?since_hours={since_hours}&limit={limit}&threshold={threshold}")
+        if err:
+            return jsonify({"error": err, "devices": []}), 500
+        return jsonify(data)
+
+    @app.route("/api/devices/<int:device_id>/broadcast-history")
+    def broadcast_history_proxy(device_id):
+        """Proxy do FastAPI /api/devices/{id}/broadcast-history."""
+        hours = request.args.get("hours", 24, type=int)
+        step = request.args.get("step_minutes", 5, type=int)
+        data, err = _api(f"api/devices/{device_id}/broadcast-history?hours={hours}&step_minutes={step}")
+        if err:
+            return jsonify({"error": err, "buckets": []}), 500
+        return jsonify(data)
+
     @app.route("/api/logs/docker/<container>")
     def logs_docker_proxy(container):
         """Czyta stdout/stderr kontenera Docker przez Python Docker SDK (socket /var/run/docker.sock)."""
