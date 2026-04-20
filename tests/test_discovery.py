@@ -1102,7 +1102,7 @@ _PASSIVE_SCAN_MOCKS = {
     "netdoc.collector.discovery.wsd_scan": {},
     "netdoc.collector.discovery.apipa_from_arp": {},
     "netdoc.collector.discovery.reverse_dns_lookup": {},
-
+    "netdoc.collector.discovery.is_network_reachable": True,
 }
 
 

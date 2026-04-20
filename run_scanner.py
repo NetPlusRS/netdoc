@@ -2345,10 +2345,25 @@ def run_scan_cycle(db, scan_type: str = "discovery") -> dict:
 
 
 
+_SCAN_NOW_FLAG = os.path.join(os.path.dirname(__file__), "scan_now.flag")
+
+
+def _check_scan_now_flag() -> bool:
+    """Zwraca True i usuwa flagę jeśli broadcast worker wykrył zmianę sieci."""
+    if os.path.exists(_SCAN_NOW_FLAG):
+        try:
+            os.remove(_SCAN_NOW_FLAG)
+            logger.info("scan_now.flag wykryty — przerywam cooldown (zmiana sieci)")
+            return True
+        except Exception:
+            pass
+    return False
+
+
 def _wait_cooldown(cooldown: int) -> str | None:
     """
     Waits cooldown seconds between scans.
-    Every 5s checks the scan_requested flag — if set, interrupts the cooldown early.
+    Every 5s checks the scan_requested flag and scan_now.flag — if set, interrupts early.
     Returns the scan type from the flag (or None if normal cooldown end).
     PERF-10: one DB session for the entire cooldown instead of a new one every 5s.
     """
@@ -2359,6 +2374,8 @@ def _wait_cooldown(cooldown: int) -> str | None:
         with SessionLocal() as db:
             while time.monotonic() < deadline:
                 time.sleep(min(5, max(0.1, deadline - time.monotonic())))
+                if _check_scan_now_flag():
+                    return "discovery"
                 try:
                     req = _get_status(db, "scan_requested")
                     if req and req not in ("-", ""):

@@ -940,6 +940,31 @@ def main() -> None:
     _stats_path = os.path.join(_LOGS_DIR, "broadcast_stats.json")
     _last_stats_flush = 0.0
 
+    _SCAN_NOW_FLAG = os.path.join(os.path.dirname(__file__), "scan_now.flag")
+    _last_gateway_check = 0.0
+    _GATEWAY_CHECK_INTERVAL = 15  # sekund
+    _prev_gateways: set = set()
+
+    def _current_gateways() -> set:
+        gws = set()
+        try:
+            import subprocess, platform, re as _re
+            if platform.system() == "Windows":
+                r = subprocess.run(["route", "print", "0.0.0.0"],
+                                   capture_output=True, text=True, timeout=3)
+                for m in _re.finditer(r"0\.0\.0\.0\s+0\.0\.0\.0\s+(\d+\.\d+\.\d+\.\d+)", r.stdout):
+                    gws.add(m.group(1))
+            else:
+                r = subprocess.run(["ip", "route", "show", "default"],
+                                   capture_output=True, text=True, timeout=3)
+                for m in _re.finditer(r"default via (\d+\.\d+\.\d+\.\d+)", r.stdout):
+                    gws.add(m.group(1))
+        except Exception:
+            pass
+        return gws
+
+    _prev_gateways = _current_gateways()
+
     try:
         while True:
             time.sleep(10)
@@ -951,8 +976,22 @@ def main() -> None:
                                          args=(pkt_queue, stop_event), name="db-writer", daemon=False)
                 new_t.start()
                 threads[threads.index(db_thread)] = new_t
-            # Zapisz statystyki co 30s do logs/broadcast_stats.json
+            # Wykryj zmianę sieci (zmiana default gateway) → ustaw flagę scan_now
             now = time.monotonic()
+            if now - _last_gateway_check >= _GATEWAY_CHECK_INTERVAL:
+                _last_gateway_check = now
+                cur_gws = _current_gateways()
+                if cur_gws and cur_gws != _prev_gateways:
+                    logger.info("Zmiana sieci wykryta: %s → %s — ustawiam scan_now.flag",
+                                _prev_gateways, cur_gws)
+                    try:
+                        with open(_SCAN_NOW_FLAG, "w") as _f:
+                            _f.write(datetime.utcnow().isoformat())
+                    except Exception as _fe:
+                        logger.warning("Nie mogę utworzyć scan_now.flag: %s", _fe)
+                    _prev_gateways = cur_gws
+
+            # Zapisz statystyki co 30s do logs/broadcast_stats.json
             if now - _last_stats_flush >= 30:
                 _last_stats_flush = now
                 try:

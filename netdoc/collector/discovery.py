@@ -1113,6 +1113,41 @@ def _tcp_sweep_fallback(network_range: str) -> list:
     return active
 
 
+def _gateway_for_cidr(cidr: str) -> str | None:
+    """Zwraca adres IP bramy domyślnej dla danego zakresu CIDR (pierwszy adres hosta)."""
+    try:
+        import ipaddress
+        net = ipaddress.IPv4Network(cidr, strict=False)
+        hosts = list(net.hosts())
+        return str(hosts[0]) if hosts else None
+    except Exception:
+        return None
+
+
+def is_network_reachable(cidr: str, timeout: float = 1.0) -> bool:
+    """Sprawdza osiągalność sieci przez ICMP ping do bramy (pierwszego hosta w zakresie).
+
+    Zwraca True jeśli sieć jest osiągalna (gateway odpowiada lub ICMP zablokowany ale port TCP otwarty).
+    Zwraca False jeśli zakres pochodzi z nieaktywnego interfejsu (po przełączeniu sieci).
+    """
+    gw = _gateway_for_cidr(cidr)
+    if not gw:
+        return True  # nie możemy sprawdzić — zakładamy osiągalność
+    import subprocess, platform
+    try:
+        flag = "-n" if platform.system() == "Windows" else "-c"
+        r = subprocess.run(
+            ["ping", flag, "1", "-w", "1000" if platform.system() == "Windows" else "1", gw],
+            capture_output=True, timeout=timeout + 1,
+        )
+        if r.returncode == 0:
+            return True
+    except Exception:
+        pass
+    # Fallback TCP
+    return _tcp_reachable(gw)
+
+
 def ping_sweep(network_range):
     """Ping sweep przez nmap -sn (ARP/ICMP) + TCP fallback dla hostow z ICMP DROP.
 
@@ -2740,6 +2775,9 @@ def run_discovery(db):
         return []
     all_hosts = []
     for net_range in ranges:
+        if not is_network_reachable(net_range):
+            logger.info("Pomijam zakres %s — brama nieosiągalna (sieć nieaktywna)", net_range)
+            continue
         all_hosts.extend(ping_sweep(net_range))
     all_hosts = list(dict.fromkeys(all_hosts))
 
