@@ -12,6 +12,7 @@ import json as _json
 import os
 import pathlib
 import requests
+from requests.exceptions import HTTPError as _RequestsHTTPError
 from flask import Flask, render_template, render_template_string, request, redirect, url_for, flash, jsonify, send_file, Response
 
 from netdoc.storage.database import SessionLocal
@@ -637,11 +638,14 @@ def create_app():
             if resp.status_code == 204 or not resp.content:
                 return None, None
             return resp.json(), None
-        except requests.exceptions.HTTPError as e:
+        except _RequestsHTTPError as e:
             try:
-                detail = e.response.json().get("detail", str(e))
-                if isinstance(detail, list):
-                    detail = "; ".join(str(x.get("msg", x)) for x in detail)
+                if e.response is not None:
+                    detail = e.response.json().get("detail", str(e))
+                    if isinstance(detail, list):
+                        detail = "; ".join(str(x.get("msg", x)) for x in detail)
+                else:
+                    detail = str(e)
             except Exception:
                 detail = str(e)
             return None, str(detail)

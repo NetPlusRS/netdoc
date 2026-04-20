@@ -556,8 +556,8 @@ def test_flash_success_renders_success(client):
 # -- Index vulnerability summary tests --
 def test_index_shows_vuln_counts(client):
     html = client.get("/").data.decode()
-    assert "Critical vulnerabilities" in html
-    assert "High vulnerabilities" in html
+    assert "Critical vulns" in html
+    assert "High vulns" in html
     assert "All open" in html
 
 
