@@ -96,6 +96,100 @@
   </div>
 </div>
 
+<!-- Educational section -->
+<div class="card mt-4">
+  <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center" style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#eduSection">
+    <span><i class="bi bi-info-circle me-2 text-info"></i>Co to jest ruch broadcast i dlaczego ma znaczenie?</span>
+    <i class="bi bi-chevron-down text-muted small"></i>
+  </div>
+  <div class="collapse show" id="eduSection">
+    <div class="card-body" style="font-size:.93rem;line-height:1.7">
+
+      <div class="row g-4">
+
+        <div class="col-md-6">
+          <h6 class="fw-bold mb-2"><i class="bi bi-broadcast text-warning me-2"></i>Czym jest broadcast w praktyce?</h6>
+          <p class="mb-2">
+            Normalny ruch sieciowy (unicast) trafia <strong>od jednego urządzenia do jednego odbiorcy</strong>.
+            Broadcast to pakiet wysyłany <strong>do wszystkich</strong> — każde urządzenie w tej samej sieci
+            musi go odebrać i przetworzyć, nawet jeśli go nie potrzebuje.
+          </p>
+          <p class="mb-0">
+            Typowe źródła broadcastu to: protokół ARP
+            <span class="text-muted small">("kto ma adres IP X?")</span>,
+            DHCP <span class="text-muted small">(prośby o adres IP)</span>,
+            NetBIOS/LLMNR <span class="text-muted small">(stare nazwy Windows)</span>,
+            Spanning Tree <span class="text-muted small">(switche)</span>,
+            routery OSPF/RIP, systemy SCADA/BMS,
+            drukarki i kamery IP <span class="text-muted small">(często nadmiarowe ogłoszenia)</span>.
+          </p>
+        </div>
+
+        <div class="col-md-6">
+          <h6 class="fw-bold mb-2"><i class="bi bi-exclamation-triangle text-danger me-2"></i>Kiedy broadcast staje się problemem?</h6>
+          <p class="mb-2">
+            Każdy broadcast trafia do <strong>każdego urządzenia</strong> w sieci — komputer, kamera, telefon, PLC.
+            Przy kilkunastu urządzeniach to nie problem. Przy setkach lub tysiącach:
+          </p>
+          <ul class="mb-0 ps-3">
+            <li>Procesory urządzeń są zajęte obsługą śmieciowego ruchu</li>
+            <li>Starsze switche i routery buforują i tracą pakiety <span class="text-muted small">(packet drops)</span></li>
+            <li>Urządzenia IoT, PLC i kamery IP mogą się zawieszać lub resetować</li>
+            <li>Spada przepustowość dla właściwego ruchu danych</li>
+            <li>W sieci Wi-Fi broadcast obciąża wszystkich klientów jednocześnie</li>
+          </ul>
+        </div>
+
+        <div class="col-md-6">
+          <h6 class="fw-bold mb-2"><i class="bi bi-diagram-3 text-success me-2"></i>Rozwiązanie: podział na VLAN-y</h6>
+          <p class="mb-2">
+            VLAN <span class="text-muted small">(Virtual LAN)</span> tworzy oddzielne domeny broadcastowe —
+            pakiet broadcast wysłany w VLAN 10 <strong>nigdy nie dotrze</strong> do VLAN 20.
+            Urządzenia nie muszą go nawet odbierać.
+          </p>
+          <p class="mb-0">
+            Typowy podział w firmie:
+          </p>
+          <div class="mt-2 d-flex flex-wrap gap-2">
+            <span class="badge rounded-pill" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">VLAN 10 — Komputery biurowe</span>
+            <span class="badge rounded-pill" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">VLAN 20 — Kamery IP / CCTV</span>
+            <span class="badge rounded-pill" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">VLAN 30 — Wi-Fi gości</span>
+            <span class="badge rounded-pill" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">VLAN 40 — Drukarki</span>
+            <span class="badge rounded-pill" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">VLAN 50 — Sterowanie / BMS / SCADA</span>
+            <span class="badge rounded-pill" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">VLAN 99 — Zarządzanie siecią</span>
+          </div>
+        </div>
+
+        <div class="col-md-6">
+          <h6 class="fw-bold mb-2"><i class="bi bi-clipboard2-check text-primary me-2"></i>Jak czytać dane na tej stronie?</h6>
+          <ul class="mb-2 ps-3">
+            <li><strong>Total In</strong> — łączny ruch broadcast+multicast odebrany przez urządzenie w wybranym oknie czasu. Wysoka wartość = to urządzenie jest w głośnej sieci lub samo generuje szum.</li>
+            <li><strong>In Bcast / In Mcast</strong> — dokładny podział (nowsze urządzenia z SNMP v2+). Wysoki Bcast może oznaczać nadmiarowe ARP lub burzę broadcastową.</li>
+            <li><strong>NUcast In</strong> — starszy licznik łączony (bcast+mcast razem), dla urządzeń bez pełnego MIB.</li>
+            <li><strong>Passive</strong> — pakiety złapane pasywnie przez hosta NetDoc — widoczne nawet bez SNMP.</li>
+            <li><span class="badge bg-warning text-dark">SPAM</span> — urządzenie przekroczyło ustawiony próg pakietów — kandydat do zbadania lub izolacji w osobnym VLAN-ie.</li>
+          </ul>
+          <p class="mb-0 text-muted small">
+            <i class="bi bi-lightbulb me-1"></i>
+            Wskazówka: jeśli jedno urządzenie generuje znacznie więcej broadcastu niż pozostałe —
+            sprawdź czy nie ma błędnej konfiguracji, pętli sieciowej (STP) lub awarii karty sieciowej.
+          </p>
+        </div>
+
+      </div>
+
+      <div class="alert alert-warning mt-3 mb-0 py-2" style="font-size:.88rem">
+        <i class="bi bi-lightbulb-fill me-2"></i>
+        <strong>Praktyczna zasada:</strong>
+        jeśli suma <em>Total In</em> dla wszystkich urządzeń przekracza kilka milionów pakietów na dobę,
+        a sieć nie jest podzielona na VLAN-y — warto zaplanować segmentację.
+        Kamery IP, systemy BMS i urządzenia IoT w osobnych VLAN-ach potrafią zredukować szum sieciowy o 60–90%.
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <!-- Detail modal -->
 <div class="modal fade" id="detailModal" tabindex="-1">
   <div class="modal-dialog modal-xl">

@@ -1019,7 +1019,10 @@ def main() -> None:
                 except Exception as _e:
                     logger.debug("stats flush error: %s", _e)
                 # Zapisz do ClickHouse — passive_bcast_pkts per device
+                # Worker działa na hoście Windows — ClickHouse dostępny przez localhost
                 try:
+                    import os as _os
+                    _os.environ.setdefault("CLICKHOUSE_HOST", "localhost")
                     from netdoc.storage.database import SessionLocal as _SL
                     from netdoc.storage.models import Device as _Dev
                     from netdoc.storage.clickhouse import insert_if_metrics as _insert
@@ -1036,7 +1039,7 @@ def main() -> None:
                     if _ch_rows:
                         _insert(_ch_rows)
                 except Exception as _ce:
-                    logger.debug("broadcast ClickHouse flush error: %s", _ce)
+                    logger.warning("broadcast ClickHouse flush error: %s", _ce)
     except KeyboardInterrupt:
         logger.info("Shutdown requested")
         stop_event.set()
