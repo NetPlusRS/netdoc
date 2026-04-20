@@ -1035,16 +1035,20 @@ def _save_arp_devices(db, src_ip: str, entries: list[dict]) -> int:
     saved = 0
     for e in entries:
         neighbor_ip = e["ip"]
-        # Pomijamy IP samego urzadzenia ktore pytamy
         if neighbor_ip == src_ip:
             continue
         data = DeviceData(ip=neighbor_ip, mac=e.get("mac"))
         try:
             upsert_device(db, data)
-            db.commit()
             saved += 1
         except Exception as exc:
             logger.debug("ARP save error %s: %s", neighbor_ip, exc)
+            db.rollback()
+    if saved:
+        try:
+            db.commit()
+        except Exception as exc:
+            logger.debug("ARP bulk commit error: %s", exc)
             db.rollback()
     return saved
 
@@ -2059,11 +2063,53 @@ def _compute_alerts(devices) -> None:
 
     snmp_devs = [d for d in devices if d.snmp_community]
     logger.info("Alert computation: %d devices", len(snmp_devs))
+    if not snmp_devs:
+        return
 
+    dev_ids = [d.id for d in snmp_devs]
+
+    # Bulk load: interfejsy, sensory, istniejące alerty — JEDNA sesja zamiast 3×N
+    from netdoc.storage.models import DevicePortAlert, Interface, DeviceSensor as _DevSensor
+    db_bulk = SessionLocal()
+    try:
+        all_ifaces = (
+            db_bulk.query(Interface.device_id, Interface.if_index, Interface.name)
+            .filter(Interface.device_id.in_(dev_ids), Interface.if_index.isnot(None))
+            .all()
+        )
+        iface_map: dict[int, dict[int, str]] = {}
+        for row in all_ifaces:
+            iface_map.setdefault(row.device_id, {})[row.if_index] = row.name or ""
+
+        all_sensors = (
+            db_bulk.query(_DevSensor.device_id, _DevSensor.sensor_name, _DevSensor.value)
+            .filter(_DevSensor.device_id.in_(dev_ids), _DevSensor.value.isnot(None))
+            .all()
+        )
+        sensor_map: dict[int, dict[str, float]] = {}
+        for row in all_sensors:
+            if row.sensor_name:
+                sensor_map.setdefault(row.device_id, {})[row.sensor_name] = float(row.value)
+
+        all_existing = (
+            db_bulk.query(DevicePortAlert)
+            .filter(DevicePortAlert.device_id.in_(dev_ids))
+            .all()
+        )
+        alert_map: dict[int, list] = {}
+        for a in all_existing:
+            alert_map.setdefault(a.device_id, []).append(a)
+    finally:
+        db_bulk.close()
+
+    # Oblicz alerty (czyste funkcje, bez sesji DB)
+    device_alerts: dict[int, list[dict]] = {}
     for dev in snmp_devs:
         try:
-            _compute_device_alerts(
+            device_alerts[dev.id] = _compute_device_alerts(
                 dev, now,
+                iface_map.get(dev.id, {}),
+                sensor_map.get(dev.id, {}),
                 err_warn, err_crit, trend_pct, trend_days,
                 cpu_warn, cpu_crit, mem_warn, mem_crit,
                 query_error_totals, query_resource_history,
@@ -2071,21 +2117,73 @@ def _compute_alerts(devices) -> None:
         except Exception as exc:
             logger.debug("Alert computation device %s: %s", dev.ip, exc)
 
+    # Zapisz do DB w jednej sesji — zamiast 3 sesji per urządzenie
+    db_a = SessionLocal()
+    try:
+        for dev in snmp_devs:
+            dev_id = dev.id
+            alerts_to_upsert = device_alerts.get(dev_id, [])
+            existing_alerts = alert_map.get(dev_id, [])
+            iface_names_dev = iface_map.get(dev_id, {})
+
+            if not alerts_to_upsert:
+                for a in existing_alerts:
+                    if a.acknowledged_at is None:
+                        db_a.delete(a)
+                continue
+
+            existing_by_key = {(a.if_index, a.alert_type): a for a in existing_alerts}
+            active_combos = {(a["if_index"], a["alert_type"]) for a in alerts_to_upsert}
+
+            for a in alerts_to_upsert:
+                key = (a["if_index"], a["alert_type"])
+                existing = existing_by_key.get(key)
+                if existing:
+                    existing.severity       = a["severity"]
+                    existing.value_current  = a["value_current"]
+                    existing.value_baseline = a["value_baseline"]
+                    existing.trend_pct      = a["trend_pct"]
+                    existing.last_seen      = now
+                else:
+                    db_a.add(DevicePortAlert(
+                        device_id      = dev_id,
+                        if_index       = a["if_index"],
+                        interface_name = iface_names_dev.get(a["if_index"]),
+                        alert_type     = a["alert_type"],
+                        severity       = a["severity"],
+                        value_current  = a["value_current"],
+                        value_baseline = a["value_baseline"],
+                        trend_pct      = a["trend_pct"],
+                        first_seen     = now,
+                        last_seen      = now,
+                    ))
+
+            for existing in existing_alerts:
+                if (existing.if_index, existing.alert_type) not in active_combos:
+                    if existing.acknowledged_at is None:
+                        db_a.delete(existing)
+
+        db_a.commit()
+    except Exception as exc:
+        db_a.rollback()
+        logger.warning("Alert batch upsert: %s", exc)
+    finally:
+        db_a.close()
+
 
 def _compute_device_alerts(
-    dev, now, err_warn, err_crit, trend_pct_thresh, trend_days,
+    dev, now,
+    iface_names: dict,   # {if_index: name} — załadowane bulk w _compute_alerts
+    sensors: dict,       # {sensor_name: value} — załadowane bulk w _compute_alerts
+    err_warn, err_crit, trend_pct_thresh, trend_days,
     cpu_warn, cpu_crit, mem_warn, mem_crit,
     query_error_totals, query_resource_history,
-) -> None:
-    """Oblicza i zapisuje alerty dla jednego urządzenia."""
+) -> list[dict]:
+    """Oblicza alerty dla jednego urządzenia. Nie otwiera sesji DB — tylko obliczenia."""
     from netdoc.storage.models import DevicePortAlert, Interface
-    from sqlalchemy import text
 
     alerts_to_upsert: list[dict] = []
 
-    # Interfejsy znane z wysokich błędów z powodów strukturalnych (mesh backhaul,
-    # wirtualne radiowe VAP) — pomijaj alerty error_rate/error_trend dla nich.
-    # Ubiquiti: wifi1ap* = backhaul 5GHz, vwiresta* = mesh station, mon* = monitor mode
     _NOISY_IFACE_PREFIXES = ("vwiresta", "vwire", "mon", "wifi1ap", "wifi0ap", "wifi1", "wifi0")
 
     # ── Błędy portów ─────────────────────────────────────────────────────────
@@ -2093,18 +2191,7 @@ def _compute_device_alerts(
         recent  = query_error_totals(dev.id, hours=24)
         baseline = query_error_totals(dev.id, hours=trend_days * 24 + 24)
 
-        # Pobierz nazwy interfejsów żeby móc filtrować noisy
-        from netdoc.storage.database import SessionLocal as _SL
-        _db_iface = _SL()
-        try:
-            _iface_names: dict[int, str] = {
-                i.if_index: (i.name or "")
-                for i in _db_iface.query(Interface)
-                    .filter(Interface.device_id == dev.id, Interface.if_index.isnot(None))
-                    .all()
-            }
-        finally:
-            _db_iface.close()
+        _iface_names = iface_names  # przekazane z zewnątrz (bulk)
 
         for if_index, recent_errors in recent.items():
             iface_name = _iface_names.get(if_index, "")
@@ -2171,18 +2258,7 @@ def _compute_device_alerts(
 
     # ── Sensory: dyski, RAID, temp ───────────────────────────────────────────
     try:
-        from netdoc.storage.models import DeviceSensor as _DevSensor
-        _db_sens = SessionLocal()
-        try:
-            _sensors: dict[str, float] = {
-                s.sensor_name: s.value
-                for s in _db_sens.query(_DevSensor)
-                    .filter(_DevSensor.device_id == dev.id, _DevSensor.value.isnot(None))
-                    .all()
-                if s.sensor_name and s.value is not None
-            }
-        finally:
-            _db_sens.close()
+        _sensors = sensors  # przekazane z zewnątrz (bulk)
 
         # RAID/Storage pool free% — krytyczne <5%, warning <15%
         for sname, sval in _sensors.items():
@@ -2258,72 +2334,7 @@ def _compute_device_alerts(
     except Exception as exc:
         logger.debug("Sensor alert computation dev %s: %s", dev.ip, exc)
 
-    if not alerts_to_upsert:
-        # Usuń wygasłe alerty dla tego urządzenia (wszystkie if aktualnie poniżej progów)
-        db_a = SessionLocal()
-        try:
-            db_a.query(DevicePortAlert).filter(
-                DevicePortAlert.device_id == dev.id,
-                DevicePortAlert.acknowledged_at.is_(None),
-            ).delete()
-            db_a.commit()
-        except Exception:
-            db_a.rollback()
-        finally:
-            db_a.close()
-        return
-
-    # Załaduj interfejsy (dla interface_name)
-    db_a = SessionLocal()
-    try:
-        iface_names = {
-            i.if_index: i.name
-            for i in db_a.query(Interface).filter(Interface.device_id == dev.id).all()
-            if i.if_index is not None
-        }
-
-        for a in alerts_to_upsert:
-            existing = db_a.query(DevicePortAlert).filter(
-                DevicePortAlert.device_id == dev.id,
-                DevicePortAlert.if_index  == a["if_index"],
-                DevicePortAlert.alert_type == a["alert_type"],
-            ).first()
-
-            if existing:
-                existing.severity       = a["severity"]
-                existing.value_current  = a["value_current"]
-                existing.value_baseline = a["value_baseline"]
-                existing.trend_pct      = a["trend_pct"]
-                existing.last_seen      = now
-            else:
-                db_a.add(DevicePortAlert(
-                    device_id      = dev.id,
-                    if_index       = a["if_index"],
-                    interface_name = iface_names.get(a["if_index"]),
-                    alert_type     = a["alert_type"],
-                    severity       = a["severity"],
-                    value_current  = a["value_current"],
-                    value_baseline = a["value_baseline"],
-                    trend_pct      = a["trend_pct"],
-                    first_seen     = now,
-                    last_seen      = now,
-                ))
-
-        # Usuń alerty których nie ma już w bieżącej liście (wróciły do normy)
-        active_combos = {(a["if_index"], a["alert_type"]) for a in alerts_to_upsert}
-        for existing in db_a.query(DevicePortAlert).filter(
-            DevicePortAlert.device_id == dev.id,
-            DevicePortAlert.acknowledged_at.is_(None),
-        ).all():
-            if (existing.if_index, existing.alert_type) not in active_combos:
-                db_a.delete(existing)
-
-        db_a.commit()
-    except Exception as exc:
-        db_a.rollback()
-        logger.warning("Alert upsert dev %s: %s", dev.ip, exc)
-    finally:
-        db_a.close()
+    return alerts_to_upsert
 
 
 def _collect_if_metrics(ip: str, community: str, timeout: int = 2) -> list[tuple]:
