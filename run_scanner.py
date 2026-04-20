@@ -2859,6 +2859,8 @@ def main():
             "cred_ftp_enabled":        ("1",  "config"),
             "cred_web_enabled":        ("1",  "config"),
             "cred_rdp_enabled":        ("1",  "config"),
+            "cred_vnc_enabled":        ("1",  "config"),
+            "cred_rtsp_enabled":       ("1",  "config"),
             "cred_mssql_enabled":      ("1",  "config"),
             "cred_mysql_enabled":      ("1",  "config"),
             "cred_postgres_enabled":   ("1",  "config"),

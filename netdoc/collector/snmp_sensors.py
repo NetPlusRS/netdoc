@@ -435,14 +435,15 @@ def _cisco_envmon(ip: str, community: str, timeout: float) -> list[dict]:
 
     for i, (idx, f) in enumerate(fans.items(), 1):
         state = f.get("state", 1) or 1
-        if state not in (1, 5):  # skip "notPresent"
-            descr = f.get("descr") or f"fan_{i}"
-            clean = "".join(c for c in descr.lower().replace(" ", "_") if c.isalnum() or c == "_")
-            # 1=ok(1.0), 2=warning(0.5), 3/4/6=critical(0.0)
-            ok_val = 1.0 if state == 1 else (0.5 if state == 2 else 0.0)
-            results.append(_sensor(f"fan_{clean}_ok" if not clean.startswith("fan") else f"{clean}_ok",
-                                   ok_val, "", "cisco_envmon",
-                                   raw={1:"normal",2:"warning",3:"critical",4:"shutdown",6:"notFunctioning"}.get(state,str(state))))
+        if state == 5:  # skip notPresent only
+            continue
+        descr = f.get("descr") or f"fan_{i}"
+        clean = "".join(c for c in descr.lower().replace(" ", "_") if c.isalnum() or c == "_")
+        # 1=ok(1.0), 2=warning(0.5), 3/4/6=critical(0.0)
+        ok_val = 1.0 if state == 1 else (0.5 if state == 2 else 0.0)
+        results.append(_sensor(f"fan_{clean}_ok" if not clean.startswith("fan") else f"{clean}_ok",
+                               ok_val, "", "cisco_envmon",
+                               raw={1:"normal",2:"warning",3:"critical",4:"shutdown",6:"notFunctioning"}.get(state,str(state))))
 
     # CPU (5-min average) — tylko pole 6 (cpmCPUTotal5minRev), bez pól pamięci
     # Pola 8/9 (cpmCPUMemoryUsed/Free) są na wielu urządzeniach Cisco niedostępne
@@ -1168,7 +1169,7 @@ def _ubnt_radio_sta(ip: str, community: str, timeout: float) -> list[dict]:
         noise = r.get("noise")
         if noise is not None:
             # noise moze byc przechowywany jako unsigned (np. 65436 = -100 dBm w uint8)
-            if noise > 200:
+            if noise >= 128:
                 noise = noise - 256
             if -120 <= noise <= -20:
                 results.append(_sensor(f"noise_floor_db_{band}", float(noise), "dBm",
@@ -1190,7 +1191,7 @@ def _ubnt_radio_sta(ip: str, community: str, timeout: float) -> list[dict]:
             if v is None:
                 continue
             # RSSI w UniFi zwracany jako unsigned — konwertuj na dBm
-            if v > 200:
+            if v >= 128:
                 v = v - 256
             if -120 <= v <= -10:  # sensowny zakres RSSI
                 rssi_values.append(v)
@@ -1522,9 +1523,8 @@ def _sanitize_sensors(sensors: list[dict]) -> list[dict]:
         if nl == "ram_used_pct" and (value is None or not (0 <= value <= 100)):
             continue
 
-        # Temperatura 0–1°C = nieobecny/niedostępny sensor (wartość sentinel)
-        # Żaden działający komponent nie ma temperatury 0 lub 1°C
-        if unit == "°C" and value is not None and value <= 1.0:
+        # Temperatura 0°C i poniżej = sentinel SNMP — 1°C to prawidłowa temp. outdoor gear
+        if unit == "°C" and value is not None and value <= 0:
             continue
 
         # Wentylator 0 rpm = nieaktywny / nieobecny

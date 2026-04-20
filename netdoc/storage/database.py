@@ -66,7 +66,7 @@ def _migrate_enum_values() -> None:
     enum_updates = [
         ("devicetype",      ["inverter", "workstation", "phone", "domain_controller"]),
         ("credentialmethod", ["rdp", "vnc", "ftp", "postgres", "mssql", "mysql", "rtsp"]),
-        ("vulntype",        ["rdp_exposed", "vnc_noauth", "vnc_weak_creds", "mongo_noauth", "rtsp_noauth", "modbus_exposed", "mysql_noauth", "postgres_weak_creds", "mssql_weak_creds", "couchdb_noauth", "memcached_exposed", "influxdb_noauth", "cassandra_noauth", "rtsp_weak_creds", "firewall_disabled", "onvif_noauth", "mjpeg_noauth", "rtmp_exposed", "dahua_dvr_exposed", "xmeye_dvr_exposed", "tftp_exposed"]),
+        ("vulntype",        ["rdp_exposed", "vnc_noauth", "vnc_weak_creds", "mongo_noauth", "rtsp_noauth", "modbus_exposed", "mysql_noauth", "postgres_weak_creds", "mssql_weak_creds", "couchdb_noauth", "memcached_exposed", "influxdb_noauth", "cassandra_noauth", "rtsp_weak_creds", "firewall_disabled", "onvif_noauth", "mjpeg_noauth", "rtmp_exposed", "dahua_dvr_exposed", "xmeye_dvr_exposed", "tftp_exposed", "unauth_reboot", "cisco_smart_install", "cisco_web_exec"]),
         ("eventtype",       ["ip_conflict"]),
     ]
     try:
@@ -343,6 +343,8 @@ def _migrate_columns() -> None:
         )""",
         "CREATE INDEX IF NOT EXISTS ix_alert_device_id ON device_port_alerts (device_id)",
         "CREATE INDEX IF NOT EXISTS ix_alert_severity   ON device_port_alerts (severity)",
+        # alert_type — rozszerz z VARCHAR(20) do VARCHAR(80) (2026-04-19)
+        "ALTER TABLE device_port_alerts ALTER COLUMN alert_type TYPE VARCHAR(80)",
         # Network Tier Analysis (2026-04-12)
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS network_tier     VARCHAR(10)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS tier_confidence  INTEGER",

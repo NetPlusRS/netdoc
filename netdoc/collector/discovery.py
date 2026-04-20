@@ -64,7 +64,7 @@ def _read_nmap_settings() -> tuple:
                     return default
             return (
                 max(50,  min(5000, _i("nmap_min_rate",          100))),
-                max(0,   min(9,    _i("nmap_version_intensity",    9))),
+                max(0,   min(9,    _i("nmap_version_intensity",    1))),
             )
         finally:
             db.close()
@@ -2100,7 +2100,7 @@ def _guess_device_type(open_ports, os_name, vendor=None, mac=None, hostname=None
     # Linux po portach (SSH, web)
     if "linux" in _effective_os:
         if 22 in open_ports and not (80 in open_ports or 443 in open_ports):
-            return DeviceType.router
+            return DeviceType.server
         if (80 in open_ports or 443 in open_ports) and 22 in open_ports:
             return DeviceType.server
 

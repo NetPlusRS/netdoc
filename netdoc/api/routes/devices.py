@@ -24,7 +24,7 @@ class DeviceOut(BaseModel):
     vendor: Optional[str]
     model: Optional[str]
     os_version: Optional[str]
-    device_type: DeviceType
+    device_type: DeviceType = DeviceType.unknown
     site_id: Optional[str]
     location: Optional[str]
     is_active: bool
@@ -143,7 +143,7 @@ def update_device(device_id: int, payload: DeviceUpdate, db: Session = Depends(g
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Urzadzenie nie znalezione")
-    for field, value in payload.model_dump(exclude_none=True).items():
+    for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(device, field, value)
     db.commit()
     db.refresh(device)

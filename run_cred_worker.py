@@ -1954,7 +1954,7 @@ def _mark_checked(db, device_id: int) -> None:
 
 # Per-device ------------------------------------------------------------------
 def _process_device(device_id: int, ip: str,
-                    ssh_pairs: list, web_pairs: list, ftp_pairs: list,
+                    ssh_pairs: list, telnet_pairs: list, web_pairs: list, ftp_pairs: list,
                     rdp_pairs: list | None = None,
                     vnc_pairs: list | None = None,
                     mssql_pairs: list | None = None,
@@ -2041,7 +2041,7 @@ def _process_device(device_id: int, ip: str,
                 logger.info("TEL skip: %-18s brak otwartych portow Telnet — para NIE zuzywa slotu", ip)
             else:
                 logger.info("TEST TEL  %-18s (%d/%d par, cykl=%d)",
-                            ip, len(telnet_to_try), len(ssh_pairs), pairs_per_cycle)
+                            ip, len(telnet_to_try), len(telnet_pairs), pairs_per_cycle)
                 _mark_pairs_tried(tried, "telnet", telnet_to_try)
                 pair = discover_telnet(ip, telnet_to_try)
                 if pair:
@@ -2224,7 +2224,8 @@ _MAX_DANGLING = 50            # limit zanim zaczniemy spowalniać
 
 
 def _process_device_with_timeout(timeout_s: int, device_id: int, ip: str,
-                                  ssh_pairs: list, web_pairs: list, ftp_pairs: list,
+                                  ssh_pairs: list, telnet_pairs: list,
+                                  web_pairs: list, ftp_pairs: list,
                                   rdp_pairs: list, vnc_pairs: list, pairs_per_cycle: int,
                                   mssql_pairs: list | None = None,
                                   mysql_pairs: list | None = None,
@@ -2253,7 +2254,7 @@ def _process_device_with_timeout(timeout_s: int, device_id: int, ip: str,
     result: list = [None]
 
     def _run():
-        result[0] = _process_device(device_id, ip, ssh_pairs, web_pairs,
+        result[0] = _process_device(device_id, ip, ssh_pairs, telnet_pairs, web_pairs,
                                      ftp_pairs, rdp_pairs, vnc_pairs,
                                      mssql_pairs, mysql_pairs, postgres_pairs,
                                      rtsp_pairs, pairs_per_cycle)
@@ -2448,7 +2449,7 @@ def scan_once() -> None:
             time.sleep(start_delay)
         return _process_device_with_timeout(
             dev_timeout, dev_id, dev_ip,
-            ssh_pairs, web_pairs, ftp_pairs, rdp_pairs, vnc_pairs,
+            ssh_pairs, telnet_pairs, web_pairs, ftp_pairs, rdp_pairs, vnc_pairs,
             pairs_per_cycle, mssql_pairs, mysql_pairs, postgres_pairs,
             rtsp_pairs,
         )

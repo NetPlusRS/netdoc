@@ -1,6 +1,7 @@
 """Endpoint do zarzadzania credentials (SNMP community, SSH, API keys)."""
 import json as _json
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -72,8 +73,12 @@ def create_credential(body: CredentialIn, db: Session = Depends(get_db)):
         notes=body.notes,
     )
     db.add(cred)
-    db.commit()
-    db.refresh(cred)
+    try:
+        db.commit()
+        db.refresh(cred)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Credential już istnieje (duplikat)")
     ip = None
     if cred.device_id:
         dev = db.query(Device).filter(Device.id == cred.device_id).first()

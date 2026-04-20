@@ -577,6 +577,8 @@ def create_app():
             "cred_ftp_enabled":        ("1",  "config"),
             "cred_web_enabled":        ("1",  "config"),
             "cred_rdp_enabled":        ("1",  "config"),
+            "cred_vnc_enabled":        ("1",  "config"),
+            "cred_rtsp_enabled":       ("1",  "config"),
             "cred_mssql_enabled":      ("1",  "config"),
             "cred_mysql_enabled":      ("1",  "config"),
             "cred_postgres_enabled":   ("1",  "config"),
@@ -635,6 +637,14 @@ def create_app():
             if resp.status_code == 204 or not resp.content:
                 return None, None
             return resp.json(), None
+        except requests.exceptions.HTTPError as e:
+            try:
+                detail = e.response.json().get("detail", str(e))
+                if isinstance(detail, list):
+                    detail = "; ".join(str(x.get("msg", x)) for x in detail)
+            except Exception:
+                detail = str(e)
+            return None, str(detail)
         except Exception as e:
             return None, str(e)
 
