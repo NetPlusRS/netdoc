@@ -508,47 +508,60 @@ def query_broadcast_top_devices(since_hours: int = 24, limit: int = 30) -> list[
 
     Dla urządzeń z osobnymi licznikami (in_bcast_pkts + in_mcast_pkts) używa ich sumy.
     Dla urządzeń ze starszym in_nucast_pkts (łączony bcast+mcast) używa tego jako fallback.
+    passive_bcast_pkts jest zapisywane jako delty co 30s (nie cumulative) — używa sum().
     Zwraca: [{device_id, in_bcast, out_bcast, in_mcast, out_mcast, in_nucast, out_nucast, passive, total_in}]
     """
-    params = {
-        "since_hours": since_hours,
-        "limit": limit,
-    }
-    all_metrics = _BCAST_METRICS_IN + _BCAST_METRICS_OUT
-    metrics_tuple = "(" + ",".join(f"'{m}'" for m in all_metrics) + ")"
-    sql = (
+    # passive_bcast_pkts zapisywane jako 30s delty — wymaga sum() zamiast max()-min()
+    snmp_metrics = tuple(m for m in _BCAST_METRICS_IN + _BCAST_METRICS_OUT
+                         if m != "passive_bcast_pkts")
+    snmp_tuple = "(" + ",".join(f"'{m}'" for m in snmp_metrics) + ")"
+    params = {"since_hours": since_hours}
+    client = _get_client()
+
+    sql_snmp = (
         f"SELECT device_id, metric,"
         f"  greatest(0, max(value) - min(value)) AS delta"
         f" FROM netdoc_logs.device_metrics"
         f" WHERE ts >= now() - INTERVAL {{since_hours:UInt32}} HOUR"
-        f"   AND metric IN {metrics_tuple}"
+        f"   AND metric IN {snmp_tuple}"
         f" GROUP BY device_id, if_index, metric"
     )
+    sql_passive = (
+        f"SELECT device_id, sum(value) AS total"
+        f" FROM netdoc_logs.device_metrics"
+        f" WHERE ts >= now() - INTERVAL {{since_hours:UInt32}} HOUR"
+        f"   AND metric = 'passive_bcast_pkts'"
+        f" GROUP BY device_id"
+    )
     try:
-        result = _get_client().query(sql, parameters=params)
-        # Agreguj delta per device_id (sumuj po if_index)
         per_device: dict[int, dict[str, float]] = {}
-        for device_id, metric, delta in result.result_rows:
-            row = per_device.setdefault(int(device_id), {m: 0.0 for m in all_metrics})
-            row[metric] = row[metric] + float(delta)
+
+        for device_id, metric, delta in client.query(sql_snmp, parameters=params).result_rows:
+            row = per_device.setdefault(int(device_id), {m: 0.0 for m in snmp_metrics + ("passive_bcast_pkts",)})
+            row[metric] += float(delta)
+
+        for device_id, total in client.query(sql_passive, parameters=params).result_rows:
+            did = int(device_id)
+            per_device.setdefault(did, {m: 0.0 for m in snmp_metrics + ("passive_bcast_pkts",)})
+            per_device[did]["passive_bcast_pkts"] = float(total)
 
         out = []
         for device_id, row in per_device.items():
             # Prefer bcast+mcast (newer, granular) when available; fall back to nucast.
             # Avoids double-counting on mixed devices where some interfaces report both sets.
-            if row["in_bcast_pkts"] > 0 or row["in_mcast_pkts"] > 0:
-                total_in = row["in_bcast_pkts"] + row["in_mcast_pkts"] + row["passive_bcast_pkts"]
+            if row.get("in_bcast_pkts", 0) > 0 or row.get("in_mcast_pkts", 0) > 0:
+                total_in = row.get("in_bcast_pkts", 0) + row.get("in_mcast_pkts", 0) + row.get("passive_bcast_pkts", 0)
             else:
-                total_in = row["in_nucast_pkts"] + row["passive_bcast_pkts"]
+                total_in = row.get("in_nucast_pkts", 0) + row.get("passive_bcast_pkts", 0)
             out.append({
                 "device_id":    device_id,
-                "in_bcast":     row["in_bcast_pkts"],
-                "out_bcast":    row["out_bcast_pkts"],
-                "in_mcast":     row["in_mcast_pkts"],
-                "out_mcast":    row["out_mcast_pkts"],
-                "in_nucast":    row["in_nucast_pkts"],
-                "out_nucast":   row["out_nucast_pkts"],
-                "passive_pkts": row["passive_bcast_pkts"],
+                "in_bcast":     row.get("in_bcast_pkts", 0.0),
+                "out_bcast":    row.get("out_bcast_pkts", 0.0),
+                "in_mcast":     row.get("in_mcast_pkts", 0.0),
+                "out_mcast":    row.get("out_mcast_pkts", 0.0),
+                "in_nucast":    row.get("in_nucast_pkts", 0.0),
+                "out_nucast":   row.get("out_nucast_pkts", 0.0),
+                "passive_pkts": row.get("passive_bcast_pkts", 0.0),
                 "total_in":     total_in,
             })
         out.sort(key=lambda r: r["total_in"], reverse=True)
@@ -561,11 +574,13 @@ def query_broadcast_top_devices(since_hours: int = 24, limit: int = 30) -> list[
 def query_broadcast_history(device_id: int, since_hours: int = 24, step_minutes: int = 5) -> list[dict]:
     """Historia ruchu broadcast+multicast per urządzenie (wszystkie interfejsy łącznie).
 
-    Zwraca serię czasową: [{bucket, in_bcast_rate, out_bcast_rate, in_mcast_rate, out_mcast_rate}]
-    Wartości = pkts/s (pochodna licznika kumulatywnego).
+    Zwraca serię czasową: [{bucket, in_bcast_rate, out_bcast_rate, in_mcast_rate, out_mcast_rate, ...}]
+    SNMP metryki = pkts/s (pochodna licznika kumulatywnego via lagInFrame).
+    passive_bcast_pkts = pkts/s (dane zapisywane jako delty 30s, dzielone przez step).
     """
-    all_metrics = _BCAST_METRICS_IN + _BCAST_METRICS_OUT
-    metrics_tuple = "(" + ",".join(f"'{m}'" for m in all_metrics) + ")"
+    snmp_metrics = tuple(m for m in _BCAST_METRICS_IN + _BCAST_METRICS_OUT
+                         if m != "passive_bcast_pkts")
+    metrics_tuple = "(" + ",".join(f"'{m}'" for m in snmp_metrics) + ")"
     step_sec = step_minutes * 60
     params = {
         "device_id":   device_id,
@@ -573,14 +588,14 @@ def query_broadcast_history(device_id: int, since_hours: int = 24, step_minutes:
         "step_sec":    step_sec,          # UInt32 — used in toIntervalSecond()
         "step_f":      float(step_sec),   # Float64 — used in rate division
     }
-    sql = (
+    sql_snmp = (
         f"SELECT bucket, metric, prev_max, cur_max, step"
         f" FROM ("
         f"  SELECT bucket, metric,"
         f"    sum_max AS cur_max,"
         f"    lagInFrame(sum_max, 1, toFloat64(-1))"
         f"      OVER (PARTITION BY metric ORDER BY bucket"
-        f"            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS prev_max,"
+        f"            ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS prev_max,"
         f"    {{step_f:Float64}} AS step"
         f"  FROM ("
         f"    SELECT"
@@ -597,27 +612,41 @@ def query_broadcast_history(device_id: int, since_hours: int = 24, step_minutes:
         f" )"
         f" ORDER BY bucket"
     )
+    sql_passive = (
+        f"SELECT toStartOfInterval(ts, toIntervalSecond({{step_sec:UInt32}})) AS bucket,"
+        f"       sum(value) / {{step_f:Float64}} AS rate"
+        f" FROM netdoc_logs.device_metrics"
+        f" WHERE device_id = {{device_id:UInt32}}"
+        f"   AND ts >= now() - INTERVAL {{since_hours:UInt32}} HOUR"
+        f"   AND metric = 'passive_bcast_pkts'"
+        f" GROUP BY bucket"
+        f" ORDER BY bucket"
+    )
     try:
-        result = _get_client().query(sql, parameters=params)
+        client = _get_client()
         buckets: dict[str, dict[str, float]] = {}
-        for bucket, metric, prev_max, cur_max, step in result.result_rows:
+        for bucket, metric, prev_max, cur_max, step in client.query(sql_snmp, parameters=params).result_rows:
             key = bucket.isoformat() if hasattr(bucket, "isoformat") else str(bucket)
             if prev_max >= 0 and cur_max >= prev_max and step > 0:
                 rate = round((cur_max - prev_max) / step, 4)
             else:
                 rate = 0.0
             buckets.setdefault(key, {})[metric] = rate
+        for bucket, rate in client.query(sql_passive, parameters=params).result_rows:
+            key = bucket.isoformat() if hasattr(bucket, "isoformat") else str(bucket)
+            buckets.setdefault(key, {})["passive_bcast_pkts"] = round(float(rate), 4)
         out = []
         for key in sorted(buckets):
             row = buckets[key]
             out.append({
-                "bucket":         key,
-                "in_bcast_rate":  row.get("in_bcast_pkts", 0.0),
-                "out_bcast_rate": row.get("out_bcast_pkts", 0.0),
-                "in_mcast_rate":  row.get("in_mcast_pkts", 0.0),
-                "out_mcast_rate": row.get("out_mcast_pkts", 0.0),
-                "in_nucast_rate": row.get("in_nucast_pkts", 0.0),
-                "passive_rate":   row.get("passive_bcast_pkts", 0.0),
+                "bucket":          key,
+                "in_bcast_rate":   row.get("in_bcast_pkts", 0.0),
+                "out_bcast_rate":  row.get("out_bcast_pkts", 0.0),
+                "in_mcast_rate":   row.get("in_mcast_pkts", 0.0),
+                "out_mcast_rate":  row.get("out_mcast_pkts", 0.0),
+                "in_nucast_rate":  row.get("in_nucast_pkts", 0.0),
+                "out_nucast_rate": row.get("out_nucast_pkts", 0.0),
+                "passive_rate":    row.get("passive_bcast_pkts", 0.0),
             })
         return out
     except Exception as exc:

@@ -120,11 +120,14 @@ def _write_raw(proto: str, src_ip: str, src_port: int, data: bytes) -> None:
 _bcast_stats: dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(lambda: [0, 0]))
 _bcast_stats_lock = threading.Lock()
 _bcast_stats_start = time.time()   # kiedy zaczelismy liczyc (do "uptime" w API)
+_BCAST_STATS_MAX_IPS = 2000
 
 
 def _record_packet(proto: str, src_ip: str, nbytes: int) -> None:
     """Rejestruje pakiet w licznikach statystyk."""
     with _bcast_stats_lock:
+        if src_ip not in _bcast_stats and len(_bcast_stats) >= _BCAST_STATS_MAX_IPS:
+            return
         _bcast_stats[src_ip][proto][0] += 1
         _bcast_stats[src_ip][proto][1] += nbytes
 
@@ -466,7 +469,10 @@ def db_writer_thread(q: queue.Queue, stop_event: threading.Event) -> None:
                             "broadcast_ssdp":  proto_counts["ssdp"],
                         })
                     except Exception:
-                        pass
+                        try:
+                            db.rollback()
+                        except Exception:
+                            pass
                     last_stats_save = time.monotonic()
                 continue
 
@@ -620,6 +626,10 @@ def listener_ssdp(bind_ip: str, q: queue.Queue, stop_event: threading.Event) -> 
                 if not entry: continue
                 url = entry.get("location_url")
                 now = time.monotonic()
+                # Purge stale entries to prevent unbounded growth
+                if len(_upnp_pending) > 500:
+                    _upnp_pending = {u: t for u, t in _upnp_pending.items()
+                                     if now - t < DB_THROTTLE_S * 2}
                 # Fetch UPnP description — max 1x/5min per URL
                 if url and now - _upnp_pending.get(url, 0) > DB_THROTTLE_S:
                     _upnp_pending[url] = now
@@ -928,6 +938,12 @@ def main() -> None:
     pkt_queue: queue.Queue = queue.Queue(maxsize=1000)
     stop_event = threading.Event()
 
+    import signal as _signal
+    def _sigterm_handler(signum, frame):
+        logger.info("SIGTERM received — shutting down")
+        stop_event.set()
+    _signal.signal(_signal.SIGTERM, _sigterm_handler)
+
     threads = [
         threading.Thread(target=listener_unifi,  args=(bind_ip, pkt_queue, stop_event),
                          name="listener-unifi",  daemon=True),
@@ -949,6 +965,7 @@ def main() -> None:
 
     _stats_path = os.path.join(_LOGS_DIR, "broadcast_stats.json")
     _last_stats_flush = 0.0
+    _ch_prev_totals: dict[str, float] = {}  # ip → last flushed total_pkts
 
     _SCAN_NOW_FLAG = os.path.join(os.path.dirname(__file__), "scan_now.flag")
     _last_gateway_check = 0.0
@@ -1031,9 +1048,16 @@ def main() -> None:
                     _db2 = _SL()
                     try:
                         for _sr in stats_rows:
-                            _dev = _db2.query(_Dev).filter(_Dev.ip == _sr["ip"]).first()
+                            _ip = _sr["ip"]
+                            _total = float(_sr["total_pkts"])
+                            _prev  = _ch_prev_totals.get(_ip, _total)
+                            _delta = max(0.0, _total - _prev)
+                            _ch_prev_totals[_ip] = _total
+                            if _delta <= 0:
+                                continue
+                            _dev = _db2.query(_Dev).filter(_Dev.ip == _ip).first()
                             if _dev:
-                                _ch_rows.append((_now_dt, _dev.id, 0, "passive_bcast_pkts", float(_sr["total_pkts"])))
+                                _ch_rows.append((_now_dt, _dev.id, 0, "passive_bcast_pkts", _delta))
                     finally:
                         _db2.close()
                     if _ch_rows:
