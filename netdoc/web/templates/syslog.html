@@ -9,18 +9,18 @@
   <div class="d-flex gap-2 align-items-start">
     <i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
     <div>
-      <strong>Adresy IP urządzeń mogą być niewidoczne</strong> — kolumna <em>IP</em> pokazuje
-      adres Docker NAT (<code>172.x.x.x</code>) zamiast prawdziwego IP urządzenia sieciowego.
+      <strong>Device IP addresses may not be visible</strong> — the <em>IP</em> column shows
+      the Docker NAT address (<code>172.x.x.x</code>) instead of the real network device IP.
       <div class="mt-1 text-muted">
-        <strong>Przyczyna:</strong> Kontener rsyslog działa za mostem Docker, który maskuje
-        źródłowy adres pakietu UDP/TCP. Fix (<code>network_mode: host</code>) jest wdrożony
-        i działa poprawnie na Linux. Na <strong>Windows z Docker Desktop</strong> adres jest
-        nadal NATowany przez warstwę WSL2 — jest to ograniczenie platformy, nie błąd konfiguracji.
-        <br>Identyfikacja urządzeń możliwa przez pole <strong>hostname</strong> zawarte w treści logu.
+        <strong>Cause:</strong> The rsyslog container runs behind the Docker bridge, which masks
+        the source IP of UDP/TCP packets. The fix (<code>network_mode: host</code>) is deployed
+        and works correctly on Linux. On <strong>Windows with Docker Desktop</strong> the address is
+        still NATed by the WSL2 layer — this is a platform limitation, not a configuration error.
+        <br>Devices can still be identified via the <strong>hostname</strong> field in the log message.
       </div>
     </div>
   </div>
-  <button type="button" class="btn-close" id="syslogNatBannerClose" aria-label="Zamknij"></button>
+  <button type="button" class="btn-close" id="syslogNatBannerClose" aria-label="Close"></button>
 </div>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -29,25 +29,25 @@
     <span class="badge bg-secondary" id="syslogStatus">...</span>
     {% if PRO_ENABLED %}
     <span class="text-muted small d-flex align-items-center gap-1">
-      <i class="bi bi-clock-history"></i>Retencja:
+      <i class="bi bi-clock-history"></i>Retention:
       <select id="retentionSelect" class="form-select form-select-sm" style="width:auto"
-              title="Zmień czas przechowywania logów syslog">
+              title="Change syslog retention period">
         {% for d in [7, 14, 30, 60, 90, 180, 365] %}
-        <option value="{{ d }}" {% if (syslog_retention_days or 30) == d %}selected{% endif %}>{{ d }} dni</option>
+        <option value="{{ d }}" {% if (syslog_retention_days or 30) == d %}selected{% endif %}>{{ d }} days</option>
         {% endfor %}
       </select>
     </span>
     {% else %}
-    <span class="text-muted small" title="Logi starsze niż 30 dni są automatycznie usuwane przez ClickHouse TTL. Wersja PRO umożliwia konfigurację do 365 dni.">
-      <i class="bi bi-clock-history me-1"></i>Retencja: 30 dni
-      <a href="/pro" class="badge bg-warning text-dark text-decoration-none ms-1" style="font-size:0.65rem;vertical-align:middle">PRO: do 365 dni</a>
+    <span class="text-muted small" title="Logs older than 30 days are automatically removed by ClickHouse TTL. PRO version allows configuration up to 365 days.">
+      <i class="bi bi-clock-history me-1"></i>Retention: 30 days
+      <a href="/pro" class="badge bg-warning text-dark text-decoration-none ms-1" style="font-size:0.65rem;vertical-align:middle">PRO: up to 365 days</a>
     </span>
     {% endif %}
     <div class="form-check form-switch mb-0">
       <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
       <label class="form-check-label small" for="autoRefresh">Auto 30s</label>
     </div>
-    <button class="btn btn-outline-secondary btn-sm" onclick="fetchLogs()" title="Odśwież">
+    <button class="btn btn-outline-secondary btn-sm" onclick="fetchLogs()" title="Refresh">
       <i class="bi bi-arrow-clockwise"></i>
     </button>
   </div>
@@ -59,17 +59,17 @@
     <div class="d-flex flex-wrap gap-2 align-items-center">
 
       {# Severity #}
-      <div class="btn-group btn-group-sm" id="severityFilter" role="group" title="Filtruj według poziomu ważności">
-        <button type="button" class="btn btn-outline-secondary active" data-sev="">Wszystko</button>
-        <button type="button" class="btn btn-outline-danger"           data-sev="3" title="ERROR i poważniejsze (0-3)">Error+</button>
-        <button type="button" class="btn btn-outline-warning"          data-sev="4" title="WARNING i poważniejsze (0-4)">Warn+</button>
-        <button type="button" class="btn btn-outline-info"             data-sev="5" title="NOTICE i poważniejsze (0-5)">Notice+</button>
-        <button type="button" class="btn btn-outline-secondary"        data-sev="6" title="INFO i poważniejsze (0-6)">Info+</button>
+      <div class="btn-group btn-group-sm" id="severityFilter" role="group" title="Filter by severity level">
+        <button type="button" class="btn btn-outline-secondary active" data-sev="">All</button>
+        <button type="button" class="btn btn-outline-danger"           data-sev="3" title="ERROR and above (0-3)">Error+</button>
+        <button type="button" class="btn btn-outline-warning"          data-sev="4" title="WARNING and above (0-4)">Warn+</button>
+        <button type="button" class="btn btn-outline-info"             data-sev="5" title="NOTICE and above (0-5)">Notice+</button>
+        <button type="button" class="btn btn-outline-secondary"        data-sev="6" title="INFO and above (0-6)">Info+</button>
       </div>
 
       {# Device select #}
-      <select class="form-select form-select-sm" id="deviceFilter" style="width:220px" title="Filtruj po urządzeniu">
-        <option value="">Wszystkie urządzenia</option>
+      <select class="form-select form-select-sm" id="deviceFilter" style="width:220px" title="Filter by device">
+        <option value="">All devices</option>
         {% for d in devices %}
         <option value="{{ d.id }}">{{ d.ip }}{% if d.hostname %} — {{ d.hostname }}{% endif %}</option>
         {% endfor %}
@@ -78,15 +78,15 @@
       {# Program filter #}
       <input type="text" id="programFilter" class="form-control form-control-sm"
              style="width:160px" placeholder="Program…" autocomplete="off"
-             title="Filtruj po nazwie procesu (np. OSPF, BGP, SYS)">
+             title="Filter by process name (e.g. OSPF, BGP, SYS)">
 
       {# Time range #}
-      <select class="form-select form-select-sm" id="hoursFilter" style="width:120px" title="Zakres czasu">
-        <option value="1">1 godzina</option>
-        <option value="6">6 godzin</option>
-        <option value="24" selected>24 godziny</option>
-        <option value="72">3 doby</option>
-        <option value="168">7 dni</option>
+      <select class="form-select form-select-sm" id="hoursFilter" style="width:120px" title="Time range">
+        <option value="1">1 hour</option>
+        <option value="6">6 hours</option>
+        <option value="24" selected>24 hours</option>
+        <option value="72">3 days</option>
+        <option value="168">7 days</option>
         {% if PRO_ENABLED %}
         <option value="360">15 dni</option>
         <option value="720">30 dni</option>
@@ -97,7 +97,7 @@
       </select>
 
       {# Limit #}
-      <select class="form-select form-select-sm" id="limitFilter" style="width:90px" title="Liczba wyników">
+      <select class="form-select form-select-sm" id="limitFilter" style="width:90px" title="Result limit">
         <option value="100">100</option>
         <option value="200" selected>200</option>
         <option value="500">500</option>
@@ -111,18 +111,18 @@
       {# Text search — server-side dla Pro, client-side dla Free #}
       <div class="input-group input-group-sm" style="width:{% if PRO_ENABLED %}240px{% else %}200px{% endif %}">
         <input type="text" id="textFilter" class="form-control form-control-sm"
-               placeholder="{% if PRO_ENABLED %}Szukaj w logach (server)…{% else %}Search in content…{% endif %}"
-               autocomplete="off" title="{% if PRO_ENABLED %}Wyszukiwanie server-side w całym zakresie{% else %}Wyszukiwanie client-side w załadowanych danych{% endif %}">
+               placeholder="{% if PRO_ENABLED %}Search logs (server)…{% else %}Search in content…{% endif %}"
+               autocomplete="off" title="{% if PRO_ENABLED %}Server-side search across full retention{% else %}Client-side search in loaded data{% endif %}">
         {% if PRO_ENABLED %}
         <span class="input-group-text bg-warning text-dark" style="font-size:.7rem;padding:2px 5px" title="Server-side search (Pro)">PRO</span>
         {% endif %}
-        <button class="btn btn-outline-secondary" type="button" onclick="clearText()" title="Wyczyść"><i class="bi bi-x"></i></button>
+        <button class="btn btn-outline-secondary" type="button" onclick="clearText()" title="Clear"><i class="bi bi-x"></i></button>
       </div>
       <span class="text-muted small" id="textFilterCount"></span>
 
       {% if PRO_ENABLED %}
       {# Eksport CSV — Pro #}
-      <button class="btn btn-sm btn-outline-success" id="exportCsvBtn" title="Eksportuj wyniki do CSV">
+      <button class="btn btn-sm btn-outline-success" id="exportCsvBtn" title="Export results to CSV">
         <i class="bi bi-download me-1"></i>CSV
       </button>
       {% endif %}
@@ -137,15 +137,15 @@
       <table class="table table-sm table-hover mb-0 font-monospace" id="syslogTable">
         <thead style="position:sticky;top:0;z-index:2">
           <tr>
-            <th style="width:145px">Czas</th>
+            <th style="width:145px">Time</th>
             <th style="width:120px">IP</th>
             <th style="width:90px">Severity</th>
             <th style="width:110px">Program</th>
-            <th>Wiadomość</th>
+            <th>Message</th>
           </tr>
         </thead>
         <tbody id="syslogBody">
-          <tr><td colspan="5" class="text-center text-muted py-4">Ładowanie…</td></tr>
+          <tr><td colspan="5" class="text-center text-muted py-4">Loading…</td></tr>
         </tbody>
       </table>
     </div>
@@ -154,11 +154,11 @@
 {% if PRO_ENABLED %}
 <div class="d-flex justify-content-center align-items-center gap-3 mt-2">
   <button id="paginPrev" type="button" class="btn btn-outline-secondary btn-sm" disabled>
-    <i class="bi bi-chevron-left"></i> Poprzednia
+    <i class="bi bi-chevron-left"></i> Previous
   </button>
   <span id="paginInfo" class="text-muted small"></span>
   <button id="paginNext" type="button" class="btn btn-outline-secondary btn-sm" disabled>
-    Następna <i class="bi bi-chevron-right"></i>
+    Next <i class="bi bi-chevron-right"></i>
   </button>
 </div>
 {% endif %}
@@ -232,7 +232,7 @@ function fetchLogs() {
     })
     .catch(err => {
       document.getElementById("syslogBody").innerHTML =
-        `<tr><td colspan="5" class="text-center text-danger py-3">Błąd: ${escHtml(err.message)}<br><small class="text-muted">Sprawdź czy ClickHouse jest uruchomiony (docker compose ps)</small></td></tr>`;
+        `<tr><td colspan="5" class="text-center text-danger py-3">Error: ${escHtml(err.message)}<br><small class="text-muted">Check if ClickHouse is running (docker compose ps)</small></td></tr>`;
       setStatus("err");
     });
 }
@@ -293,7 +293,7 @@ function setStatus(state) {
   } else if (state === "ok") {
     el.textContent = new Date().toLocaleTimeString(); el.className = "badge bg-success";
   } else {
-    el.textContent = "błąd"; el.className = "badge bg-danger";
+    el.textContent = "error"; el.className = "badge bg-danger";
   }
 }
 

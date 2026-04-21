@@ -32,17 +32,17 @@
   <div class="card-body py-2">
     <div class="d-flex flex-wrap gap-2 align-items-end">
       <div>
-        <label class="form-label form-label-sm mb-1">Szukaj</label>
+        <label class="form-label form-label-sm mb-1">Search</label>
         <div class="input-group input-group-sm">
           <span class="input-group-text"><i class="bi bi-search"></i></span>
           <input type="text" id="inv-search" class="form-control" placeholder="IP, hostname, vendor, S/N…">
-          <button type="button" class="btn btn-outline-secondary" id="inv-search-clear" title="Wyczyść">×</button>
+          <button type="button" class="btn btn-outline-secondary" id="inv-search-clear" title="Clear">×</button>
         </div>
       </div>
       <div>
-        <label class="form-label form-label-sm mb-1">Typ</label>
-        <select id="filter-type" class="form-select form-select-sm" style="min-width:120px" aria-label="Filtruj typ urządzenia">
-          <option value="">Wszystkie</option>
+        <label class="form-label form-label-sm mb-1">Type</label>
+        <select id="filter-type" class="form-select form-select-sm" style="min-width:120px" aria-label="Filter by device type">
+          <option value="">All</option>
           {% set types = inv_rows | map(attribute='device') | selectattr('device_type') | map(attribute='device_type') | map(attribute='value') | unique | sort %}
           {% for t in types %}
           <option value="{{ t }}">{{ t }}</option>
@@ -51,8 +51,8 @@
       </div>
       <div>
         <label class="form-label form-label-sm mb-1">Vendor</label>
-        <select id="filter-vendor" class="form-select form-select-sm" style="min-width:130px" aria-label="Filtruj vendor">
-          <option value="">Wszyscy</option>
+        <select id="filter-vendor" class="form-select form-select-sm" style="min-width:130px" aria-label="Filter by vendor">
+          <option value="">All</option>
           {% set vendors = inv_rows | selectattr('device.vendor') | map(attribute='device.vendor') | unique | sort %}
           {% for v in vendors %}
           <option value="{{ v }}">{{ v }}</option>
@@ -60,9 +60,9 @@
         </select>
       </div>
       <div>
-        <label class="form-label form-label-sm mb-1">Lokalizacja</label>
-        <select id="filter-location" class="form-select form-select-sm" style="min-width:130px" aria-label="Filtruj lokalizację">
-          <option value="">Wszystkie</option>
+        <label class="form-label form-label-sm mb-1">Location</label>
+        <select id="filter-location" class="form-select form-select-sm" style="min-width:130px" aria-label="Filter by location">
+          <option value="">All</option>
           {% set locs = inv_rows | selectattr('device.location') | map(attribute='device.location') | unique | sort %}
           {% for l in locs %}
           <option value="{{ l }}">{{ l }}</option>
@@ -71,15 +71,15 @@
       </div>
       <div>
         <label class="form-label form-label-sm mb-1">S/N</label>
-        <select id="filter-sn" class="form-select form-select-sm" style="min-width:110px" aria-label="Filtruj numer seryjny">
-          <option value="">Wszystkie</option>
-          <option value="yes">Ma S/N</option>
-          <option value="no">Brak S/N</option>
+        <select id="filter-sn" class="form-select form-select-sm" style="min-width:110px" aria-label="Filter by serial number">
+          <option value="">All</option>
+          <option value="yes">Has S/N</option>
+          <option value="no">No S/N</option>
         </select>
       </div>
       <div class="ms-auto d-flex align-items-end">
         <button type="button" class="btn btn-sm btn-outline-secondary" id="inv-reset">
-          <i class="bi bi-x-circle me-1"></i>Reset filtrów
+          <i class="bi bi-x-circle me-1"></i>Reset filters
         </button>
       </div>
     </div>
@@ -88,8 +88,8 @@
 
 <div class="alert alert-info py-2 mb-3 small">
   <i class="bi bi-info-circle me-1"></i>
-  Dane SNMP (vendor, model, OS, S/N, lokalizacja, uptime) są uzupełniane automatycznie przez SNMP worker.
-  Edycja ręczna przez <strong>Devices → Actions → Inventory / SNMP</strong>.
+  SNMP data (vendor, model, OS, S/N, location, uptime) is populated automatically by the SNMP worker.
+  Manual editing via <strong>Devices → Actions → Inventory / SNMP</strong>.
 </div>
 
 <div class="card">
@@ -100,17 +100,17 @@
           <tr>
             <th class="sort-th" data-col="0">IP<span class="sort-icon"></span></th>
             <th class="sort-th" data-col="1">Hostname<span class="sort-icon"></span></th>
-            <th class="sort-th" data-col="2">Typ<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="2">Type<span class="sort-icon"></span></th>
             <th class="sort-th" data-col="3">Vendor / Model<span class="sort-icon"></span></th>
-            <th class="sort-th" data-col="4" title="Wersja OS lub sysDescr z SNMP">OS / Firmware<span class="sort-icon"></span></th>
-            <th class="sort-th" data-col="5" title="Numer seryjny z Entity MIB">S/N<span class="sort-icon"></span></th>
-            <th class="sort-th" data-col="6" title="Wewnętrzny numer inwentarzowy">Asset tag<span class="sort-icon"></span></th>
-            <th class="sort-th" data-col="7">Lokalizacja<span class="sort-icon"></span></th>
-            <th class="sort-th" data-col="8" title="sysContact z SNMP">Kontakt<span class="sort-icon"></span></th>
-            <th class="sort-th" data-col="9" title="Uptime z SNMP sysUpTime">Uptime<span class="sort-icon"></span></th>
-            <th class="sort-th" data-col="10">Ostatni SNMP<span class="sort-icon"></span></th>
-            <th class="sort-th" data-col="11">Odpowiedzialny<span class="sort-icon"></span></th>
-            <th class="sort-th" data-col="12">Notatki<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="4" title="OS version or sysDescr from SNMP">OS / Firmware<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="5" title="Serial number from Entity MIB">S/N<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="6" title="Internal inventory tag">Asset tag<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="7">Location<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="8" title="sysContact from SNMP">Contact<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="9" title="Uptime from SNMP sysUpTime">Uptime<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="10">Last SNMP<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="11">Owner<span class="sort-icon"></span></th>
+            <th class="sort-th" data-col="12">Notes<span class="sort-icon"></span></th>
           </tr>
         </thead>
         <tbody id="inv-tbody">
@@ -155,7 +155,7 @@
           {% else %}
           <tr id="inv-empty-row">
             <td colspan="13" class="text-center text-muted py-4">
-              Brak danych. Dane SNMP uzupełniane automatycznie. Edytuj ręcznie przez
+              No data yet. SNMP data is populated automatically. Edit manually via
               <a href="/devices">Devices → Actions → Inventory / SNMP</a>.
             </td>
           </tr>
@@ -224,7 +224,7 @@
     count.textContent = visible === allRows.length
       ? `(${allRows.length})`
       : `(${visible} / ${allRows.length})`;
-    status.textContent = visible === 0 ? 'Brak wyników dla podanych filtrów.' : '';
+    status.textContent = visible === 0 ? 'No results for selected filters.' : '';
 
     // highlight active filters
     [fType, fVendor, fLoc, fSn].forEach(el => {

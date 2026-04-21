@@ -329,7 +329,7 @@
               title="Number of open ports from the last scan — click to sort">
             <i class="bi bi-ethernet"></i> <i class="bi bi-arrow-down-up text-muted sort-icon" style="font-size:.7rem"></i></th>
           <th title="Full port scan 1-65535"><i class="bi bi-search"></i></th>
-          <th title="Data coverage — które protokoły dostarczają danych z urządzenia">
+          <th title="Data coverage — which protocols provide data for this device">
             <i class="bi bi-reception-4"></i></th>
           <th>Actions</th>
         </tr>
@@ -653,7 +653,7 @@
             <div class="card-body py-2 px-3">
               <div class="d-flex align-items-center gap-2 mb-2">
                 <i class="bi bi-diagram-3 text-primary"></i>
-                <span class="fw-semibold small">Dane SNMP <span class="text-muted fw-normal">(auto-uzupełniane)</span></span>
+                <span class="fw-semibold small">SNMP data <span class="text-muted fw-normal">(auto-populated)</span></span>
                 <span class="ms-auto badge bg-secondary small" id="invSnmpBadge"></span>
               </div>
               <div class="row g-1 small">
@@ -670,10 +670,10 @@
                   <span class="text-muted">OS / Firmware:</span> <span id="invSnmpOs" class="fw-medium font-monospace">—</span>
                 </div>
                 <div class="col-md-6">
-                  <span class="text-muted">Lokalizacja (SNMP):</span> <span id="invSnmpLocation" class="fw-medium">—</span>
+                  <span class="text-muted">Location (SNMP):</span> <span id="invSnmpLocation" class="fw-medium">—</span>
                 </div>
                 <div class="col-md-6">
-                  <span class="text-muted">Ostatni poll:</span> <span id="invSnmpOkAt" class="fw-medium">—</span>
+                  <span class="text-muted">Last poll:</span> <span id="invSnmpOkAt" class="fw-medium">—</span>
                 </div>
               </div>
             </div>
@@ -682,41 +682,41 @@
           {# ── Pola edytowalne ── #}
           <div class="row g-2">
             <div class="col-md-6">
-              <label class="form-label small">Numer seryjny <span class="text-muted">(S/N)</span></label>
+              <label class="form-label small">Serial number <span class="text-muted">(S/N)</span></label>
               <input type="text" name="serial_number" id="invSerial" class="form-control form-control-sm"
-                     placeholder="np. FCZ2244ABCD — uzupełniany z SNMP Entity MIB">
+                     placeholder="e.g. FCZ2244ABCD — auto-filled from SNMP Entity MIB">
             </div>
             <div class="col-md-6">
               <label class="form-label small">Asset tag</label>
               <input type="text" name="asset_tag" id="invAsset" class="form-control form-control-sm"
-                     placeholder="np. INV/2026/001">
+                     placeholder="e.g. INV/2026/001">
             </div>
             <div class="col-md-6">
-              <label class="form-label small">Lokalizacja <span class="text-muted">(nadpisuje SNMP)</span></label>
+              <label class="form-label small">Location <span class="text-muted">(overrides SNMP)</span></label>
               <input type="text" name="location" id="invLocation" class="form-control form-control-sm"
-                     placeholder="np. Serwerownia / Rack 3">
+                     placeholder="e.g. Server room / Rack 3">
             </div>
             <div class="col-md-6">
-              <label class="form-label small">Kontakt <span class="text-muted">(sysContact — nadpisuje SNMP)</span></label>
+              <label class="form-label small">Contact <span class="text-muted">(sysContact — overrides SNMP)</span></label>
               <input type="text" name="sys_contact" id="invSysContact" class="form-control form-control-sm"
-                     placeholder="np. admin@firma.pl / Jan Kowalski">
+                     placeholder="e.g. admin@company.com / John Smith">
             </div>
             <div class="col-md-6">
-              <label class="form-label small">Osoba odpowiedzialna</label>
+              <label class="form-label small">Owner / responsible</label>
               <input type="text" name="responsible_person" id="invResponsible" class="form-control form-control-sm"
-                     placeholder="np. Jan Kowalski / IT">
+                     placeholder="e.g. John Smith / IT">
             </div>
             <div class="col-12">
-              <label class="form-label small">Notatki</label>
+              <label class="form-label small">Notes</label>
               <textarea name="asset_notes" id="invNotes" class="form-control form-control-sm" rows="2"
-                        placeholder="np. Rack 3 szafa 2, projekt HVAC, firma XYZ"></textarea>
+                        placeholder="e.g. Rack 3 bay 2, HVAC project, vendor XYZ"></textarea>
             </div>
           </div>
         </div>
         <div class="modal-footer py-2">
-          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Anuluj</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
           <button type="submit" class="btn btn-primary btn-sm">
-            <i class="bi bi-save me-1"></i>Zapisz
+            <i class="bi bi-save me-1"></i>Save
           </button>
         </div>
       </form>
@@ -1882,11 +1882,11 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
     if (enabled) {
       btn.classList.replace('btn-outline-secondary', 'btn-outline-success');
       icon.className = 'bi bi-arrow-clockwise';
-      btn.title = 'Auto-odświeżanie włączone — kliknij aby wyłączyć';
+      btn.title = 'Auto-refresh enabled — click to disable';
     } else {
       btn.classList.replace('btn-outline-success', 'btn-outline-secondary');
       icon.className = 'bi bi-arrow-clockwise text-muted';
-      btn.title = 'Auto-odświeżanie wyłączone — kliknij aby włączyć';
+      btn.title = 'Auto-refresh disabled — click to enable';
     }
   }
 

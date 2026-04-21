@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Rozmowa{% endblock %}
+{% block title %}Conversation{% endblock %}
 {% block head %}
 <style>
   .msg{max-width:82%;padding:.6rem 1rem;border-radius:12px;line-height:1.5;word-break:break-word;}
@@ -28,10 +28,10 @@
 {% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h4 class="mb-0"><i class="bi bi-chat-square-text me-2"></i>Rozmowa</h4>
+  <h4 class="mb-0"><i class="bi bi-chat-square-text me-2"></i>Conversation</h4>
   <div class="d-flex gap-2">
-    <a href="/chat/history" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Lista</a>
-    <a href="/chat" class="btn btn-sm btn-primary"><i class="bi bi-robot me-1"></i>Nowa</a>
+    <a href="/chat/history" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>List</a>
+    <a href="/chat" class="btn btn-sm btn-primary"><i class="bi bi-robot me-1"></i>New</a>
   </div>
 </div>
 <p class="text-muted small mb-3">Sesja: <code>{{ session_id }}</code></p>
@@ -48,14 +48,14 @@
         <span id="msg-{{ loop.index }}">{{ m.content }}</span>
         {% if m.tools_used %}
         <details class="msg-debug">
-          <summary><i class="bi bi-braces me-1"></i>Co wysłano do AI
-            ({{ m.tools_used | length }} zapytań do bazy)</summary>
+          <summary><i class="bi bi-braces me-1"></i>Sent to AI
+            ({{ m.tools_used | length }} database queries)</summary>
           <div class="debug-body">
             {% for td in m.tools_used %}
               {% if td is mapping %}
                 <div class="debug-tool">
                   <div class="debug-tool-name">
-                    <i class="bi bi-database me-1"></i>{{ td.tool }}({% if td.input %}{% for k,v in td.input.items() %}{{ k }}={{ v | tojson }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}brak parametrów{% endif %})
+                    <i class="bi bi-database me-1"></i>{{ td.tool }}({% if td.input %}{% for k,v in td.input.items() %}{{ k }}={{ v | tojson }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}no parameters{% endif %})
                   </div>
                   <div class="debug-tool-result">{{ td.result }}</div>
                 </div>

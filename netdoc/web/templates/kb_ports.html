@@ -3,8 +3,8 @@
 
 {% block content %}
 <div class="d-flex align-items-center mb-3 gap-2 flex-wrap">
-  <h4 class="mb-0"><i class="bi bi-plug me-2 text-info"></i>Encyklopedia portów sieciowych</h4>
-  <span class="badge bg-secondary ms-1">{{ total }} portów w bazie</span>
+  <h4 class="mb-0"><i class="bi bi-plug me-2 text-info"></i>Network Ports Encyclopedia</h4>
+  <span class="badge bg-secondary ms-1">{{ total }} ports in database</span>
   <span class="badge bg-secondary ms-1" id="kbVisibleCount"></span>
 </div>
 
@@ -16,7 +16,7 @@
   </div>
   <div class="col-sm-3 col-md-2">
     <select name="cat" class="form-select form-select-sm" onchange="this.form.submit()">
-      <option value="">Wszystkie kategorie</option>
+      <option value="">All categories</option>
       {% for key, label in categories.items() %}
         <option value="{{ key }}" {% if cat_filter == key %}selected{% endif %}>{{ label }}</option>
       {% endfor %}
@@ -24,11 +24,11 @@
   </div>
   <div class="col-sm-2 col-md-2">
     <select name="risk" class="form-select form-select-sm" onchange="this.form.submit()">
-      <option value="">Wszystkie ryzyka</option>
-      <option value="critical" {% if risk_filter=='critical' %}selected{% endif %}>🔴 Krytyczne</option>
-      <option value="high"     {% if risk_filter=='high'     %}selected{% endif %}>🟠 Wysokie</option>
-      <option value="medium"   {% if risk_filter=='medium'   %}selected{% endif %}>🟡 Średnie</option>
-      <option value="low"      {% if risk_filter=='low'      %}selected{% endif %}>🟢 Niskie</option>
+      <option value="">All risk levels</option>
+      <option value="critical" {% if risk_filter=='critical' %}selected{% endif %}>🔴 Critical</option>
+      <option value="high"     {% if risk_filter=='high'     %}selected{% endif %}>🟠 High</option>
+      <option value="medium"   {% if risk_filter=='medium'   %}selected{% endif %}>🟡 Medium</option>
+      <option value="low"      {% if risk_filter=='low'      %}selected{% endif %}>🟢 Low</option>
       <option value="info"     {% if risk_filter=='info'     %}selected{% endif %}>ℹ️ Info</option>
     </select>
   </div>
@@ -36,14 +36,14 @@
     <div class="form-check form-check-inline mt-1">
       <input class="form-check-input" type="checkbox" name="ot" value="1" id="otOnly"
              {% if ot_filter=='1' %}checked{% endif %} onchange="this.form.submit()">
-      <label class="form-check-label small" for="otOnly">Tylko OT/SCADA</label>
+      <label class="form-check-label small" for="otOnly">OT/SCADA only</label>
     </div>
   </div>
   {% if known_networks %}
   <div class="col-sm-3 col-md-2">
     <select name="net" class="form-select form-select-sm" onchange="this.form.submit()"
-            title="Filtruj urządzenia według sieci">
-      <option value="">Wszystkie sieci</option>
+            title="Filter devices by network">
+      <option value="">All networks</option>
       {% for n in known_networks if n.is_local %}
       <option value="{{ n.cidr }}" {% if net_filter == n.cidr %}selected{% endif %}>
         📡 {{ n.cidr }}{% if n.notes %} — {{ n.notes }}{% endif %}
@@ -71,8 +71,8 @@
   <button type="button" id="threatToggle"
           class="btn btn-sm"
           onclick="kbFilters.toggleThreats()"
-          title="Pokaż tylko porty wykryte na Twoich urządzeniach">
-    <i class="bi bi-shield-exclamation me-1"></i>Tylko zagrożenia na moich urządzeniach
+          title="Show only ports detected on your devices">
+    <i class="bi bi-shield-exclamation me-1"></i>Only threats on my devices
   </button>
   <span class="text-muted small" id="kbThreatInfo"></span>
 </div>
@@ -93,17 +93,17 @@
     'info':     'secondary',
   } %}
   {% set risk_label = {
-    'critical': 'Krytyczne',
-    'high':     'Wysokie',
-    'medium':   'Średnie',
-    'low':      'Niskie',
+    'critical': 'Critical',
+    'high':     'High',
+    'medium':   'Medium',
+    'low':      'Low',
     'info':     'Info',
   } %}
 
   {# Komunikat gdy filtr zagrożeń aktywny i nic nie pasuje #}
   <div id="kbNoThreats" class="alert alert-success d-none">
     <i class="bi bi-shield-check me-2"></i>
-    Żaden z portów w tej kategorii nie został wykryty na Twoich urządzeniach.
+    None of the ports in this category have been detected on your devices.
   </div>
 
   <div class="row g-3" id="kbGrid">
@@ -121,7 +121,7 @@
               <span class="badge bg-secondary font-monospace fs-6 me-2">{{ entry.port }}/{{ entry.proto }}</span>
               <strong>{{ entry.service }}</strong>
               {% if entry.get('ot') %}
-                <span class="badge bg-warning text-dark ms-1" title="Protokół przemysłowy / OT">OT</span>
+                <span class="badge bg-warning text-dark ms-1" title="Industrial protocol / OT">OT</span>
               {% endif %}
             </div>
             <span class="badge bg-{{ risk_badge[entry.risk] }} ms-1 flex-shrink-0">
@@ -150,7 +150,7 @@
           <div class="mt-2">
             <div class="d-flex align-items-center gap-1 mb-1">
               <span class="small fw-semibold text-info">
-                <i class="bi bi-hdd-network me-1"></i>Wykryto na {{ devs|length }} urządzeniu(-ach):
+                <i class="bi bi-hdd-network me-1"></i>Detected on {{ devs|length }} device(s):
               </span>
             </div>
             <div class="d-flex flex-wrap gap-1 align-items-start">
@@ -294,7 +294,7 @@ function kbAccept(deviceId, port, label) {
   document.getElementById("acceptDeviceId").value = deviceId;
   document.getElementById("acceptPort").value      = port;
   document.getElementById("acceptDesc").textContent =
-    "Port " + port + " na urządzeniu " + label + " zostanie oznaczony jako świadomie zaakceptowany.";
+    "Port " + port + " on device " + label + " will be marked as knowingly accepted.";
   var modal = new bootstrap.Modal(document.getElementById("acceptModal"));
   modal.show();
 }

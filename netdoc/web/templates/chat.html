@@ -170,7 +170,7 @@ function buildDebugPanel(toolDetails, userQuestion) {
   const det = document.createElement("details");
   det.className = "msg-debug";
   const sum = document.createElement("summary");
-  sum.innerHTML = "<i class='bi bi-braces me-1'></i>Co wysłano do AI (" + toolDetails.length + " zapytań do bazy)";
+  sum.innerHTML = "<i class='bi bi-braces me-1'></i>Sent to AI (" + toolDetails.length + " database queries)";
   det.appendChild(sum);
   const body = document.createElement("div");
   body.className = "debug-body";
@@ -178,7 +178,7 @@ function buildDebugPanel(toolDetails, userQuestion) {
   if (userQuestion) {
     const qDiv = document.createElement("div");
     qDiv.className = "debug-tool";
-    qDiv.innerHTML = "<div class='debug-tool-name'><i class='bi bi-person-fill me-1'></i>Pytanie użytkownika</div>" +
+    qDiv.innerHTML = "<div class='debug-tool-name'><i class='bi bi-person-fill me-1'></i>User question</div>" +
       "<div class='debug-tool-result'>" + escHtml(userQuestion) + "</div>";
     body.appendChild(qDiv);
     const hr = document.createElement("hr");
@@ -190,7 +190,7 @@ function buildDebugPanel(toolDetails, userQuestion) {
     d.className = "debug-tool";
     const inputStr = td.input && Object.keys(td.input).length
       ? Object.entries(td.input).map(([k,v]) => k + "=" + JSON.stringify(v)).join(", ")
-      : "brak parametrów";
+      : "no parameters";
     d.innerHTML =
       "<div class='debug-tool-name'><i class='bi bi-database me-1'></i>" + escHtml(td.tool) + "(" + escHtml(inputStr) + ")</div>" +
       "<div class='debug-tool-result'>" + escHtml(td.result || "") + "</div>";

@@ -265,7 +265,7 @@
 
           document.getElementById("tier-badge-header").innerHTML =
             `<span class="badge bg-${color}">${label}</span>` +
-            (over ? `<span class="badge bg-secondary ms-1" title="Ręcznie ustawiony">override</span>` : "") +
+            (over ? `<span class="badge bg-secondary ms-1" title="Manually set">override</span>` : "") +
             analyzed_at;
 
           let confColor = conf >= 70 ? "success" : conf >= 40 ? "warning" : "danger";
@@ -409,7 +409,7 @@
       <div class="card mb-3">
         <div class="card-header fw-semibold py-2">
           <i class="bi bi-wifi me-1"></i>WiFi — SSIDs i klienci
-          <span class="badge bg-primary ms-2">{{ vap_data|sum(attribute='sta_count') }} klientów</span>
+          <span class="badge bg-primary ms-2">{{ vap_data|sum(attribute='sta_count') }} clients</span>
         </div>
         <div class="card-body p-0">
           <table class="table table-sm mb-0">
@@ -729,11 +729,11 @@
                   <th style="width:7rem">Tryb</th>
                   <th style="width:9rem">VLAN</th>
                   <th style="width:7rem">STP</th>
-                  <th>Sąsiad (LLDP/CDP)</th>
+                  <th>Neighbor (LLDP/CDP)</th>
                 </tr>
               </thead>
               <tbody id="port-summary-body">
-                <tr><td colspan="7" class="text-muted text-center py-3">Ładowanie...</td></tr>
+                <tr><td colspan="7" class="text-muted text-center py-3">Loading...</td></tr>
               </tbody>
             </table>
           </div>
@@ -771,10 +771,10 @@
           <table class="table table-sm mb-0" style="font-size:.82rem" id="if-rates-table">
             <thead class="table-light"><tr>
               <th>Interface</th><th>In (bps)</th><th>Out (bps)</th>
-              <th title="Błędy wejściowe — uszkodzony kabel/złącze lub FCS/CRC">In Err</th>
-              <th title="Błędy wyjściowe">Out Err</th>
-              <th title="Porzucone pakiety wejściowe — przeciążenie bufora">In Drop</th>
-              <th title="Porzucone pakiety wyjściowe">Out Drop</th>
+              <th title="Inbound errors — damaged cable/connector or FCS/CRC">In Err</th>
+              <th title="Outbound errors">Out Err</th>
+              <th title="Inbound discards — buffer overflow">In Drop</th>
+              <th title="Outbound discards">Out Drop</th>
             </tr></thead>
             <tbody id="if-rates-body"><tr><td colspan="7" class="text-muted text-center">Ladowanie...</td></tr></tbody>
           </table>
@@ -852,13 +852,13 @@
           <form method="post" action="{{ url_for('device_toggle_full_scan', device_id=dev.id) }}" class="d-inline">
             {% if dev.no_full_scan %}
             <button type="submit" class="btn btn-sm btn-outline-success"
-                    title="Full scan wyłączony — kliknij aby włączyć">
-              <i class="bi bi-shield-slash me-1"></i>Wyłączony — włącz
+                    title="Full scan disabled — click to enable">
+              <i class="bi bi-shield-slash me-1"></i>Disabled — enable
             </button>
             {% else %}
             <button type="submit" class="btn btn-sm btn-outline-secondary"
-                    title="Kliknij aby wyłączyć automatyczny full scan dla tego urządzenia">
-              <i class="bi bi-shield-check me-1"></i>Włączony — wyłącz
+                    title="Click to disable automatic full scan for this device">
+              <i class="bi bi-shield-check me-1"></i>Enabled — disable
             </button>
             {% endif %}
           </form>
@@ -869,19 +869,19 @@
       <div class="card mb-3">
         <div class="card-body py-2 d-flex align-items-center justify-content-between gap-2">
           <div>
-            <span class="fw-semibold">Testowanie haseł (credential scan)</span>
+            <span class="fw-semibold">Credential scan</span>
             <span class="ms-2 text-muted small">SSH, HTTP, Telnet, SNMP</span>
           </div>
           <form method="post" action="{{ url_for('device_toggle_cred_scan', device_id=dev.id) }}" class="d-inline">
             {% if dev.skip_cred_scan %}
             <button type="submit" class="btn btn-sm btn-outline-success"
-                    title="Testowanie haseł wyłączone — kliknij aby włączyć">
-              <i class="bi bi-key-fill me-1"></i>Zatrzymane — wznów
+                    title="Credential scan disabled — click to enable">
+              <i class="bi bi-key-fill me-1"></i>Paused — resume
             </button>
             {% else %}
             <button type="submit" class="btn btn-sm btn-outline-warning"
-                    title="Kliknij aby zatrzymać testowanie haseł dla tego urządzenia">
-              <i class="bi bi-key me-1"></i>Aktywne — zatrzymaj
+                    title="Click to pause credential scan for this device">
+              <i class="bi bi-key me-1"></i>Active — pause
             </button>
             {% endif %}
           </form>
@@ -892,19 +892,19 @@
       <div class="card mb-3">
         <div class="card-body py-2 d-flex align-items-center justify-content-between gap-2">
           <div>
-            <span class="fw-semibold">Skanowanie portów (vulnerability scan)</span>
+            <span class="fw-semibold">Port scan (vulnerability scan)</span>
             <span class="ms-2 text-muted small">nmap, TCP connect</span>
           </div>
           <form method="post" action="{{ url_for('device_toggle_port_scan', device_id=dev.id) }}" class="d-inline">
             {% if dev.skip_port_scan %}
             <button type="submit" class="btn btn-sm btn-outline-success"
-                    title="Skanowanie portów wyłączone — kliknij aby włączyć">
-              <i class="bi bi-radar me-1"></i>Zatrzymane — wznów
+                    title="Port scan disabled — click to enable">
+              <i class="bi bi-radar me-1"></i>Paused — resume
             </button>
             {% else %}
             <button type="submit" class="btn btn-sm btn-outline-warning"
-                    title="Kliknij aby zatrzymać skanowanie portów dla tego urządzenia">
-              <i class="bi bi-radar me-1"></i>Aktywne — zatrzymaj
+                    title="Click to pause port scan for this device">
+              <i class="bi bi-radar me-1"></i>Active — pause
             </button>
             {% endif %}
           </form>
@@ -1360,7 +1360,7 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
       if (badge) badge.textContent = ports.length;
 
       if (ports.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-muted text-center py-3">Brak danych interfejsów</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-muted text-center py-3">No interface data</td></tr>';
         return;
       }
 
@@ -1445,7 +1445,7 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
       }).join('');
     }).catch(() => {
       const b = document.getElementById('port-summary-body');
-      if (b) b.innerHTML = '<tr><td colspan="7" class="text-danger text-center">Błąd ładowania</td></tr>';
+      if (b) b.innerHTML = '<tr><td colspan="7" class="text-danger text-center">Load error</td></tr>';
     });
   }
 

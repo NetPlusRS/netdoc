@@ -411,63 +411,63 @@
                  title="SNMP — community znane, brak danych od &gt;48h"></i>
             {% else %}
               <i class="bi bi-broadcast-pin text-muted" style="font-size:.85rem;opacity:.25"
-                 title="SNMP — brak dostępu"></i>
+                 title="SNMP — no access"></i>
             {% endif %}
             {# Syslog #}
             {% if _syslog_ok %}
               <i class="bi bi-journal-text text-success ms-1" style="font-size:.85rem"
-                 title="Syslog — logi z ostatnich 24h"></i>
+                 title="Syslog — logs received in last 24h"></i>
             {% elif _syslog_rel %}
               <i class="bi bi-journal-text text-muted ms-1" style="font-size:.85rem;opacity:.25"
-                 title="Syslog — brak logów w ostatnich 24h"></i>
+                 title="Syslog — no logs in last 24h"></i>
             {% else %}
               <i class="bi bi-journal-text text-muted ms-1" style="font-size:.85rem;opacity:.12"
-                 title="Syslog — nieobsługiwane"></i>
+                 title="Syslog — not supported"></i>
             {% endif %}
             {# SSH #}
             {% if _ssh_ok %}
               <i class="bi bi-terminal-fill text-success ms-1" style="font-size:.85rem"
-                 title="SSH — dostęp potwierdzony"></i>
+                 title="SSH — access confirmed"></i>
             {% elif _ssh_rel %}
               <i class="bi bi-terminal text-muted ms-1" style="font-size:.85rem;opacity:.25"
-                 title="SSH — brak dostępu"></i>
+                 title="SSH — no access"></i>
             {% else %}
               <i class="bi bi-terminal text-muted ms-1" style="font-size:.85rem;opacity:.12"
-                 title="SSH — niedostępne dla tego modelu"></i>
+                 title="SSH — not available for this model"></i>
             {% endif %}
             {# LLDP/CDP #}
             {% if _lldp_ok %}
               <i class="bi bi-diagram-3-fill text-success ms-1" style="font-size:.85rem"
-                 title="LLDP/CDP — topologia znana"></i>
+                 title="LLDP/CDP — topology known"></i>
             {% elif _lldp_rel %}
               <i class="bi bi-diagram-3 text-muted ms-1" style="font-size:.85rem;opacity:.25"
-                 title="LLDP/CDP — obsługiwane, brak danych"></i>
+                 title="LLDP/CDP — supported, no data yet"></i>
             {% else %}
               <i class="bi bi-diagram-3 text-muted ms-1" style="font-size:.85rem;opacity:.12"
-                 title="LLDP/CDP — nieobsługiwane przez ten model"></i>
+                 title="LLDP/CDP — not supported by this model"></i>
             {% endif %}
             {# FDB #}
             {% if _fdb_ok %}
               <i class="bi bi-table text-success ms-1" style="font-size:.85rem"
-                 title="FDB — tablica MAC (Q-BRIDGE) aktywna"></i>
+                 title="FDB — MAC table (Q-BRIDGE) active"></i>
             {% elif _fdb_rel %}
               <i class="bi bi-table text-muted ms-1" style="font-size:.85rem;opacity:.25"
-                 title="FDB — Q-BRIDGE obsługiwane, brak danych"></i>
+                 title="FDB — Q-BRIDGE supported, no data yet"></i>
             {% else %}
               <i class="bi bi-table text-muted ms-1" style="font-size:.85rem;opacity:.12"
-                 title="FDB — nieobsługiwane (nie switch lub brak Q-BRIDGE)"></i>
+                 title="FDB — not supported (not a switch or no Q-BRIDGE)"></i>
             {% endif %}
-            {# Passport badge — YAML (niebieski, przetestowany) lub inferred (szary, wyliczony) #}
+            {# Passport badge #}
             {% if _passport %}
               <span class="badge bg-info text-dark ms-1"
                     style="font-size:.55rem;cursor:default;vertical-align:middle"
-                    title="Paszport: {{ _passport.get('name', '?') }}{% if _passport.get('tested') %} — przetestowany {{ _passport.get('tested_at', '') }}{% endif %}">
+                    title="Passport: {{ _passport.get('name', '?') }}{% if _passport.get('tested') %} — tested {{ _passport.get('tested_at', '') }}{% endif %}">
                 <i class="bi bi-journal-check"></i>
               </span>
             {% elif _inferred %}
               <span class="badge bg-secondary ms-1"
                     style="font-size:.55rem;cursor:default;vertical-align:middle;opacity:.6"
-                    title="Capabilities wyliczone z zebranych danych (brak ręcznego paszportu dla tego modelu)">
+                    title="Capabilities inferred from collected data (no manual passport for this model)">
                 <i class="bi bi-cpu"></i>
               </span>
             {% endif %}
