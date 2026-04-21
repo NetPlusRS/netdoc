@@ -553,7 +553,7 @@ def get_broadcast_summary(
         rows = []
 
     if not rows:
-        return {"since_hours": since_hours, "devices": []}
+        return {"since_hours": since_hours, "threshold": threshold, "devices": []}
 
     device_ids = [r["device_id"] for r in rows]
     devices = {d.id: d for d in db.query(Device).filter(Device.id.in_(device_ids)).all()}

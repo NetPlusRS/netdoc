@@ -13,7 +13,7 @@
       <option value="168">Last 7 days</option>
     </select>
     <input id="thresholdInput" type="number" class="form-control form-control-sm" style="width:120px"
-           placeholder="Spam threshold" min="0" value="0" title="Packets above this value are flagged as spammers">
+           placeholder="Spam threshold" min="0" max="1000000" value="0" title="Packets above this value are flagged as spammers">
     <button class="btn btn-sm btn-primary" id="refreshBtn">
       <i class="bi bi-arrow-clockwise me-1"></i>Refresh
     </button>
@@ -220,6 +220,10 @@
               : n >= 1e3 ? (n/1e3).toFixed(1)+'K'
               : String(Math.round(n));
 
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
   function deviceLabel(d) {
     if (d.hostname) return d.hostname;
     return d.ip || ('dev#' + d.device_id);
@@ -234,10 +238,11 @@
     let data;
     try {
       const r = await fetch(`/api/metrics/broadcast-summary?since_hours=${hours}&limit=100&threshold=${threshold}`);
+      if (!r.ok) throw new Error(`Server error ${r.status}`);
       data = await r.json();
     } catch(e) {
       document.getElementById('bcastTbody').innerHTML =
-        `<tr><td colspan="10" class="text-danger text-center py-3">${e}</td></tr>`;
+        `<tr><td colspan="10" class="text-danger text-center py-3">${esc(String(e))}</td></tr>`;
       return;
     }
 
@@ -276,10 +281,12 @@
         ? '<span class="badge bg-warning text-dark ms-1" title="Above spam threshold">SPAM</span>' : '';
       const link = `/devices/${r.device_id}`;
       const label = deviceLabel(r);
+      const labelHtml = esc(label);
+      const ipHtml = (r.ip && r.hostname) ? esc(r.ip) : '';
       return `<tr class="${spam}">
         <td class="text-muted">${i+1}</td>
-        <td><a href="${link}" class="text-decoration-none fw-semibold">${label}</a>
-            <span class="text-muted small ms-1">${r.ip && r.hostname ? r.ip : ''}</span>${spamBadge}</td>
+        <td><a href="${link}" class="text-decoration-none fw-semibold">${labelHtml}</a>
+            <span class="text-muted small ms-1">${ipHtml}</span>${spamBadge}</td>
         <td class="text-end">${fmt(r.in_bcast||0)}</td>
         <td class="text-end">${fmt(r.in_mcast||0)}</td>
         <td class="text-end text-muted">${r.in_nucast > 0 ? fmt(r.in_nucast) : '—'}</td>
@@ -288,7 +295,9 @@
         <td class="text-end">${fmt(r.out_bcast||0)}</td>
         <td class="text-end">${fmt(r.out_mcast||0)}</td>
         <td class="text-end">
-          <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="showHistory(${r.device_id},'${label.replace(/'/g,"\\'")}')">
+          <button class="btn btn-outline-secondary btn-sm py-0 px-1"
+                  data-device-id="${r.device_id}" data-label="${labelHtml}"
+                  onclick="showHistory(+this.dataset.deviceId, this.dataset.label)">
             <i class="bi bi-graph-up"></i>
           </button>
         </td>
@@ -331,26 +340,37 @@
 
   window.showHistory = async function(deviceId, label) {
     document.getElementById('modalTitle').textContent = label + ' — broadcast history';
-    const hours = document.getElementById('hoursSelect').value;
+
+    // Reset modal state before showing (BUG-GUI7: prevents stale chart/message on reopen)
+    if (_historyChart) { _historyChart.destroy(); _historyChart = null; }
+    const emptyEl = document.getElementById('historyEmpty');
+    emptyEl.textContent = 'No historical data available yet (SNMP counters require at least 2 collection cycles)';
+    emptyEl.classList.add('d-none');
+
     const modal = new bootstrap.Modal(document.getElementById('detailModal'));
     modal.show();
 
+    const hours = document.getElementById('hoursSelect').value;
     let data;
     try {
       const r = await fetch(`/api/devices/${deviceId}/broadcast-history?hours=${hours}&step_minutes=5`);
+      if (!r.ok) throw new Error(`Server error ${r.status}`);
       data = await r.json();
-    } catch(e) { return; }
+    } catch(e) {
+      emptyEl.textContent = `Failed to load data: ${e.message}`;
+      emptyEl.classList.remove('d-none');
+      return;
+    }
 
     const buckets = data.buckets || [];
     const noData = buckets.every(b => (b.in_bcast_rate + b.in_mcast_rate + b.in_nucast_rate + b.passive_rate) === 0);
-    document.getElementById('historyEmpty').classList.toggle('d-none', !noData);
+    emptyEl.classList.toggle('d-none', !noData);
 
     const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
     const textColor = isDark ? '#c9d1d9' : '#333';
     const gridColor = isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.08)';
 
     const labels = buckets.map(b => b.bucket.replace('T', ' ').slice(0, 16));
-    if (_historyChart) _historyChart.destroy();
     _historyChart = new Chart(document.getElementById('historyChart'), {
       type: 'line',
       data: {
