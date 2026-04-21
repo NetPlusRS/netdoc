@@ -765,7 +765,7 @@
         </div>
         <div class="card-body">
           <canvas id="ifTrafficChart" style="height:160px"></canvas>
-          <div id="if-traffic-msg" class="text-muted text-center small py-2" style="display:none">Brak danych — worker zbiera metryki co 5 min.</div>
+          <div id="if-traffic-msg" class="text-muted text-center small py-2" style="display:none">No data — worker collects metrics every 5 min.</div>
         </div>
         <div class="card-footer py-2">
           <table class="table table-sm mb-0" style="font-size:.82rem" id="if-rates-table">
@@ -1327,7 +1327,7 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
       const tbody = document.getElementById('if-rates-body');
       if (!tbody) return;
       const ifaces = data.interfaces || [];
-      if (ifaces.length === 0) { tbody.innerHTML='<tr><td colspan="7" class="text-muted text-center">Brak danych</td></tr>'; return; }
+      if (ifaces.length === 0) { tbody.innerHTML='<tr><td colspan="7" class="text-muted text-center">No data</td></tr>'; return; }
       tbody.innerHTML = ifaces.sort((a,b)=>a.if_index-b.if_index).map(r=>{
         const inErr  = Math.round((r.in_errors   ||0)*600);
         const outErr = Math.round((r.out_errors  ||0)*600);
@@ -1513,7 +1513,7 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
       const tbody = document.getElementById('fdb-tbody');
       if (!tbody) return;
       const entries = data.entries || [];
-      if (entries.length === 0) { tbody.innerHTML='<tr><td colspan="4" class="text-muted text-center py-3">Brak wpisow FDB</td></tr>'; return; }
+      if (entries.length === 0) { tbody.innerHTML='<tr><td colspan="4" class="text-muted text-center py-3">No FDB entries</td></tr>'; return; }
       const STATUS = {3:'learned',5:'static'};
       tbody.innerHTML = entries.map(e=>
         '<tr><td><code>'+esc(e.mac)+'</code></td>'
@@ -1532,7 +1532,7 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
       if (count) count.textContent = vlans.length;
       const tbody = document.getElementById('vlan-tbody');
       if (!tbody) return;
-      if (vlans.length === 0) { tbody.innerHTML='<tr><td colspan="4" class="text-muted text-center py-3">Brak danych VLAN</td></tr>'; return; }
+      if (vlans.length === 0) { tbody.innerHTML='<tr><td colspan="4" class="text-muted text-center py-3">No VLAN data</td></tr>'; return; }
       tbody.innerHTML = vlans.map(v => {
         const ports = v.ports || [];
         const nAccess = ports.filter(p=>p.port_mode==='access').length;
@@ -1568,7 +1568,7 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
       const tbody = document.getElementById('stp-tbody');
       if (!tbody) return;
       const ports = data.ports || [];
-      if (ports.length === 0) { tbody.innerHTML='<tr><td colspan="5" class="text-muted text-center py-3">Brak danych STP</td></tr>'; return; }
+      if (ports.length === 0) { tbody.innerHTML='<tr><td colspan="5" class="text-muted text-center py-3">No STP data</td></tr>'; return; }
       const STATE_COLOR = {2:'warning',3:'info',4:'primary',5:'success',6:'danger'};
       tbody.innerHTML = ports.map(p=>
         '<tr><td>'+esc(p.stp_port_num)+'</td>'

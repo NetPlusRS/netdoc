@@ -109,7 +109,7 @@
 
 {% if speed %}
 <div class="card mb-4">
-  <div class="card-header"><i class="bi bi-speedometer2 me-1"></i>Test predkosci lacza (Cloudflare CDN)</div>
+  <div class="card-header"><i class="bi bi-speedometer2 me-1"></i>Link speed test (Cloudflare CDN)</div>
   <div class="card-body">
     {% if speed.ok %}
     <div class="row g-3 text-center">
@@ -129,7 +129,7 @@
       </div>
     </div>
     {% else %}
-    <div class="text-danger"><i class="bi bi-x-circle me-1"></i>Test predkosci nie powiodl sie</div>
+    <div class="text-danger"><i class="bi bi-x-circle me-1"></i>Speed test failed</div>
     {% endif %}
   </div>
 </div>
