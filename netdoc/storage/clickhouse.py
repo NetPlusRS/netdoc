@@ -534,10 +534,12 @@ def query_broadcast_top_devices(since_hours: int = 24, limit: int = 30) -> list[
 
         out = []
         for device_id, row in per_device.items():
-            # sum all three — ifInBroadcastPkts/ifInMulticastPkts come from newer interfaces
-            # that report 0 for ifInNUcastPkts, so there is no double-counting across interfaces
-            total_in = (row["in_bcast_pkts"] + row["in_mcast_pkts"]
-                        + row["in_nucast_pkts"] + row["passive_bcast_pkts"])
+            # Prefer bcast+mcast (newer, granular) when available; fall back to nucast.
+            # Avoids double-counting on mixed devices where some interfaces report both sets.
+            if row["in_bcast_pkts"] > 0 or row["in_mcast_pkts"] > 0:
+                total_in = row["in_bcast_pkts"] + row["in_mcast_pkts"] + row["passive_bcast_pkts"]
+            else:
+                total_in = row["in_nucast_pkts"] + row["passive_bcast_pkts"]
             out.append({
                 "device_id":    device_id,
                 "in_bcast":     row["in_bcast_pkts"],
@@ -564,10 +566,12 @@ def query_broadcast_history(device_id: int, since_hours: int = 24, step_minutes:
     """
     all_metrics = _BCAST_METRICS_IN + _BCAST_METRICS_OUT
     metrics_tuple = "(" + ",".join(f"'{m}'" for m in all_metrics) + ")"
+    step_sec = step_minutes * 60
     params = {
         "device_id":   device_id,
         "since_hours": since_hours,
-        "step":        step_minutes * 60,
+        "step_sec":    step_sec,          # UInt32 — used in toIntervalSecond()
+        "step_f":      float(step_sec),   # Float64 — used in rate division
     }
     sql = (
         f"SELECT bucket, metric, prev_max, cur_max, step"
@@ -577,10 +581,10 @@ def query_broadcast_history(device_id: int, since_hours: int = 24, step_minutes:
         f"    lagInFrame(sum_max, 1, toFloat64(-1))"
         f"      OVER (PARTITION BY metric ORDER BY bucket"
         f"            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS prev_max,"
-        f"    {{step:Float64}} AS step"
+        f"    {{step_f:Float64}} AS step"
         f"  FROM ("
         f"    SELECT"
-        f"      toStartOfInterval(ts, toIntervalSecond({{step:UInt32}})) AS bucket,"
+        f"      toStartOfInterval(ts, toIntervalSecond({{step_sec:UInt32}})) AS bucket,"
         f"      metric,"
         f"      sum(max(value)) AS sum_max"
         f"    FROM netdoc_logs.device_metrics"

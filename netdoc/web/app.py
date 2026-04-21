@@ -4161,7 +4161,7 @@ def create_app():
     def broadcast_summary_proxy():
         """Proxy do FastAPI /api/metrics/broadcast-summary."""
         since_hours = request.args.get("since_hours", 24, type=int)
-        limit = request.args.get("limit", 30, type=int)
+        limit = request.args.get("limit", 100, type=int)
         threshold = request.args.get("threshold", 0, type=float)
         data, err = _api("get", f"/api/metrics/broadcast-summary?since_hours={since_hours}&limit={limit}&threshold={threshold}")
         if err:
