@@ -352,6 +352,26 @@ def _parse_ssdp_packet(data: bytes, src_ip: str) -> Optional[dict]:
 # ===========================================================================
 
 def _get_local_ip() -> str:
+    # On Windows: prefer explicit-gateway default routes (excludes Docker/WSL On-link routes
+    # that may have metric 0 and steal traffic from the real LAN interface).
+    if sys.platform == "win32":
+        try:
+            import re as _re
+            r = subprocess.run(["route", "print", "0.0.0.0"],
+                               capture_output=True, text=True, timeout=3)
+            candidates = []
+            for line in r.stdout.splitlines():
+                m = _re.search(
+                    r"0\.0\.0\.0\s+0\.0\.0\.0\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+)",
+                    line,
+                )
+                if m:
+                    candidates.append((int(m.group(3)), m.group(2)))
+            if candidates:
+                candidates.sort()
+                return candidates[0][1]  # interface IP of lowest-metric real route
+        except Exception:
+            pass
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))

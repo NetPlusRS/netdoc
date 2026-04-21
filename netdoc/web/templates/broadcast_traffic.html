@@ -363,8 +363,12 @@
     }
 
     const buckets = data.buckets || [];
-    const noData = buckets.every(b => (+(b.in_bcast_rate||0) + +(b.in_mcast_rate||0) + +(b.in_nucast_rate||0) + +(b.passive_rate||0)) === 0);
+    const noData = buckets.every(b => (
+      +(b.in_bcast_rate||0) + +(b.in_mcast_rate||0) + +(b.in_nucast_rate||0) + +(b.passive_rate||0) +
+      +(b.out_bcast_rate||0) + +(b.out_mcast_rate||0) + +(b.out_nucast_rate||0)
+    ) === 0);
     emptyEl.classList.toggle('d-none', !noData);
+    if (noData) return;
 
     const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
     const textColor = isDark ? '#c9d1d9' : '#333';
@@ -376,10 +380,13 @@
       data: {
         labels,
         datasets: [
-          { label: 'Bcast In (pkt/s)', data: buckets.map(b => b.in_bcast_rate), borderColor: '#0d6efd', tension: .3, pointRadius: 0 },
-          { label: 'Mcast In (pkt/s)', data: buckets.map(b => b.in_mcast_rate), borderColor: '#198754', tension: .3, pointRadius: 0 },
-          { label: 'NUcast In (pkt/s)', data: buckets.map(b => b.in_nucast_rate), borderColor: '#6c757d', tension: .3, pointRadius: 0, borderDash: [4,2] },
-          { label: 'Passive (pkt/s)',   data: buckets.map(b => b.passive_rate), borderColor: '#fd7e14', tension: .3, pointRadius: 0, borderDash: [2,2] },
+          { label: 'Bcast In (pkt/s)',   data: buckets.map(b => b.in_bcast_rate),   borderColor: '#0d6efd', tension: .3, pointRadius: 0 },
+          { label: 'Mcast In (pkt/s)',   data: buckets.map(b => b.in_mcast_rate),   borderColor: '#198754', tension: .3, pointRadius: 0 },
+          { label: 'NUcast In (pkt/s)',  data: buckets.map(b => b.in_nucast_rate),  borderColor: '#6c757d', tension: .3, pointRadius: 0, borderDash: [4,2] },
+          { label: 'Passive (pkt/s)',    data: buckets.map(b => b.passive_rate),    borderColor: '#fd7e14', tension: .3, pointRadius: 0, borderDash: [2,2] },
+          { label: 'Bcast Out (pkt/s)',  data: buckets.map(b => b.out_bcast_rate),  borderColor: '#0d6efd', tension: .3, pointRadius: 0, borderDash: [6,3] },
+          { label: 'Mcast Out (pkt/s)',  data: buckets.map(b => b.out_mcast_rate),  borderColor: '#198754', tension: .3, pointRadius: 0, borderDash: [6,3] },
+          { label: 'NUcast Out (pkt/s)', data: buckets.map(b => b.out_nucast_rate), borderColor: '#adb5bd', tension: .3, pointRadius: 0, borderDash: [4,2] },
         ],
       },
       options: {
