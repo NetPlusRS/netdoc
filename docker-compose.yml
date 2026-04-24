@@ -415,7 +415,7 @@ services:
   # ─── Pro integrations (start with: docker compose --profile pro up -d) ──────
 
   ntopng:
-    image: ntop/ntopng:stable
+    image: ntop/ntopng:latest
     container_name: netdoc-ntopng
     profiles: ["pro"]
     restart: unless-stopped
