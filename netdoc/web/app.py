@@ -3160,6 +3160,91 @@ def create_app():
             flash("Blad wyslania alertu — sprawdz token i chat_id.", "danger")
         return redirect("/settings")
 
+    # ── Docker service profiles — start/stop from UI ───────────────────────────
+    _DOCKER_PROFILES = {
+        "workers":    ["netdoc-ping", "netdoc-snmp", "netdoc-cred", "netdoc-vuln",
+                       "netdoc-community", "netdoc-internet"],
+        "monitoring": ["netdoc-prometheus", "netdoc-loki", "netdoc-promtail", "netdoc-grafana"],
+        "syslog":     ["netdoc-rsyslog", "netdoc-vector"],
+        "pro":        ["netdoc-ntopng", "netdoc-wazuh"],
+    }
+
+    @app.route("/settings/services/status")
+    def services_status():
+        client, err = _docker_client()
+        result = {}
+        for profile, containers in _DOCKER_PROFILES.items():
+            if profile == "pro" and not PRO_ENABLED:
+                continue
+            statuses = []
+            for name in containers:
+                if client:
+                    try:
+                        c = client.containers.get(name)
+                        statuses.append({"name": name, "status": c.status})
+                    except Exception:
+                        statuses.append({"name": name, "status": "absent"})
+                else:
+                    statuses.append({"name": name, "status": "error"})
+            running = sum(1 for s in statuses if s["status"] == "running")
+            result[profile] = {
+                "containers": statuses,
+                "running": running,
+                "total": len(statuses),
+                "all_absent": all(s["status"] == "absent" for s in statuses),
+            }
+        return jsonify({"profiles": result, "docker_error": err})
+
+    @app.route("/settings/services/<profile>/start", methods=["POST"])
+    def services_start(profile):
+        if profile not in _DOCKER_PROFILES:
+            return jsonify({"error": "unknown profile"}), 400
+        if profile == "pro" and not PRO_ENABLED:
+            return jsonify({"error": "NetDoc Pro required"}), 403
+        client, err = _docker_client()
+        if not client:
+            return jsonify({"error": err}), 500
+        started, absent, errors = [], [], []
+        for name in _DOCKER_PROFILES[profile]:
+            try:
+                c = client.containers.get(name)
+                if c.status != "running":
+                    c.start()
+                started.append(name)
+            except Exception as e:
+                if "No such container" in str(e):
+                    absent.append(name)
+                else:
+                    errors.append(f"{name}: {str(e)[:80]}")
+        if absent:
+            return jsonify({
+                "ok": False, "started": started, "absent": absent,
+                "message": f"Kontenery nie istnieją — uruchom raz z terminala: "
+                           f"docker compose --profile {profile} up -d",
+            })
+        return jsonify({"ok": True, "started": started, "errors": errors})
+
+    @app.route("/settings/services/<profile>/stop", methods=["POST"])
+    def services_stop(profile):
+        if profile not in _DOCKER_PROFILES:
+            return jsonify({"error": "unknown profile"}), 400
+        client, err = _docker_client()
+        if not client:
+            return jsonify({"error": err}), 500
+        stopped, errors = [], []
+        for name in _DOCKER_PROFILES[profile]:
+            try:
+                c = client.containers.get(name)
+                if c.status == "running":
+                    c.stop(timeout=10)
+                stopped.append(name)
+            except Exception as e:
+                if "No such container" in str(e):
+                    stopped.append(name)
+                else:
+                    errors.append(f"{name}: {str(e)[:80]}")
+        return jsonify({"ok": True, "stopped": stopped, "errors": errors})
+
     # ── lab environment ────────────────────────────────────────────────────────
     # image_candidates: kolejnosc prob (compose v2 i v1 nazewnictwo)
     _LAB_CONTAINERS = [

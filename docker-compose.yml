@@ -43,6 +43,7 @@ services:
   prometheus:
     image: prom/prometheus:v2.55.1
     container_name: netdoc-prometheus
+    profiles: ["monitoring"]
     restart: unless-stopped
     <<: *log-limit
     environment:
@@ -59,6 +60,7 @@ services:
   loki:
     image: grafana/loki:3.2.0
     container_name: netdoc-loki
+    profiles: ["monitoring"]
     restart: unless-stopped
     <<: *log-limit
     environment:
@@ -73,6 +75,7 @@ services:
   promtail:
     image: grafana/promtail:3.2.0
     container_name: netdoc-promtail
+    profiles: ["monitoring"]
     restart: unless-stopped
     <<: *log-limit
     environment:
@@ -87,6 +90,7 @@ services:
   grafana:
     image: grafana/grafana:11.4.0
     container_name: netdoc-grafana
+    profiles: ["monitoring"]
     restart: unless-stopped
     <<: *log-limit
     environment:
@@ -172,6 +176,7 @@ services:
   ping-worker:
     build: .
     container_name: netdoc-ping
+    profiles: ["workers"]
     restart: unless-stopped
     <<: *log-limit
     command: python run_ping.py
@@ -196,6 +201,7 @@ services:
   snmp-worker:
     build: .
     container_name: netdoc-snmp
+    profiles: ["workers"]
     restart: unless-stopped
     <<: *log-limit
     command: python run_snmp_worker.py
@@ -219,6 +225,7 @@ services:
   community-worker:
     build: .
     container_name: netdoc-community
+    profiles: ["workers"]
     restart: unless-stopped
     <<: *log-limit
     command: python run_community_worker.py
@@ -243,6 +250,7 @@ services:
   cred-worker:
     build: .
     container_name: netdoc-cred
+    profiles: ["workers"]
     restart: unless-stopped
     <<: *log-limit
     command: python run_cred_worker.py
@@ -278,6 +286,7 @@ services:
   vuln-worker:
     build: .
     container_name: netdoc-vuln
+    profiles: ["workers"]
     restart: unless-stopped
     <<: *log-limit
     command: python run_vuln_worker.py
@@ -300,6 +309,7 @@ services:
   internet-worker:
     build: .
     container_name: netdoc-internet
+    profiles: ["workers"]
     restart: unless-stopped
     <<: *log-limit
     command: python run_internet.py
@@ -336,7 +346,6 @@ services:
       - "80:80"
     depends_on:
       - web
-      - grafana
 
   # ─── Syslog stack ────────────────────────────────────────────────────────────
 
@@ -369,6 +378,7 @@ services:
       retries: 10
 
   rsyslog:
+    profiles: ["syslog"]
     build:
       context: ./docker/rsyslog
       dockerfile: Dockerfile
@@ -397,6 +407,7 @@ services:
   vector:
     image: timberio/vector:0.42.0-alpine
     container_name: netdoc-vector
+    profiles: ["syslog"]
     restart: unless-stopped
     <<: *log-limit
     environment:
