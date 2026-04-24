@@ -412,6 +412,50 @@ services:
         condition: service_healthy
     command: ["--config", "/etc/vector/vector.toml"]
 
+  # ─── Pro integrations (start with: docker compose --profile pro up -d) ──────
+
+  ntopng:
+    image: ntop/ntopng:stable
+    container_name: netdoc-ntopng
+    profiles: ["pro"]
+    restart: unless-stopped
+    <<: *log-limit
+    environment:
+      TZ: "${TZ:-UTC}"
+    command: >
+      --interface=any
+      --http-port=3000
+      --data-dir=/var/lib/ntopng
+      ${NTOPNG_LICENSE:+--license=${NTOPNG_LICENSE}}
+    volumes:
+      - ntopng_data:/var/lib/ntopng
+    ports:
+      - "3001:3000"   # 3001 na hoście żeby nie kolidować z Grafaną (3000 wewnętrznie)
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    # Na Linuxie: dodaj network_mode: host żeby sniffować fizyczny interfejs.
+    # Na Windows/Docker Desktop: widzi tylko ruch wewnątrz Docker bridge.
+
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.9.2
+    container_name: netdoc-wazuh
+    profiles: ["pro"]
+    restart: unless-stopped
+    <<: *log-limit
+    environment:
+      TZ: "${TZ:-UTC}"
+      WAZUH_MANAGER_MAX_AGENTS: "50"
+    volumes:
+      - wazuh_data:/var/ossec/data
+      - wazuh_logs:/var/ossec/logs
+      - ./config/wazuh:/var/ossec/etc/rules:ro   # opcjonalne: własne reguły
+    ports:
+      - "1514:1514/udp"   # agent protocol
+      - "1515:1515"       # agent enrollment
+      - "5141:514/udp"    # syslog z NetDoc → 5141 na hoście (514 zajęty przez run_syslog_relay.py)
+      - "55000:55000"     # REST API (do przyszłej integracji)
+
 volumes:
   postgres_data:
   prometheus_data:
@@ -419,3 +463,6 @@ volumes:
   grafana_data:
   clickhouse_data:
   rsyslog_queue:
+  ntopng_data:
+  wazuh_data:
+  wazuh_logs:

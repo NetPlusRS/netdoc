@@ -994,6 +994,129 @@
 </div>
 
 {# ══════════════════════════════════════════════════════════════════════════
+   Integracje zewnętrzne (PRO)
+   ══════════════════════════════════════════════════════════════════════════ #}
+<div class="card mb-4" id="integrations">
+  <div class="card-header d-flex align-items-center gap-2">
+    <i class="bi bi-plug me-1"></i>
+    <span>External integrations</span>
+    {% if not PRO_ENABLED %}
+    <span class="badge bg-warning text-dark ms-1" style="font-size:.7rem">PRO</span>
+    {% endif %}
+  </div>
+  <div class="card-body p-0">
+
+    {% if not PRO_ENABLED %}
+    <div class="px-3 py-3">
+      <div class="alert alert-warning mb-0 py-2 small">
+        <i class="bi bi-lock me-1"></i>
+        External integrations (ntopng, Wazuh) are available exclusively in <strong>NetDoc Pro</strong>.
+      </div>
+    </div>
+    {% else %}
+
+    {# ── ntopng ───────────────────────────────────────────────────────────── #}
+    <div class="border-bottom px-3 py-3">
+      <h6 class="text-muted border-bottom pb-1 mb-3 small text-uppercase" style="letter-spacing:.05em">
+        <i class="bi bi-diagram-3 me-1"></i>ntopng — network flow analysis
+      </h6>
+      <form method="post" action="/settings/config/ntopng_enabled" class="d-inline me-2">
+        <div class="form-check form-switch d-inline-flex align-items-center gap-2 mb-2">
+          {% set ntopng_cfg = grouped.get('config', []) | selectattr('key', 'equalto', 'ntopng_enabled') | first %}
+          <input class="form-check-input" type="checkbox" name="value" value="1" id="ntopngEnabled"
+                 {% if ntopng_cfg and ntopng_cfg.value == '1' %}checked{% endif %}
+                 onchange="this.form.submit()">
+          <label class="form-check-label small fw-semibold" for="ntopngEnabled">Enable ntopng integration</label>
+        </div>
+      </form>
+      <div class="row g-2 mt-1">
+        {% set ntopng_url_cfg = grouped.get('config', []) | selectattr('key', 'equalto', 'ntopng_url') | first %}
+        {% set ntopng_token_cfg = grouped.get('config', []) | selectattr('key', 'equalto', 'ntopng_api_token') | first %}
+        {% set ntopng_ifid_cfg = grouped.get('config', []) | selectattr('key', 'equalto', 'ntopng_ifid') | first %}
+        <div class="col-12 col-md-5">
+          <form method="post" action="/settings/config/ntopng_url" class="d-flex gap-1">
+            <input type="url" name="value" class="form-control form-control-sm font-monospace"
+                   placeholder="http://192.168.1.100:3000"
+                   value="{{ ntopng_url_cfg.value if ntopng_url_cfg else '' }}">
+            <button class="btn btn-outline-secondary btn-sm">Save</button>
+          </form>
+          <div class="text-muted small mt-1">ntopng URL</div>
+        </div>
+        <div class="col-12 col-md-4">
+          <form method="post" action="/settings/config/ntopng_api_token" class="d-flex gap-1">
+            <input type="password" name="value" class="form-control form-control-sm font-monospace"
+                   placeholder="API token"
+                   value="{{ ntopng_token_cfg.value if ntopng_token_cfg else '' }}">
+            <button class="btn btn-outline-secondary btn-sm">Save</button>
+          </form>
+          <div class="text-muted small mt-1">API token (Settings → REST API in ntopng)</div>
+        </div>
+        <div class="col-6 col-md-2">
+          <form method="post" action="/settings/config/ntopng_ifid" class="d-flex gap-1">
+            <input type="number" name="value" class="form-control form-control-sm"
+                   placeholder="0" min="0"
+                   value="{{ ntopng_ifid_cfg.value if ntopng_ifid_cfg else '0' }}">
+            <button class="btn btn-outline-secondary btn-sm">Save</button>
+          </form>
+          <div class="text-muted small mt-1">Interface ID</div>
+        </div>
+      </div>
+      <div class="text-muted small mt-2">
+        Active flows for each device will appear on the device detail page.
+        Requires ntopng Community or Enterprise running separately.
+        (<a href="https://www.ntop.org/products/ntopng/" target="_blank" rel="noopener">ntop.org</a>)
+      </div>
+    </div>
+
+    {# ── Wazuh ────────────────────────────────────────────────────────────── #}
+    <div class="px-3 py-3">
+      <h6 class="text-muted border-bottom pb-1 mb-3 small text-uppercase" style="letter-spacing:.05em">
+        <i class="bi bi-shield-check me-1"></i>Wazuh — SIEM / security alerts
+      </h6>
+      <form method="post" action="/settings/config/wazuh_enabled" class="d-inline me-2">
+        <div class="form-check form-switch d-inline-flex align-items-center gap-2 mb-2">
+          {% set wazuh_cfg = grouped.get('config', []) | selectattr('key', 'equalto', 'wazuh_enabled') | first %}
+          <input class="form-check-input" type="checkbox" name="value" value="1" id="wazuhEnabled"
+                 {% if wazuh_cfg and wazuh_cfg.value == '1' %}checked{% endif %}
+                 onchange="this.form.submit()">
+          <label class="form-check-label small fw-semibold" for="wazuhEnabled">Enable Wazuh alerts</label>
+        </div>
+      </form>
+      <div class="row g-2 mt-1">
+        {% set wazuh_host_cfg = grouped.get('config', []) | selectattr('key', 'equalto', 'wazuh_host') | first %}
+        {% set wazuh_port_cfg = grouped.get('config', []) | selectattr('key', 'equalto', 'wazuh_port') | first %}
+        <div class="col-12 col-md-5">
+          <form method="post" action="/settings/config/wazuh_host" class="d-flex gap-1">
+            <input type="text" name="value" class="form-control form-control-sm font-monospace"
+                   placeholder="192.168.1.200"
+                   value="{{ wazuh_host_cfg.value if wazuh_host_cfg else '' }}">
+            <button class="btn btn-outline-secondary btn-sm">Save</button>
+          </form>
+          <div class="text-muted small mt-1">Wazuh Manager IP / hostname</div>
+        </div>
+        <div class="col-6 col-md-2">
+          <form method="post" action="/settings/config/wazuh_port" class="d-flex gap-1">
+            <input type="number" name="value" class="form-control form-control-sm"
+                   placeholder="514" min="1" max="65535"
+                   value="{{ wazuh_port_cfg.value if wazuh_port_cfg else '514' }}">
+            <button class="btn btn-outline-secondary btn-sm">Save</button>
+          </form>
+          <div class="text-muted small mt-1">Syslog UDP port</div>
+        </div>
+      </div>
+      <div class="text-muted small mt-2">
+        NetDoc will forward events to Wazuh via syslog UDP: new device discovered,
+        new vulnerability found, IP conflict detected.
+        Events appear in Wazuh under program <code>netdoc</code>.
+        (<a href="https://wazuh.com" target="_blank" rel="noopener">wazuh.com</a>)
+      </div>
+    </div>
+
+    {% endif %}{# PRO_ENABLED #}
+  </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════════
    Zaawansowane techniki skanowania nmap
    ══════════════════════════════════════════════════════════════════════════ #}
 <div class="card mb-4" id="scan-advanced">

@@ -1161,7 +1161,80 @@
     </div>{# /collapseSyslog #}
   </div>
 
+  {# ── ntopng flows — shown only when ntopng is configured ──────────────── #}
+  <div class="card mb-3" id="ntopng-card" style="display:none!important">
+    <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center collapsible-header"
+         data-bs-toggle="collapse" data-bs-target="#collapseNtopng"
+         aria-expanded="true" aria-controls="collapseNtopng">
+      <span><i class="bi bi-diagram-3 me-1"></i>ntopng — active flows
+        <span class="badge bg-secondary ms-1" id="ntopng-count"></span>
+      </span>
+      <div class="d-flex align-items-center gap-2">
+        <span id="ntopng-link-wrap"></span>
+        <i class="bi bi-chevron-up collapse-icon"></i>
+      </div>
+    </div>
+    <div class="collapse show" id="collapseNtopng">
+    <div class="card-body p-0">
+      <div id="ntopng-body">
+        <p class="text-muted small p-3 mb-0">Loading…</p>
+      </div>
+    </div>
+    </div>
+  </div>
+
 </div>{# /container-fluid #}
+
+<script>
+(function () {
+  var deviceId = {{ dev.id }};
+  fetch('/api/devices/' + deviceId + '/ntopng-flows')
+    .then(function (r) {
+      if (r.status === 404) return null;  // ntopng not configured — hide card silently
+      if (!r.ok) return r.json().then(function(d){ return {error: d.error || r.statusText}; });
+      return r.json();
+    })
+    .then(function (data) {
+      if (!data) return;
+      var card = document.getElementById('ntopng-card');
+      card.style.removeProperty('display');
+      var body = document.getElementById('ntopng-body');
+      if (data.error) {
+        body.innerHTML = '<p class="text-muted small p-3 mb-0">' + data.error + '</p>';
+        return;
+      }
+      var flows = data.flows || [];
+      document.getElementById('ntopng-count').textContent = flows.length;
+      if (data.ntopng_url) {
+        document.getElementById('ntopng-link-wrap').innerHTML =
+          '<a href="' + data.ntopng_url + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation()">Open ntopng →</a>';
+      }
+      if (flows.length === 0) {
+        body.innerHTML = '<p class="text-muted small p-3 mb-0">No active flows for ' + data.ip + '.</p>';
+        return;
+      }
+      var rows = flows.map(function (f) {
+        var bytes = f.bytes >= 1048576 ? (f.bytes / 1048576).toFixed(1) + ' MB'
+                  : f.bytes >= 1024 ? (f.bytes / 1024).toFixed(1) + ' KB'
+                  : f.bytes + ' B';
+        return '<tr>' +
+          '<td class="small font-monospace">' + (f.src_ip || '') + (f.src_port ? ':' + f.src_port : '') + '</td>' +
+          '<td class="small font-monospace">' + (f.dst_ip || '') + (f.dst_port ? ':' + f.dst_port : '') + '</td>' +
+          '<td class="small"><span class="badge bg-secondary">' + (f.proto || '?') + '</span></td>' +
+          '<td class="small text-end">' + bytes + '</td>' +
+          '<td class="small text-muted">' + (f.info || '') + '</td>' +
+          '</tr>';
+      }).join('');
+      body.innerHTML =
+        '<div class="table-responsive">' +
+        '<table class="table table-sm table-hover mb-0">' +
+        '<thead class="table-light"><tr>' +
+        '<th>Source</th><th>Destination</th><th>Protocol</th><th class="text-end">Bytes</th><th>Info</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    })
+    .catch(function () {});
+}());
+</script>
 
 {% if ping_history or (interfaces and dev.snmp_community) %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>

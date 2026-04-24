@@ -1,0 +1,41 @@
+<!--
+  Wazuh custom rules for NetDoc events.
+  Program name: netdoc, delivered via syslog UDP 514.
+  Rule IDs 100100-100199 (custom local range).
+-->
+<group name="netdoc,">
+
+  <rule id="100100" level="0">
+    <program_name>netdoc</program_name>
+    <description>NetDoc collector event</description>
+  </rule>
+
+  <rule id="100101" level="6">
+    <if_sid>100100</if_sid>
+    <match>event=new_device</match>
+    <description>NetDoc: new device discovered - $(src_ip)</description>
+    <group>netdoc_discovery,</group>
+  </rule>
+
+  <rule id="100102" level="10">
+    <if_sid>100100</if_sid>
+    <match>event=new_vuln</match>
+    <description>NetDoc: new vulnerability detected on $(src_ip)</description>
+    <group>netdoc_vuln,vulnerability,</group>
+  </rule>
+
+  <rule id="100103" level="14">
+    <if_sid>100102</if_sid>
+    <match>severity=critical</match>
+    <description>NetDoc: CRITICAL vulnerability on $(src_ip)</description>
+    <group>netdoc_vuln,vulnerability,pci_dss_6.2,</group>
+  </rule>
+
+  <rule id="100104" level="9">
+    <if_sid>100100</if_sid>
+    <match>event=ip_conflict</match>
+    <description>NetDoc: IP conflict detected - $(src_ip)</description>
+    <group>netdoc_network,network_attack,</group>
+  </rule>
+
+</group>

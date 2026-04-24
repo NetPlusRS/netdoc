@@ -1791,6 +1791,21 @@ def _scan_device(device_id: int, ip: str, device_type, close_after: int = 3,
                              "severity": v["severity"].value, "title": v["title"]}))
                 logger.warning("NOWA PODATNOSC %-18s %-28s %s",
                                ip, v["vuln_type"].value, v["title"])
+                try:
+                    from netdoc.integrations.wazuh import get_wazuh_config, send_new_vuln
+                    _wcfg = get_wazuh_config(db)
+                    if _wcfg:
+                        _wdev = db.query(Device).filter(Device.id == device_id).first()
+                        send_new_vuln(
+                            _wcfg, ip=ip,
+                            hostname=(_wdev.hostname or "") if _wdev else "",
+                            vuln_type=v["vuln_type"].value,
+                            severity=v["severity"].value,
+                            title=v["title"],
+                            port=v.get("port"),
+                        )
+                except Exception as _we:
+                    logger.debug("Wazuh new_vuln alert failed: %s", _we)
 
             # Enrichment z ONVIF — aktualizuj Device gdy mamy dane z GetDeviceInformation
             enrichment = v.get("enrichment")

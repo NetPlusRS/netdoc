@@ -2222,6 +2222,19 @@ def upsert_device(db, device_data):
         db.add(Event(device_id=device.id, event_type=EventType.device_appeared,
                      details={"ip": device_data.ip, "hostname": new_hostname}))
         logger.info("Nowe urzadzenie: %s (%s)", device_data.ip, new_hostname)
+        try:
+            from netdoc.integrations.wazuh import get_wazuh_config, send_new_device
+            _wcfg = get_wazuh_config(db)
+            if _wcfg:
+                send_new_device(
+                    _wcfg, ip=device_data.ip,
+                    hostname=new_hostname or "",
+                    mac=normalize_mac(device_data.mac) or "",
+                    vendor=device_data.vendor or "",
+                    device_type=str(device_data.device_type.value) if device_data.device_type else "",
+                )
+        except Exception as _we:
+            logger.debug("Wazuh new_device alert failed: %s", _we)
     else:
         if not device.is_active:
             db.add(Event(device_id=device.id, event_type=EventType.device_appeared,

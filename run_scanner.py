@@ -2902,6 +2902,15 @@ def main():
             "diag_cpu_critical_pct":         ("95",  "config"),
             "diag_mem_warn_pct":             ("80",  "config"),
             "diag_mem_critical_pct":         ("90",  "config"),
+            # ntopng integration
+            "ntopng_enabled":    ("0", "config"),
+            "ntopng_url":        ("", "config"),
+            "ntopng_api_token":  ("", "config"),
+            "ntopng_ifid":       ("0", "config"),
+            # Wazuh integration
+            "wazuh_enabled": ("0", "config"),
+            "wazuh_host":    ("", "config"),
+            "wazuh_port":    ("5141", "config"),
         }
         for cfg_key, (cfg_val, cfg_cat) in _config_defaults.items():
             if not db.query(SystemStatus).filter(SystemStatus.key == cfg_key).first():

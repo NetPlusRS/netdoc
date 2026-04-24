@@ -603,6 +603,15 @@ def create_app():
             "scan_vpn_networks":       ("0",  "worker_settings"),
             "scan_virtual_networks":   ("0",  "worker_settings"),
             "ignore_laa_macs":         ("1",  "worker_settings"),
+            # ntopng integration
+            "ntopng_enabled":    ("0", "config"),
+            "ntopng_url":        ("", "config"),
+            "ntopng_api_token":  ("", "config"),
+            "ntopng_ifid":       ("0", "config"),
+            # Wazuh integration
+            "wazuh_enabled": ("0", "config"),
+            "wazuh_host":    ("", "config"),
+            "wazuh_port":    ("5141", "config"),
         }
         _db_init = SessionLocal()
         try:
@@ -2197,6 +2206,25 @@ def create_app():
         if err:
             return jsonify({"error": err}), 502
         return jsonify(data)
+
+    @app.route("/api/devices/<int:device_id>/ntopng-flows")
+    def api_ntopng_flows(device_id):
+        """PRO: top flows for this device from ntopng REST API."""
+        if not PRO_ENABLED:
+            return jsonify({"error": "NetDoc Pro required"}), 403
+        from netdoc.integrations.ntopng import get_ntopng_config, get_host_flows
+        db = SessionLocal()
+        try:
+            cfg = get_ntopng_config(db)
+            if not cfg:
+                return jsonify({"error": "ntopng not configured or disabled"}), 404
+            dev = db.query(Device).filter(Device.id == device_id).first()
+            if not dev:
+                return jsonify({"error": "device not found"}), 404
+            flows = get_host_flows(cfg, ip=str(dev.ip))
+            return jsonify({"flows": flows, "ip": str(dev.ip), "ntopng_url": cfg["url"]})
+        finally:
+            db.close()
 
     @app.route("/api/devices/<int:device_id>/vlan-ports")
     def api_proxy_vlan_ports(device_id):
