@@ -1832,6 +1832,8 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
             }
           }
         });
+        // Re-apply filters after status update — data-active may have changed (device went DOWN/UP)
+        if ((data.devices || []).length > 0 && window._devTableRefresh) window._devTableRefresh();
 
         // Wstrzyknij nowe urzadzenia odkryte podczas skanu
         if (data.new_device_ids && data.new_device_ids.length > 0) {
