@@ -122,6 +122,9 @@ _bcast_stats_lock = threading.Lock()
 _bcast_stats_start = time.time()   # kiedy zaczelismy liczyc (do "uptime" w API)
 _BCAST_STATS_MAX_IPS = 2000
 
+_active_bind_ip: list = ["0.0.0.0"]   # mutable — updated by main() on network change
+_rebind_event = threading.Event()      # set → listeners close socket and rebind with new IP
+
 
 def _record_packet(proto: str, src_ip: str, nbytes: int) -> None:
     """Rejestruje pakiet w licznikach statystyk."""
@@ -518,21 +521,24 @@ def db_writer_thread(q: queue.Queue, stop_event: threading.Event) -> None:
 # Watki nasluchujace
 # ===========================================================================
 
-def listener_unifi(bind_ip: str, q: queue.Queue, stop_event: threading.Event) -> None:
+def listener_unifi(q: queue.Queue, stop_event: threading.Event) -> None:
     """Ciagly nasluch na UDP 10001 — UniFi APs same wysylaja periodic beacony."""
-    DISC = b"\x01\x00\x00\x00"
     s = None
     while not stop_event.is_set():
+        if _rebind_event.is_set() and s is not None:
+            try: s.close()
+            except Exception: pass
+            s = None
         try:
             if s is None:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s.settimeout(2.0)
-                s.bind((bind_ip, UNIFI_PORT))  # bind na porcie zeby lapac ogloszenia
+                s.bind((_active_bind_ip[0], UNIFI_PORT))
             try:
                 data, (src_ip, src_port) = s.recvfrom(4096)
-                if src_ip == bind_ip: continue
+                if src_ip == _active_bind_ip[0]: continue
                 _write_raw("UNIFI", src_ip, src_port, data)
                 _record_packet("UNIFI", src_ip, len(data))
                 parsed = _parse_unifi_tlv(data, src_ip)
@@ -550,10 +556,14 @@ def listener_unifi(bind_ip: str, q: queue.Queue, stop_event: threading.Event) ->
         except Exception: pass
 
 
-def listener_mndp(bind_ip: str, q: queue.Queue, stop_event: threading.Event) -> None:
+def listener_mndp(q: queue.Queue, stop_event: threading.Event) -> None:
     """Ciagly nasluch na UDP 5678 — MikroTik wysyla MNDP co ~60s."""
     s = None
     while not stop_event.is_set():
+        if _rebind_event.is_set() and s is not None:
+            try: s.close()
+            except Exception: pass
+            s = None
         try:
             if s is None:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -563,7 +573,7 @@ def listener_mndp(bind_ip: str, q: queue.Queue, stop_event: threading.Event) -> 
                 s.bind(("", MNDP_PORT))
             try:
                 data, (src_ip, src_port) = s.recvfrom(4096)
-                if src_ip == bind_ip: continue
+                if src_ip == _active_bind_ip[0]: continue
                 _write_raw("MNDP", src_ip, src_port, data)
                 _record_packet("MNDP", src_ip, len(data))
                 parsed = _parse_mndp_tlv(data, src_ip)
@@ -580,18 +590,25 @@ def listener_mndp(bind_ip: str, q: queue.Queue, stop_event: threading.Event) -> 
         except Exception: pass
 
 
-def listener_mdns(bind_ip: str, q: queue.Queue, stop_event: threading.Event) -> None:
+def listener_mdns(q: queue.Queue, stop_event: threading.Event) -> None:
     """Ciagly nasluch mDNS multicast 224.0.0.251:5353."""
     s = None
     mreq = None
     while not stop_event.is_set():
+        if _rebind_event.is_set() and s is not None:
+            if mreq:
+                try: s.setsockopt(socket.IPPROTO_IP, socket.IP_DROP_MEMBERSHIP, mreq)
+                except Exception: pass
+            try: s.close()
+            except Exception: pass
+            s = None; mreq = None
         try:
             if s is None:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                mreq = struct.pack("4s4s", socket.inet_aton(MDNS_GROUP), socket.inet_aton(bind_ip))
+                mreq = struct.pack("4s4s", socket.inet_aton(MDNS_GROUP), socket.inet_aton(_active_bind_ip[0]))
                 s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-                s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(bind_ip))
+                s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(_active_bind_ip[0]))
                 s.settimeout(2.0)
                 try:
                     s.bind(("", MDNS_PORT))
@@ -599,7 +616,7 @@ def listener_mdns(bind_ip: str, q: queue.Queue, stop_event: threading.Event) -> 
                     s.bind(("", 0))  # port zajety — ephemeral
             try:
                 data, (src_ip, src_port) = s.recvfrom(4096)
-                if src_ip == bind_ip: continue
+                if src_ip == _active_bind_ip[0]: continue
                 _write_raw("MDNS", src_ip, src_port, data)
                 _record_packet("MDNS", src_ip, len(data))
                 parsed = _parse_mdns_response(data, src_ip)
@@ -622,24 +639,28 @@ def listener_mdns(bind_ip: str, q: queue.Queue, stop_event: threading.Event) -> 
         except Exception: pass
 
 
-def listener_ssdp(bind_ip: str, q: queue.Queue, stop_event: threading.Event) -> None:
+def listener_ssdp(q: queue.Queue, stop_event: threading.Event) -> None:
     """Ciagly nasluch SSDP multicast 239.255.255.255:1900."""
     s = None
     _upnp_pending: dict[str, float] = {}  # url → timestamp (throttle fetchow)
     while not stop_event.is_set():
+        if _rebind_event.is_set() and s is not None:
+            try: s.close()
+            except Exception: pass
+            s = None
         try:
             if s is None:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                mreq = struct.pack("4s4s", socket.inet_aton(SSDP_GROUP), socket.inet_aton(bind_ip))
+                mreq = struct.pack("4s4s", socket.inet_aton(SSDP_GROUP), socket.inet_aton(_active_bind_ip[0]))
                 s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-                s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(bind_ip))
+                s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(_active_bind_ip[0]))
                 s.settimeout(2.0)
                 try: s.bind(("", SSDP_PORT))
                 except OSError: s.bind(("", 0))
             try:
                 data, (src_ip, src_port) = s.recvfrom(4096)
-                if src_ip == bind_ip: continue
+                if src_ip == _active_bind_ip[0]: continue
                 _write_raw("SSDP", src_ip, src_port, data)
                 _record_packet("SSDP", src_ip, len(data))
                 entry = _parse_ssdp_packet(data, src_ip)
@@ -676,17 +697,18 @@ def listener_ssdp(bind_ip: str, q: queue.Queue, stop_event: threading.Event) -> 
 # Watek aktywnych zapytan
 # ===========================================================================
 
-def query_sender(bind_ip: str, stop_event: threading.Event) -> None:
+def query_sender(stop_event: threading.Event) -> None:
     """Co QUERY_INTERVAL sekund wysyla aktywne pakiety discovery do wszystkich protokolow.
 
     Wymagane dla urzadzen ktore NIE wysylaja periodic beaconow (np. niektore SSDP).
     mDNS i UniFi odpowiadaja tez na pasywne ogloszenia — tu tylko aktywne zapytania.
+    Czyta aktualny bind IP z _active_bind_ip[0] — aktualizowany przy zmianie sieci.
     """
     def _send_unifi():
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            s.bind((bind_ip, 0))
+            s.bind((_active_bind_ip[0], 0))
             s.sendto(b"\x01\x00\x00\x00", ("255.255.255.255", UNIFI_PORT))
             s.close()
         except Exception: pass
@@ -695,7 +717,7 @@ def query_sender(bind_ip: str, stop_event: threading.Event) -> None:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            s.bind((bind_ip, 0))
+            s.bind((_active_bind_ip[0], 0))
             s.sendto(b"\x00\x00\x00\x00", ("255.255.255.255", MNDP_PORT))
             s.close()
         except Exception: pass
@@ -703,9 +725,9 @@ def query_sender(bind_ip: str, stop_event: threading.Event) -> None:
     def _send_mdns():
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(bind_ip))
+            s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(_active_bind_ip[0]))
             s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
-            s.bind((bind_ip, 0))
+            s.bind((_active_bind_ip[0], 0))
             for svc in _MDNS_QUERIES:
                 s.sendto(_build_mdns_query(svc), (MDNS_GROUP, MDNS_PORT))
             s.close()
@@ -714,9 +736,9 @@ def query_sender(bind_ip: str, stop_event: threading.Event) -> None:
     def _send_ssdp():
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(bind_ip))
+            s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(_active_bind_ip[0]))
             s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 4)
-            s.bind((bind_ip, 0))
+            s.bind((_active_bind_ip[0], 0))
             s.sendto(_SSDP_MSEARCH, (SSDP_GROUP, SSDP_PORT))
             s.close()
         except Exception: pass
@@ -749,12 +771,12 @@ def discover_once() -> dict:
     q: queue.Queue = queue.Queue()
     stop = threading.Event()
 
-    # Uruchom listenery na krotko
+    _active_bind_ip[0] = bind_ip  # shared with listener threads
     threads = [
-        threading.Thread(target=listener_unifi, args=(bind_ip, q, stop), daemon=True),
-        threading.Thread(target=listener_mndp,  args=(bind_ip, q, stop), daemon=True),
-        threading.Thread(target=listener_mdns,  args=(bind_ip, q, stop), daemon=True),
-        threading.Thread(target=listener_ssdp,  args=(bind_ip, q, stop), daemon=True),
+        threading.Thread(target=listener_unifi, args=(q, stop), daemon=True),
+        threading.Thread(target=listener_mndp,  args=(q, stop), daemon=True),
+        threading.Thread(target=listener_mdns,  args=(q, stop), daemon=True),
+        threading.Thread(target=listener_ssdp,  args=(q, stop), daemon=True),
     ]
     for t in threads: t.start()
 
@@ -951,6 +973,7 @@ def main() -> None:
     _pid_path = os.path.join(os.path.dirname(__file__), "broadcast.pid")
 
     bind_ip = _get_local_ip()
+    _active_bind_ip[0] = bind_ip  # shared with listener threads
     logger.info("NetDoc Broadcast Worker start — continuous listener, bind=%s PID=%d",
                 bind_ip, os.getpid())
     logger.info("Active query interval: %ds | DB throttle: %ds per IP", args.query_interval, DB_THROTTLE_S)
@@ -965,15 +988,15 @@ def main() -> None:
     _signal.signal(_signal.SIGTERM, _sigterm_handler)
 
     threads = [
-        threading.Thread(target=listener_unifi,  args=(bind_ip, pkt_queue, stop_event),
+        threading.Thread(target=listener_unifi,  args=(pkt_queue, stop_event),
                          name="listener-unifi",  daemon=True),
-        threading.Thread(target=listener_mndp,   args=(bind_ip, pkt_queue, stop_event),
+        threading.Thread(target=listener_mndp,   args=(pkt_queue, stop_event),
                          name="listener-mndp",   daemon=True),
-        threading.Thread(target=listener_mdns,   args=(bind_ip, pkt_queue, stop_event),
+        threading.Thread(target=listener_mdns,   args=(pkt_queue, stop_event),
                          name="listener-mdns",   daemon=True),
-        threading.Thread(target=listener_ssdp,   args=(bind_ip, pkt_queue, stop_event),
+        threading.Thread(target=listener_ssdp,   args=(pkt_queue, stop_event),
                          name="listener-ssdp",   daemon=True),
-        threading.Thread(target=query_sender,    args=(bind_ip, stop_event),
+        threading.Thread(target=query_sender,    args=(stop_event,),
                          name="query-sender",    daemon=True),
         threading.Thread(target=db_writer_thread, args=(pkt_queue, stop_event),
                          name="db-writer",       daemon=False),  # nie-daemon — czeka na stop
@@ -988,29 +1011,8 @@ def main() -> None:
     _ch_prev_totals: dict[str, float] = {}  # ip → last flushed total_pkts
 
     _SCAN_NOW_FLAG = os.path.join(os.path.dirname(__file__), "scan_now.flag")
-    _last_gateway_check = 0.0
-    _GATEWAY_CHECK_INTERVAL = 15  # sekund
-    _prev_gateways: set = set()
-
-    def _current_gateways() -> set:
-        gws = set()
-        try:
-            import platform, re as _re
-            if platform.system() == "Windows":
-                r = subprocess.run(["route", "print", "0.0.0.0"],
-                                   capture_output=True, text=True, timeout=3)
-                for m in _re.finditer(r"0\.0\.0\.0\s+0\.0\.0\.0\s+(\d+\.\d+\.\d+\.\d+)", r.stdout):
-                    gws.add(m.group(1))
-            else:
-                r = subprocess.run(["ip", "route", "show", "default"],
-                                   capture_output=True, text=True, timeout=3)
-                for m in _re.finditer(r"default via (\d+\.\d+\.\d+\.\d+)", r.stdout):
-                    gws.add(m.group(1))
-        except Exception:
-            pass
-        return gws
-
-    _prev_gateways = _current_gateways()
+    _last_ip_check = 0.0
+    _IP_CHECK_INTERVAL = 15  # sekund
 
     try:
         while True:
@@ -1023,20 +1025,26 @@ def main() -> None:
                                          args=(pkt_queue, stop_event), name="db-writer", daemon=False)
                 new_t.start()
                 threads[threads.index(db_thread)] = new_t
-            # Wykryj zmianę sieci (zmiana default gateway) → ustaw flagę scan_now
+            # Wykryj zmianę interfejsu sieciowego → rebind socketów + scan_now.flag
             now = time.monotonic()
-            if now - _last_gateway_check >= _GATEWAY_CHECK_INTERVAL:
-                _last_gateway_check = now
-                cur_gws = _current_gateways()
-                if cur_gws and cur_gws != _prev_gateways:
-                    logger.info("Zmiana sieci wykryta: %s → %s — ustawiam scan_now.flag",
-                                _prev_gateways, cur_gws)
+            if now - _last_ip_check >= _IP_CHECK_INTERVAL:
+                _last_ip_check = now
+                new_ip = _get_local_ip()
+                if new_ip != "0.0.0.0" and new_ip != _active_bind_ip[0]:
+                    old_ip = _active_bind_ip[0]
+                    _active_bind_ip[0] = new_ip
+                    logger.info("Network change: %s → %s — rebinding sockets", old_ip, new_ip)
+                    logger.info("NetDoc Broadcast Worker rebind — bind=%s PID=%d", new_ip, os.getpid())
+                    _rebind_event.set()
+                    threading.Timer(5.0, _rebind_event.clear).start()
+                    with _bcast_stats_lock:
+                        _bcast_stats.clear()
+                    _ch_prev_totals.clear()
                     try:
                         with open(_SCAN_NOW_FLAG, "w") as _f:
                             _f.write(datetime.utcnow().isoformat())
                     except Exception as _fe:
-                        logger.warning("Nie mogę utworzyć scan_now.flag: %s", _fe)
-                    _prev_gateways = cur_gws
+                        logger.warning("Cannot create scan_now.flag: %s", _fe)
 
             # Zapisz statystyki co 30s do logs/broadcast_stats.json + ClickHouse
             if now - _last_stats_flush >= 30:
