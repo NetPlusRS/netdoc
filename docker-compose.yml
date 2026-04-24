@@ -449,7 +449,8 @@ services:
     volumes:
       - wazuh_data:/var/ossec/data
       - wazuh_logs:/var/ossec/logs
-      - ./config/wazuh:/var/ossec/etc/rules:ro   # opcjonalne: własne reguły
+      # Reguły NetDoc: skopiuj config/wazuh/netdoc_rules.xml do kontenera po inicjalizacji:
+      # docker cp config/wazuh/netdoc_rules.xml netdoc-wazuh:/var/ossec/etc/rules/local_rules.xml
     ports:
       - "1514:1514/udp"   # agent protocol
       - "1515:1515"       # agent enrollment
