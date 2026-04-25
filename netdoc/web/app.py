@@ -3165,7 +3165,7 @@ def create_app():
         "workers":    ["netdoc-ping", "netdoc-snmp", "netdoc-cred", "netdoc-vuln",
                        "netdoc-community", "netdoc-internet"],
         "monitoring": ["netdoc-prometheus", "netdoc-loki", "netdoc-promtail", "netdoc-grafana"],
-        "syslog":     ["netdoc-rsyslog", "netdoc-vector"],
+        "syslog":     ["netdoc-vector", "netdoc-rsyslog"],
         "pro":        ["netdoc-ntopng", "netdoc-wazuh"],
     }
 
@@ -3210,7 +3210,7 @@ def create_app():
                 c = client.containers.get(name)
                 if c.status != "running":
                     c.start()
-                started.append(name)
+                    started.append(name)
             except Exception as e:
                 if "No such container" in str(e):
                     absent.append(name)

@@ -34,16 +34,16 @@
     </div>
 
     {# Profile — ładowane przez AJAX #}
-    {% set _profiles = [
+    {% set ns = namespace(profiles=[
       ("workers",    "bi-cpu",         "Workers",    "ping · snmp · cred · vuln · community · internet"),
       ("monitoring", "bi-bar-chart",   "Monitoring", "prometheus · loki · promtail · grafana"),
       ("syslog",     "bi-file-text",   "Syslog",     "rsyslog · vector"),
-    ] %}
+    ]) %}
     {% if PRO_ENABLED %}
-    {% set _profiles = _profiles + [("pro", "bi-plug", "Pro integrations", "ntopng · wazuh")] %}
+    {% set ns.profiles = ns.profiles + [("pro", "bi-plug", "Pro integrations", "ntopng · wazuh")] %}
     {% endif %}
 
-    {% for profile_id, icon, label, desc in _profiles %}
+    {% for profile_id, icon, label, desc in ns.profiles %}
     <div class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom"
          id="svc-row-{{ profile_id }}">
       <div>
@@ -71,58 +71,71 @@
 
 <script>
 (function () {
+  var _svcMsgTimer = null;
+
+  function showSvcMsg(text, isError) {
+    var msg = document.getElementById('svc-msg');
+    msg.textContent = text;
+    msg.className = 'px-3 py-2 small ' + (isError ? 'text-danger' : 'text-muted');
+    msg.style.display = '';
+    if (_svcMsgTimer) clearTimeout(_svcMsgTimer);
+    _svcMsgTimer = setTimeout(function () { msg.style.display = 'none'; }, 8000);
+  }
+
   function refreshServices() {
     fetch('/settings/services/status')
-      .then(r => r.json())
-      .then(data => {
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (data) {
         var profiles = data.profiles || {};
         Object.keys(profiles).forEach(function (p) {
           var info = profiles[p];
-          var badge = document.getElementById('svc-badge-' + p);
-          var btnStart = document.getElementById('svc-start-' + p);
-          var btnStop = document.getElementById('svc-stop-' + p);
+          var badge    = document.getElementById('svc-badge-'  + p);
+          var btnStart = document.getElementById('svc-start-'  + p);
+          var btnStop  = document.getElementById('svc-stop-'   + p);
           if (!badge) return;
           var running = info.running, total = info.total;
           if (info.all_absent) {
             badge.textContent = 'Not created';
             badge.className = 'badge bg-secondary';
             btnStart.disabled = false;
-            btnStop.disabled = true;
+            btnStop.disabled  = true;
           } else if (running === total) {
             badge.textContent = running + '/' + total + ' running';
             badge.className = 'badge bg-success';
             btnStart.disabled = true;
-            btnStop.disabled = false;
+            btnStop.disabled  = false;
           } else if (running === 0) {
             badge.textContent = 'Stopped';
             badge.className = 'badge bg-danger';
             btnStart.disabled = false;
-            btnStop.disabled = true;
+            btnStop.disabled  = true;
           } else {
             badge.textContent = running + '/' + total + ' running';
             badge.className = 'badge bg-warning text-dark';
             btnStart.disabled = false;
-            btnStop.disabled = false;
+            btnStop.disabled  = false;
           }
         });
       })
-      .catch(function () {});
+      .catch(function () {
+        showSvcMsg('Status unavailable — Docker not reachable', true);
+      });
   }
 
   window.svcAction = function (profile, action) {
-    var msg = document.getElementById('svc-msg');
-    msg.style.display = 'none';
-    ['start','stop'].forEach(function(a) {
+    document.getElementById('svc-msg').style.display = 'none';
+    ['start', 'stop'].forEach(function (a) {
       var btn = document.getElementById('svc-' + a + '-' + profile);
       if (btn) btn.disabled = true;
     });
     fetch('/settings/services/' + profile + '/' + action, {method: 'POST'})
-      .then(r => r.json())
+      .then(function (r) { return r.json(); })
       .then(function (data) {
-        if (data.message) {
-          msg.textContent = data.message;
-          msg.style.display = '';
-        }
+        var text = data.message || data.error || null;
+        if (text) showSvcMsg(text, !data.ok || !!data.error);
         setTimeout(refreshServices, 1500);
       })
       .catch(function () { setTimeout(refreshServices, 1500); });
