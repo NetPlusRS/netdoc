@@ -2908,9 +2908,12 @@ def main():
             "ntopng_api_token":  ("", "config"),
             "ntopng_ifid":       ("0", "config"),
             # Wazuh integration
-            "wazuh_enabled": ("0", "config"),
-            "wazuh_host":    ("", "config"),
-            "wazuh_port":    ("5141", "config"),
+            "wazuh_enabled":      ("0", "config"),
+            "wazuh_host":         ("", "config"),
+            "wazuh_port":         ("5141", "config"),
+            "wazuh_api_url":      ("https://netdoc-wazuh:55000", "config"),
+            "wazuh_api_user":     ("wazuh", "config"),
+            "wazuh_api_password": ("wazuh", "config"),
         }
         for cfg_key, (cfg_val, cfg_cat) in _config_defaults.items():
             if not db.query(SystemStatus).filter(SystemStatus.key == cfg_key).first():

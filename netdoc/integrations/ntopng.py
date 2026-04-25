@@ -98,7 +98,7 @@ def get_host_flows(cfg: dict, ip: str, limit: int = 10) -> list:
             "src_port": f.get("cli.port") or f.get("src_port"),
             "dst_port": f.get("srv.port") or f.get("dst_port"),
             "proto":   f.get("proto.l7_full") or f.get("proto.l7") or f.get("proto", "?"),
-            "bytes":   f.get("bytes") or f.get("cli2srv.bytes", 0) + f.get("srv2cli.bytes", 0),
+            "bytes":   f.get("bytes") if f.get("bytes") is not None else (f.get("cli2srv.bytes", 0) + f.get("srv2cli.bytes", 0)),
             "packets": f.get("packets", 0),
             "info":    f.get("info", ""),
         })

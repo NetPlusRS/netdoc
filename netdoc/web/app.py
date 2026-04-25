@@ -609,9 +609,12 @@ def create_app():
             "ntopng_api_token":  ("", "config"),
             "ntopng_ifid":       ("0", "config"),
             # Wazuh integration
-            "wazuh_enabled": ("0", "config"),
-            "wazuh_host":    ("", "config"),
-            "wazuh_port":    ("5141", "config"),
+            "wazuh_enabled":      ("0", "config"),
+            "wazuh_host":         ("", "config"),
+            "wazuh_port":         ("5141", "config"),
+            "wazuh_api_url":      ("https://netdoc-wazuh:55000", "config"),
+            "wazuh_api_user":     ("wazuh", "config"),
+            "wazuh_api_password": ("wazuh", "config"),
         }
         _db_init = SessionLocal()
         try:
@@ -2221,8 +2224,105 @@ def create_app():
             dev = db.query(Device).filter(Device.id == device_id).first()
             if not dev:
                 return jsonify({"error": "device not found"}), 404
-            flows = get_host_flows(cfg, ip=str(dev.ip))
+            try:
+                flows = get_host_flows(cfg, ip=str(dev.ip))
+            except Exception as exc:
+                logger.warning("ntopng get_host_flows failed: %s", exc)
+                flows = []
             return jsonify({"flows": flows, "ip": str(dev.ip), "ntopng_url": cfg["url"]})
+        finally:
+            db.close()
+
+    @app.route("/api/wazuh/alerts")
+    def api_wazuh_alerts():
+        """Recent Wazuh alerts from alerts.json — global security feed."""
+        from netdoc.integrations.wazuh_alerts import get_recent_alerts, alerts_file_available
+        try:
+            since_hours = int(request.args.get("hours", 24))
+            limit       = min(int(request.args.get("limit", 100)), 500)
+        except (ValueError, TypeError):
+            since_hours, limit = 24, 100
+        if not alerts_file_available():
+            return jsonify({"alerts": [], "available": False, "count": 0,
+                            "since_hours": since_hours,
+                            "message": "Wazuh alerts file not mounted"}), 200
+        alerts = get_recent_alerts(since_hours=since_hours, limit=limit)
+        return jsonify({"alerts": alerts, "available": True,
+                        "since_hours": since_hours, "count": len(alerts)})
+
+    @app.route("/api/wazuh/agents")
+    def api_wazuh_agents():
+        """Wazuh registered agents with status from REST API."""
+        from netdoc.integrations.wazuh_alerts import get_wazuh_api_config, get_agents
+        db = SessionLocal()
+        try:
+            try:
+                cfg = get_wazuh_api_config(db)
+            except Exception as exc:
+                logger.warning("Wazuh API config error: %s", exc)
+                return jsonify({"agents": [], "available": False, "count": 0,
+                                "message": "DB error reading Wazuh config"}), 200
+            if not cfg:
+                return jsonify({"agents": [], "available": False, "count": 0,
+                                "message": "Wazuh not enabled"}), 200
+            agents = get_agents(cfg)
+            return jsonify({"agents": agents, "available": True, "count": len(agents)})
+        finally:
+            db.close()
+
+    @app.route("/api/devices/<int:device_id>/wazuh-alerts")
+    def api_device_wazuh_alerts(device_id):
+        """Wazuh alerts from alerts.json matching this device's IP."""
+        from netdoc.integrations.wazuh_alerts import get_alerts_for_ip, alerts_file_available
+        db = SessionLocal()
+        try:
+            dev = db.query(Device).filter(Device.id == device_id).first()
+            if not dev:
+                return jsonify({"error": "device not found"}), 404
+            try:
+                since_hours = int(request.args.get("hours", 72))
+            except (ValueError, TypeError):
+                since_hours = 72
+            if not alerts_file_available():
+                return jsonify({"alerts": [], "available": False, "count": 0,
+                                "since_hours": since_hours, "ip": str(dev.ip)}), 200
+            alerts = get_alerts_for_ip(str(dev.ip), since_hours=since_hours)
+            return jsonify({"alerts": alerts, "available": True, "count": len(alerts),
+                            "since_hours": since_hours, "ip": str(dev.ip)})
+        finally:
+            db.close()
+
+    @app.route("/api/devices/<int:device_id>/security-events")
+    def api_security_events(device_id):
+        """Security events for this device stored by NetDoc (new device, vulns, conflicts)."""
+        from netdoc.storage.models import SecurityEvent
+        db = SessionLocal()
+        try:
+            dev = db.query(Device).filter(Device.id == device_id).first()
+            if not dev:
+                return jsonify({"error": "device not found"}), 404
+            try:
+                limit = min(int(request.args.get("limit", 50)), 200)
+            except (ValueError, TypeError):
+                limit = 50
+            rows = (db.query(SecurityEvent)
+                    .filter(SecurityEvent.device_id == device_id)
+                    .order_by(SecurityEvent.ts.desc())
+                    .limit(limit)
+                    .all())
+            events = [
+                {
+                    "id":          r.id,
+                    "event_type":  r.event_type,
+                    "severity":    r.severity,
+                    "ip":          r.ip,
+                    "description": r.description,
+                    "details":     r.details or {},
+                    "ts":          r.ts.strftime("%Y-%m-%d %H:%M:%S") if r.ts else "",
+                }
+                for r in rows
+            ]
+            return jsonify({"events": events, "device_id": device_id})
         finally:
             db.close()
 
@@ -3201,6 +3301,7 @@ def create_app():
             return jsonify({"error": "unknown profile"}), 400
         if profile == "pro" and not PRO_ENABLED:
             return jsonify({"error": "NetDoc Pro required"}), 403
+        import docker as _docker_sdk
         client, err = _docker_client()
         if not client:
             return jsonify({"error": err}), 500
@@ -3211,11 +3312,10 @@ def create_app():
                 if c.status != "running":
                     c.start()
                     started.append(name)
+            except _docker_sdk.errors.NotFound:
+                absent.append(name)
             except Exception as e:
-                if "No such container" in str(e):
-                    absent.append(name)
-                else:
-                    errors.append(f"{name}: {str(e)[:80]}")
+                errors.append(f"{name}: {str(e)[:80]}")
         if absent:
             return jsonify({
                 "ok": False, "started": started, "absent": absent,
@@ -3228,22 +3328,29 @@ def create_app():
     def services_stop(profile):
         if profile not in _DOCKER_PROFILES:
             return jsonify({"error": "unknown profile"}), 400
+        if profile == "pro" and not PRO_ENABLED:
+            return jsonify({"error": "NetDoc Pro required"}), 403
+        import docker as _docker_sdk
         client, err = _docker_client()
         if not client:
             return jsonify({"error": err}), 500
-        stopped, errors = [], []
+        stopped, absent, errors = [], [], []
         for name in _DOCKER_PROFILES[profile]:
             try:
                 c = client.containers.get(name)
                 if c.status == "running":
                     c.stop(timeout=10)
                 stopped.append(name)
+            except _docker_sdk.errors.NotFound:
+                absent.append(name)
             except Exception as e:
-                if "No such container" in str(e):
-                    stopped.append(name)
-                else:
-                    errors.append(f"{name}: {str(e)[:80]}")
-        return jsonify({"ok": True, "stopped": stopped, "errors": errors})
+                errors.append(f"{name}: {str(e)[:80]}")
+        if absent and not stopped:
+            return jsonify({
+                "ok": False, "stopped": stopped, "absent": absent,
+                "message": f"Kontenery nie istnieją — uruchom: docker compose --profile {profile} up -d",
+            })
+        return jsonify({"ok": True, "stopped": stopped, "absent": absent, "errors": errors})
 
     # ── lab environment ────────────────────────────────────────────────────────
     # image_candidates: kolejnosc prob (compose v2 i v1 nazewnictwo)
@@ -3889,6 +3996,8 @@ def create_app():
         "rsyslog":     "netdoc-rsyslog",
         "vector":      "netdoc-vector",
         "nginx":       "netdoc-nginx",
+        "ntopng":      "netdoc-ntopng",
+        "wazuh":       "netdoc-wazuh",
     }
 
     @app.route("/settings/docker/restart-stream")
@@ -4117,13 +4226,16 @@ def create_app():
                     severity_max = int(args["severity"]) if args.get("severity") else None,
                     program      = args.get("program") or None,
                     search       = args.get("search") or None,
-                    since_hours  = int(args.get("hours", 24)),
-                    limit        = int(args.get("limit", 200)),
-                    offset       = int(args.get("offset", 0)),
+                    since_hours  = int(args.get("hours") or 24),
+                    limit        = int(args.get("limit") or 200),
+                    offset       = int(args.get("offset") or 0),
                     pro          = True,
                 )
+                _SEV = {0:"EMERGENCY",1:"ALERT",2:"CRITICAL",3:"ERROR",
+                        4:"WARNING",5:"NOTICE",6:"INFO",7:"DEBUG"}
                 return jsonify({"logs": [
-                    {**r, "timestamp": str(r["timestamp"])} for r in rows
+                    {**r, "timestamp": str(r["timestamp"]),
+                     "severity_name": _SEV.get(r.get("severity"), "UNKNOWN")} for r in rows
                 ], "count": len(rows)})
             except Exception as exc:
                 return jsonify({"error": str(exc), "logs": [], "count": 0}), 503
@@ -4674,6 +4786,23 @@ def create_app():
         type_counter = Counter(v.vuln_type for v in open_vulns)
         vuln_type_counts = sorted(type_counter.items(), key=lambda x: -x[1])
 
+        # Wazuh data — loaded from alerts.json (mounted volume) + REST API
+        from netdoc.integrations.wazuh_alerts import (
+            get_recent_alerts, get_wazuh_api_config, get_agents, alerts_file_available,
+        )
+        db2 = SessionLocal()
+        try:
+            wazuh_api_cfg = get_wazuh_api_config(db2)
+            wazuh_agents  = get_agents(wazuh_api_cfg) if wazuh_api_cfg else []
+        except Exception:
+            wazuh_api_cfg = None
+            wazuh_agents  = []
+        finally:
+            db2.close()
+        # Only load file alerts when Wazuh is enabled — respects the UI toggle.
+        wazuh_file_ok     = alerts_file_available() if wazuh_api_cfg is not None else False
+        wazuh_alerts_list = get_recent_alerts(since_hours=24, limit=150) if wazuh_file_ok else []
+
         return render_template(
             "security.html",
             open_vulns=open_vulns,
@@ -4685,6 +4814,10 @@ def create_app():
             summary=summary,
             vuln_type_counts=vuln_type_counts,
             now=dt.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+            wazuh_alerts=wazuh_alerts_list,
+            wazuh_agents=wazuh_agents,
+            wazuh_enabled=wazuh_api_cfg is not None,
+            wazuh_file_ok=wazuh_file_ok,
         )
 
     @app.route("/security/<int:vuln_id>/suppress", methods=["POST"])

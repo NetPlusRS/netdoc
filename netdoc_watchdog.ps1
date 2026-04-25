@@ -43,22 +43,16 @@ if (Test-Path $_venvPythonW) {
 
 $ExpectedContainers = @(
     "netdoc-postgres"
-    "netdoc-prometheus"
-    "netdoc-loki"
-    "netdoc-promtail"
-    "netdoc-grafana"
     "netdoc-api"
     "netdoc-web"
+    "netdoc-nginx"
+    "netdoc-clickhouse"
     "netdoc-ping"
     "netdoc-snmp"
     "netdoc-cred"
     "netdoc-vuln"
     "netdoc-internet"
     "netdoc-community"
-    "netdoc-clickhouse"
-    "netdoc-rsyslog"
-    "netdoc-vector"
-    "netdoc-nginx"
 )
 
 function Write-Log {
@@ -213,13 +207,13 @@ if ($missing.Count -eq 0) {
     Write-Log "Starting: docker compose up -d ..." "WARN"
 
     # First attempt: up -d (uses existing images)
-    $composeOut = docker compose -f $ComposeFile up -d 2>&1
+    $composeOut = docker compose -f $ComposeFile --profile workers up -d 2>&1
     $composeOk  = ($LASTEXITCODE -eq 0)
 
     if (-not $composeOk) {
         # Image may have been deleted  -  try with rebuild
         Write-Log "up -d failed (missing image?)  -  retrying with --build ..." "WARN"
-        $composeOut = docker compose -f $ComposeFile up -d --build 2>&1
+        $composeOut = docker compose -f $ComposeFile --profile workers up -d --build 2>&1
         $composeOk  = ($LASTEXITCODE -eq 0)
     }
 

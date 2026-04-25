@@ -176,19 +176,19 @@ def analyze_device_tier(device_id: int, db, force: bool = False) -> dict[str, An
     if dev_type in (DeviceType.router, DeviceType.firewall):
         scores["edge"] += 35
         scored_signal_count += 1
-        signals.append({"icon": "✅", "text": f"Typ urządzenia: {dev_type.value} — typowo edge/WAN"})
+        signals.append({"icon": "✅", "text": f"Device type: {dev_type.value} — typically edge/WAN"})
     elif dev_type == DeviceType.switch:
         # Switch może być core/dist/access — nie dajemy punktów, informujemy tylko
         # BUG-L4 fix: NIE wliczamy do scored_signal_count (brak punktów = brak danych)
-        signals.append({"icon": "ℹ️", "text": "Typ urządzenia: switch — wymaga dalszej analizy (LLDP/FDB/STP)"})
+        signals.append({"icon": "ℹ️", "text": "Device type: switch — further analysis needed (LLDP/FDB/STP)"})
     elif dev_type == DeviceType.ap:
         scores["access"] += 40
         scored_signal_count += 1
-        signals.append({"icon": "✅", "text": "Typ urządzenia: AP — warstwa dostępu (access)"})
+        signals.append({"icon": "✅", "text": "Device type: AP — access layer"})
     else:
         missing.append({
             "icon": "🟡",
-            "text": "Typ urządzenia nieznany — ustaw ręcznie w liście urządzeń",
+            "text": "Device type unknown — set manually in the devices list",
             "hints": [],
         })
 
@@ -205,15 +205,15 @@ def analyze_device_tier(device_id: int, db, force: bool = False) -> dict[str, An
     if lldp_degree >= 4:
         scores["core"] += 30
         scored_signal_count += 1
-        signals.append({"icon": "✅", "text": f"LLDP: {lldp_degree} sąsiadów — wysoka łączność (core)"})
+        signals.append({"icon": "✅", "text": f"LLDP: {lldp_degree} neighbors — high connectivity (core)"})
     elif lldp_degree in (2, 3):
         scores["dist"] += 25
         scored_signal_count += 1
-        signals.append({"icon": "✅", "text": f"LLDP: {lldp_degree} sąsiadów — pośrednia łączność (distribution)"})
+        signals.append({"icon": "✅", "text": f"LLDP: {lldp_degree} neighbors — intermediate connectivity (distribution)"})
     elif lldp_degree == 1:
         scores["access"] += 28
         scored_signal_count += 1
-        signals.append({"icon": "✅", "text": "LLDP: 1 sąsiad — pojedynczy uplink (access)"})
+        signals.append({"icon": "✅", "text": "LLDP: 1 neighbor — single uplink (access)"})
     elif any_lldp > 0:
         # BUG-L5 fix: brak LLDP gdy inne urządzenia mają → słaba sugestia access,
         # ale wliczamy do scored_signal_count (bo jednak coś wiemy) i dodajemy do signals
@@ -221,18 +221,18 @@ def analyze_device_tier(device_id: int, db, force: bool = False) -> dict[str, An
         scored_signal_count += 1
         signals.append({
             "icon": "⚠️",
-            "text": "LLDP: brak sąsiadów (inne urządzenia mają LLDP) — prawdopodobnie endpoint/edge sieci",
+            "text": "LLDP: no neighbors (other devices have LLDP) — probably endpoint/edge",
         })
         missing.append({
             "icon": "🔴",
-            "text": "LLDP: włącz LLDP na urządzeniu — kluczowy sygnał dla dokładnej analizy tiera",
+            "text": "LLDP: enable LLDP on device — key signal for accurate tier analysis",
             "hints": _get_hints(vendor, os_ver, "lldp"),
         })
     else:
         # Brak LLDP w całej sieci — dane niedostępne
         missing.append({
             "icon": "🟡",
-            "text": "LLDP: brak danych w całej sieci — włącz LLDP na urządzeniach",
+            "text": "LLDP: no data across the network — enable LLDP on devices",
             "hints": _get_hints(vendor, os_ver, "lldp"),
         })
 
@@ -250,22 +250,22 @@ def analyze_device_tier(device_id: int, db, force: bool = False) -> dict[str, An
         scored_signal_count += 1
         if fdb_count > 150:
             scores["access"] += 25
-            signals.append({"icon": "✅", "text": f"FDB: {fdb_count} wpisów MAC — wiele urządzeń końcowych (access)"})
+            signals.append({"icon": "✅", "text": f"FDB: {fdb_count} MAC entries — many end devices (access)"})
         elif fdb_count > 30:
             scores["access"] += 12
             scores["dist"] += 12
-            signals.append({"icon": "✅", "text": f"FDB: {fdb_count} wpisów MAC — mieszana warstwa (dist/access)"})
+            signals.append({"icon": "✅", "text": f"FDB: {fdb_count} MAC entries — mixed layer (dist/access)"})
         elif fdb_count <= 8:
             scores["core"] += 15
             scores["dist"] += 10
-            signals.append({"icon": "✅", "text": f"FDB: tylko {fdb_count} wpisów MAC — tranzytowe urządzenie (core/dist)"})
+            signals.append({"icon": "✅", "text": f"FDB: only {fdb_count} MAC entries — transit device (core/dist)"})
         else:  # 9..30
             scores["dist"] += 15
-            signals.append({"icon": "✅", "text": f"FDB: {fdb_count} wpisów MAC — typowy switch distribution"})
+            signals.append({"icon": "✅", "text": f"FDB: {fdb_count} MAC entries — typical distribution switch"})
     else:
         missing.append({
             "icon": "🟡",
-            "text": "FDB: brak danych (Q-BRIDGE MIB niedostępny) — potrzebny SNMP community",
+            "text": "FDB: no data (Q-BRIDGE MIB unavailable) — SNMP community required",
             "hints": _get_hints(vendor, os_ver, "snmp"),
         })
 
@@ -287,17 +287,17 @@ def analyze_device_tier(device_id: int, db, force: bool = False) -> dict[str, An
         if trunk_ratio >= 0.8:
             scores["core"] += 20
             scores["dist"] += 15
-            signals.append({"icon": "✅", "text": f"Porty: {trunk_cnt} trunk / {access_cnt} access — agregacja (core/dist)"})
+            signals.append({"icon": "✅", "text": f"Ports: {trunk_cnt} trunk / {access_cnt} access — aggregation (core/dist)"})
         elif trunk_ratio <= 0.2:
             scores["access"] += 20
-            signals.append({"icon": "✅", "text": f"Porty: {access_cnt} access / {trunk_cnt} trunk — warstwa dostępu"})
+            signals.append({"icon": "✅", "text": f"Ports: {access_cnt} access / {trunk_cnt} trunk — access layer"})
         else:
             scores["dist"] += 15
-            signals.append({"icon": "✅", "text": f"Porty: {trunk_cnt} trunk + {access_cnt} access — mieszana (dist?)"})
+            signals.append({"icon": "✅", "text": f"Ports: {trunk_cnt} trunk + {access_cnt} access — mixed (dist?)"})
     else:
         missing.append({
             "icon": "🔴",
-            "text": "Tryb portów nieznany — potrzebny SNMP lub SSH (show interfaces trunk)",
+            "text": "Port mode unknown — SNMP or SSH required (show interfaces trunk)",
             "hints": _get_hints(vendor, os_ver, "interfaces"),
         })
 
@@ -309,27 +309,27 @@ def analyze_device_tier(device_id: int, db, force: bool = False) -> dict[str, An
         scored_signal_count += 1
         if dev.stp_root_cost == 0:
             scores["core"] += 28
-            signals.append({"icon": "✅", "text": "STP: to urządzenie jest root bridge — typowo core"})
+            signals.append({"icon": "✅", "text": "STP: this device is root bridge — typically core"})
         elif dev.stp_root_cost <= 2:
             # BUG-L8 fix: cost<=2 może być RSTP 10G access — nie klasyfikuj jako dist,
             # daj równe punkty dist i access
             scores["dist"] += 12
             scores["access"] += 12
-            signals.append({"icon": "✅", "text": f"STP: koszt do root = {dev.stp_root_cost} — blisko root (RSTP 10G lub dist)"})
+            signals.append({"icon": "✅", "text": f"STP: cost to root = {dev.stp_root_cost} — near root (RSTP 10G or dist)"})
         elif dev.stp_root_cost <= 8:
             scores["dist"] += 20
-            signals.append({"icon": "✅", "text": f"STP: koszt do root = {dev.stp_root_cost} — blisko root (distribution)"})
+            signals.append({"icon": "✅", "text": f"STP: cost to root = {dev.stp_root_cost} — near root (distribution)"})
         elif dev.stp_root_cost <= 19:
             scores["dist"] += 10
             scores["access"] += 10
-            signals.append({"icon": "✅", "text": f"STP: koszt do root = {dev.stp_root_cost} — pośredni"})
+            signals.append({"icon": "✅", "text": f"STP: cost to root = {dev.stp_root_cost} — intermediate"})
         else:
             scores["access"] += 18
-            signals.append({"icon": "✅", "text": f"STP: koszt do root = {dev.stp_root_cost} — daleko od root (access)"})
+            signals.append({"icon": "✅", "text": f"STP: cost to root = {dev.stp_root_cost} — far from root (access)"})
     else:
         missing.append({
             "icon": "🟡",
-            "text": "STP: brak danych (dot1dStp MIB) — potrzebny SNMP community z dostępem do bridge MIB",
+            "text": "STP: no data (dot1dStp MIB) — SNMP community with bridge MIB access required",
             "hints": _get_hints(vendor, os_ver, "stp"),
         })
 
@@ -344,17 +344,17 @@ def analyze_device_tier(device_id: int, db, force: bool = False) -> dict[str, An
         if vlan_count >= 8:
             scores["dist"] += 18
             scores["core"] += 12
-            signals.append({"icon": "✅", "text": f"VLANy: {vlan_count} aktywnych — urządzenie wielu VLAN (dist/core)"})
+            signals.append({"icon": "✅", "text": f"VLANs: {vlan_count} active — multi-VLAN device (dist/core)"})
         elif vlan_count >= 3:
             scores["dist"] += 10
-            signals.append({"icon": "✅", "text": f"VLANy: {vlan_count} aktywnych"})
+            signals.append({"icon": "✅", "text": f"VLANs: {vlan_count} active"})
         else:
             scores["access"] += 12
-            signals.append({"icon": "✅", "text": f"VLANy: tylko {vlan_count} — prosty segment (access)"})
+            signals.append({"icon": "✅", "text": f"VLANs: only {vlan_count} — simple segment (access)"})
     else:
         missing.append({
             "icon": "🟡",
-            "text": "VLANy: brak danych (Q-BRIDGE VLAN MIB) — potrzebny SNMP",
+            "text": "VLANs: no data (Q-BRIDGE VLAN MIB) — SNMP required",
             "hints": [],
         })
 
@@ -363,7 +363,7 @@ def analyze_device_tier(device_id: int, db, force: bool = False) -> dict[str, An
     if not dev.snmp_community:
         missing.append({
             "icon": "🔴",
-            "text": "SNMP: brak dostępu — bez SNMP większość analizy jest niemożliwa",
+            "text": "SNMP: no access — without SNMP most analysis is unavailable",
             "hints": _get_hints(vendor, os_ver, "snmp"),
         })
 

@@ -128,6 +128,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
+      - wazuh_logs:/wazuh_logs:ro   # Wazuh alerts.json for security dashboard
     ports:
       - "8000:8000"
     cap_add:
@@ -166,6 +167,7 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
       - ./device_passports:/app/device_passports
+      - wazuh_logs:/wazuh_logs:ro   # Wazuh alerts.json for security dashboard
     expose:
       - "5000"   # tylko wewnętrznie — nginx proxy
     depends_on:

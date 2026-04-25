@@ -762,7 +762,7 @@ if ($oldContainers.Count -gt 0 -or $oldVolumes.Count -gt 0) {
 
 # ── docker compose up ─────────────────────────────────────────────────────────
 
-Write-Step "Starting Docker containers (docker compose up -d --build)..."
+Write-Step "Starting Docker containers (docker compose --profile workers up -d --build)..."
 Write-Info "First run may take a few minutes  -  downloading base images."
 Write-Host ""
 Write-Warn "IMPORTANT  -  required Docker Desktop settings before starting:"
@@ -790,7 +790,7 @@ while (-not $composeOk -and $composeTries -lt $composeMaxTries) {
         Write-Info "  'Allow the default Docker socket to be used (requires password)'"
         Start-Sleep -Seconds 30
     }
-    docker compose up -d --build
+    docker compose --profile workers up -d --build
     if ($LASTEXITCODE -eq 0) { $composeOk = $true }
 }
 
@@ -804,7 +804,7 @@ if (-not $composeOk) {
     Write-Info "  - Insufficient RAM (Docker requires at least 4 GB free)"
     Write-Info "  - Docker Desktop is not running or still starting"
     Write-Info "  - Image build error  -  check internet access (pip, apt)"
-    Write-Info "After fixing the issue run: docker compose up -d --build"
+    Write-Info "After fixing the issue run: docker compose --profile workers up -d --build"
     Show-Pause "Press Enter to close..."
     exit 1
 }
@@ -843,25 +843,20 @@ foreach ($proto in @("UDP", "TCP")) {
 
 Write-Step "Checking NetDoc container status..."
 
-# List of expected containers (names from docker-compose.yml)
+# Core + workers containers (always started on fresh install).
+# Monitoring/syslog/pro are optional profiles — started from UI when needed.
 $ExpectedContainers = @(
     "netdoc-postgres",
     "netdoc-api",
     "netdoc-web",
-    "netdoc-grafana",
-    "netdoc-prometheus",
-    "netdoc-loki",
-    "netdoc-promtail",
+    "netdoc-nginx",
+    "netdoc-clickhouse",
     "netdoc-ping",
     "netdoc-snmp",
     "netdoc-cred",
     "netdoc-vuln",
     "netdoc-internet",
-    "netdoc-community",
-    "netdoc-clickhouse",
-    "netdoc-rsyslog",
-    "netdoc-vector",
-    "netdoc-nginx"
+    "netdoc-community"
 )
 
 $maxContainerWait = 120   # total seconds to wait

@@ -6,7 +6,7 @@ No auth is needed for syslog delivery — the server-side ruleset matches on pro
 Config keys (SystemStatus table, category='config'):
   wazuh_enabled   — "1" / "0"
   wazuh_host      — IP or hostname of Wazuh manager
-  wazuh_port      — UDP port (default "514")
+  wazuh_port      — UDP port (default "5141", mapped in docker-compose)
 
 Syslog format: RFC 3164 with CEF-style body so Wazuh can parse severity/event fields.
 Program name: "netdoc" — add Wazuh custom ruleset to match on this.
@@ -40,21 +40,22 @@ def get_wazuh_config(db) -> Optional[dict]:
     rows = {r.key: r.value for r in db.query(SystemStatus).filter(
         SystemStatus.key.in_(["wazuh_enabled", "wazuh_host", "wazuh_port"])
     ).all()}
-    if rows.get("wazuh_enabled", "0") == "0":
+    if rows.get("wazuh_enabled", "0") not in ("1", "true", "yes"):
         return None
     host = rows.get("wazuh_host", "").strip()
     if not host:
         return None
     try:
-        port = int(rows.get("wazuh_port", "514"))
+        port = int(rows.get("wazuh_port", "5141"))
     except ValueError:
-        port = 514
+        port = 5141
     return {"host": host, "port": port}
 
 
 def _send_syslog(cfg: dict, message: str) -> bool:
     """Sends a single syslog UDP message. Returns True on success."""
-    now = datetime.datetime.utcnow().strftime("%b %d %H:%M:%S")
+    _dt = datetime.datetime.utcnow()
+    now = _dt.strftime("%b ") + str(_dt.day).rjust(2) + _dt.strftime(" %H:%M:%S")
     # RFC 3164: <priority>timestamp hostname program: message
     # Priority 14 = facility 1 (user) + severity 6 (info)
     line = f"<14>{now} netdoc-collector {PROGRAM_NAME}: {message}\n"
@@ -114,3 +115,41 @@ def send_ip_conflict(cfg: dict, ip: str, hostname: str = "",
                      old_mac: str = "", new_mac: str = "") -> bool:
     return send_event(cfg, "ip_conflict", ip,
                       hostname=hostname, old_mac=old_mac, new_mac=new_mac)
+
+
+# ── Local storage (always, regardless of Wazuh config) ────────────────────────
+
+_SEVERITY_MAP = {
+    "new_device":  "info",
+    "port_change": "info",
+    "ip_conflict": "warning",
+    "new_vuln":    "warning",
+}
+
+
+def store_security_event(db, device_id, event_type: str, ip: str,
+                         description: str, severity: str = "",
+                         details: dict | None = None) -> None:
+    """Stores a security event in the local DB so it appears in NetDoc's UI.
+
+    Called from discovery.py and worker scripts alongside (or instead of) the
+    Wazuh syslog send. Does NOT require Wazuh to be configured.
+    """
+    from netdoc.storage.models import SecurityEvent
+    if not severity:
+        severity = _SEVERITY_MAP.get(event_type, "info")
+    try:
+        ev = SecurityEvent(
+            device_id=device_id,
+            event_type=event_type,
+            severity=severity,
+            ip=ip,
+            description=description,
+            details=details or {},
+        )
+        # Use a savepoint so a failure here does NOT roll back the caller's transaction.
+        with db.begin_nested():
+            db.add(ev)
+        logger.debug("SecurityEvent stored: %s %s", event_type, ip)
+    except Exception as exc:
+        logger.warning("Failed to store SecurityEvent: %s", exc)

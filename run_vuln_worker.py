@@ -1778,6 +1778,19 @@ def _scan_device(device_id: int, ip: str, device_type, close_after: int = 3,
     new_count = closed_count = 0
     db = SessionLocal()
     try:
+        # Pre-fetch Wazuh config and device hostname once to avoid N+1 per new vuln
+        try:
+            from netdoc.integrations.wazuh import (
+                get_wazuh_config, send_new_vuln as _wazuh_send_new_vuln,
+                store_security_event as _store_sec_event,
+            )
+            _wcfg = get_wazuh_config(db)
+        except Exception:
+            _wcfg = None
+            _store_sec_event = None
+        _wdev_tmp = db.query(Device).filter(Device.id == device_id).first()
+        _wdev_hostname = (_wdev_tmp.hostname or "") if _wdev_tmp else ""
+
         found_keys = set()
         for v in found:
             rec, is_new = _upsert_vuln(db, device_id, v)
@@ -1791,21 +1804,35 @@ def _scan_device(device_id: int, ip: str, device_type, close_after: int = 3,
                              "severity": v["severity"].value, "title": v["title"]}))
                 logger.warning("NOWA PODATNOSC %-18s %-28s %s",
                                ip, v["vuln_type"].value, v["title"])
-                try:
-                    from netdoc.integrations.wazuh import get_wazuh_config, send_new_vuln
-                    _wcfg = get_wazuh_config(db)
-                    if _wcfg:
-                        _wdev = db.query(Device).filter(Device.id == device_id).first()
-                        send_new_vuln(
+                if _store_sec_event:
+                    try:
+                        _store_sec_event(
+                            db, device_id, "new_vuln", ip,
+                            description=f"Vulnerability: {v['title']} ({v['vuln_type'].value})"
+                                        + (f" port {v['port']}" if v.get('port') else ""),
+                            severity=v["severity"].value if v["severity"].value in ("critical", "warning") else "warning",
+                            details={
+                                "vuln_type": v["vuln_type"].value,
+                                "severity":  v["severity"].value,
+                                "title":     v["title"],
+                                "port":      v.get("port"),
+                                "hostname":  _wdev_hostname,
+                            },
+                        )
+                    except Exception as _we:
+                        logger.debug("SecurityEvent store failed: %s", _we)
+                if _wcfg:
+                    try:
+                        _wazuh_send_new_vuln(
                             _wcfg, ip=ip,
-                            hostname=(_wdev.hostname or "") if _wdev else "",
+                            hostname=_wdev_hostname,
                             vuln_type=v["vuln_type"].value,
                             severity=v["severity"].value,
                             title=v["title"],
                             port=v.get("port"),
                         )
-                except Exception as _we:
-                    logger.debug("Wazuh new_vuln alert failed: %s", _we)
+                    except Exception as _we:
+                        logger.debug("Wazuh new_vuln alert failed: %s", _we)
 
             # Enrichment z ONVIF — aktualizuj Device gdy mamy dane z GetDeviceInformation
             enrichment = v.get("enrichment")

@@ -2222,20 +2222,15 @@ def upsert_device(db, device_data):
         db.add(Event(device_id=device.id, event_type=EventType.device_appeared,
                      details={"ip": device_data.ip, "hostname": new_hostname}))
         logger.info("Nowe urzadzenie: %s (%s)", device_data.ip, new_hostname)
-        try:
-            from netdoc.integrations.wazuh import get_wazuh_config, send_new_device
-            _wcfg = get_wazuh_config(db)
-            if _wcfg:
-                send_new_device(
-                    _wcfg, ip=device_data.ip,
-                    hostname=new_hostname or "",
-                    mac=normalize_mac(device_data.mac) or "",
-                    vendor=device_data.vendor or "",
-                    device_type=str(device_data.device_type.value) if device_data.device_type else "",
-                )
-        except Exception as _we:
-            logger.debug("Wazuh new_device alert failed: %s", _we)
+        _wazuh_new_device = {
+            "ip": device_data.ip,
+            "hostname": new_hostname or "",
+            "mac": normalize_mac(device_data.mac) or "",
+            "vendor": device_data.vendor or "",
+            "device_type": str(device_data.device_type.value) if device_data.device_type else "",
+        }
     else:
+        _wazuh_new_device = None
         if not device.is_active:
             db.add(Event(device_id=device.id, event_type=EventType.device_appeared,
                          details={"ip": device_data.ip, "reason": "powrot po nieobecnosci"}))
@@ -2292,6 +2287,21 @@ def upsert_device(db, device_data):
         if device_data.site_id and not device.site_id:
             device.site_id = device_data.site_id
     db.commit()
+    if _wazuh_new_device is not None:
+        try:
+            from netdoc.integrations.wazuh import get_wazuh_config, send_new_device, store_security_event
+            store_security_event(
+                db, device.id, "new_device", _wazuh_new_device["ip"],
+                description=f"New device discovered: {_wazuh_new_device['ip']}"
+                            + (f" ({_wazuh_new_device['hostname']})" if _wazuh_new_device.get('hostname') else ""),
+                details=_wazuh_new_device,
+            )
+            db.commit()
+            _wcfg = get_wazuh_config(db)
+            if _wcfg:
+                send_new_device(_wcfg, **_wazuh_new_device)
+        except Exception as _we:
+            logger.debug("Wazuh new_device alert failed: %s", _we)
     return device
 
 

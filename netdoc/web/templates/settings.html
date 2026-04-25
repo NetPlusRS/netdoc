@@ -89,6 +89,9 @@
         return r.json();
       })
       .then(function (data) {
+        if (data.docker_error) {
+          showSvcMsg('Docker unavailable: ' + data.docker_error, true);
+        }
         var profiles = data.profiles || {};
         Object.keys(profiles).forEach(function (p) {
           var info = profiles[p];
@@ -1198,6 +1201,14 @@
         Requires ntopng Community or Enterprise running separately.
         (<a href="https://www.ntop.org/products/ntopng/" target="_blank" rel="noopener">ntop.org</a>)
       </div>
+      <div class="alert alert-warning py-2 px-3 mt-2 mb-0 small">
+        <i class="bi bi-exclamation-triangle me-1"></i>
+        <strong>Requires a mirror port (SPAN).</strong>
+        ntopng must see raw network traffic — connect it to a switch mirror port or tap.
+        Without a mirror port ntopng only sees Docker-internal traffic and will show no flows.
+        To configure: pass <code>--interface &lt;eth&gt;</code> to the ntopng container and
+        point your switch SPAN session at the host NIC.
+      </div>
     </div>
 
     {# ── Wazuh ────────────────────────────────────────────────────────────── #}
@@ -1229,8 +1240,8 @@
         <div class="col-6 col-md-2">
           <form method="post" action="/settings/config/wazuh_port" class="d-flex gap-1">
             <input type="number" name="value" class="form-control form-control-sm"
-                   placeholder="514" min="1" max="65535"
-                   value="{{ wazuh_port_cfg.value if wazuh_port_cfg else '514' }}">
+                   placeholder="5141" min="1" max="65535"
+                   value="{{ wazuh_port_cfg.value if wazuh_port_cfg else '5141' }}">
             <button class="btn btn-outline-secondary btn-sm">Save</button>
           </form>
           <div class="text-muted small mt-1">Syslog UDP port</div>
@@ -1241,6 +1252,46 @@
         new vulnerability found, IP conflict detected.
         Events appear in Wazuh under program <code>netdoc</code>.
         (<a href="https://wazuh.com" target="_blank" rel="noopener">wazuh.com</a>)
+      </div>
+
+      {# Wazuh REST API credentials — for pulling alerts back into NetDoc #}
+      <hr class="my-3">
+      <div class="small fw-semibold mb-2">Wazuh REST API — pull alerts into NetDoc</div>
+      <div class="row g-2">
+        {% set wazuh_api_url_cfg  = grouped.get('config', []) | selectattr('key', 'equalto', 'wazuh_api_url')      | first %}
+        {% set wazuh_api_user_cfg = grouped.get('config', []) | selectattr('key', 'equalto', 'wazuh_api_user')     | first %}
+        {% set wazuh_api_pass_cfg = grouped.get('config', []) | selectattr('key', 'equalto', 'wazuh_api_password') | first %}
+        <div class="col-12 col-md-5">
+          <form method="post" action="/settings/config/wazuh_api_url" class="d-flex gap-1">
+            <input type="text" name="value" class="form-control form-control-sm font-monospace"
+                   placeholder="https://netdoc-wazuh:55000"
+                   value="{{ wazuh_api_url_cfg.value if wazuh_api_url_cfg else 'https://netdoc-wazuh:55000' }}">
+            <button class="btn btn-outline-secondary btn-sm">Save</button>
+          </form>
+          <div class="text-muted small mt-1">Wazuh Manager API URL</div>
+        </div>
+        <div class="col-6 col-md-2">
+          <form method="post" action="/settings/config/wazuh_api_user" class="d-flex gap-1">
+            <input type="text" name="value" class="form-control form-control-sm"
+                   placeholder="wazuh"
+                   value="{{ wazuh_api_user_cfg.value if wazuh_api_user_cfg else 'wazuh' }}">
+            <button class="btn btn-outline-secondary btn-sm">Save</button>
+          </form>
+          <div class="text-muted small mt-1">API username</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <form method="post" action="/settings/config/wazuh_api_password" class="d-flex gap-1">
+            <input type="password" name="value" class="form-control form-control-sm"
+                   placeholder="wazuh"
+                   value="{{ wazuh_api_pass_cfg.value if wazuh_api_pass_cfg else '' }}">
+            <button class="btn btn-outline-secondary btn-sm">Save</button>
+          </form>
+          <div class="text-muted small mt-1">API password</div>
+        </div>
+      </div>
+      <div class="text-muted small mt-2">
+        Used to display Wazuh alerts on the <a href="/security">Security</a> page and device detail.
+        Default credentials for the bundled <code>netdoc-wazuh</code> container are <code>wazuh / wazuh</code>.
       </div>
     </div>
 

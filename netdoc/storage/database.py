@@ -351,6 +351,19 @@ def _migrate_columns() -> None:
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS tier_evidence    JSON",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS tier_overridden  BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS tier_analyzed_at TIMESTAMP",
+        # Security events — NetDoc-generated alerts shown in device detail (2026-04-25)
+        """CREATE TABLE IF NOT EXISTS security_events (
+            id          SERIAL PRIMARY KEY,
+            device_id   INTEGER REFERENCES devices(id) ON DELETE CASCADE,
+            event_type  VARCHAR(64) NOT NULL,
+            severity    VARCHAR(16) NOT NULL DEFAULT 'info',
+            ip          VARCHAR(64),
+            description TEXT,
+            details     JSON,
+            ts          TIMESTAMP NOT NULL DEFAULT NOW()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_secevt_device_id ON security_events (device_id)",
+        "CREATE INDEX IF NOT EXISTS ix_secevt_ts        ON security_events (ts)",
     ]
     # Każda migracja w osobnej transakcji — błąd jednego kroku nie blokuje pozostałych.
     # lock_timeout=5s: DDL nie będzie czekać w nieskończoność na blokadę tabeli
