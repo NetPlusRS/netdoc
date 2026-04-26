@@ -655,3 +655,44 @@ def query_broadcast_history(device_id: int, since_hours: int = 24, step_minutes:
     except Exception as exc:
         logger.warning("query_broadcast_history(%d) failed: %s", device_id, exc)
         return []
+
+
+# ---------------------------------------------------------------------------
+# NTP drift detection (received_at vs timestamp from device header)
+# ---------------------------------------------------------------------------
+
+def get_ntp_drift_batch(since_hours: int = 1, min_samples: int = 3) -> dict[int, dict]:
+    """Returns NTP clock drift for all known devices with recent syslog data.
+
+    Compares received_at (relay receipt time, UTC) with timestamp (device syslog header).
+    Returns {device_id: {"offset_seconds": float, "samples": int}}.
+    device_id=0 (unknown) is excluded.
+    """
+    sql = (
+        "SELECT device_id,"
+        "       round(avg(abs(dateDiff('second', timestamp, received_at))), 1) AS offset_seconds,"
+        "       count() AS samples"
+        " FROM netdoc_logs.syslog"
+        " WHERE device_id > 0"
+        "   AND received_at >= now() - INTERVAL {since_hours:UInt32} HOUR"
+        " GROUP BY device_id"
+        " HAVING samples >= {min_samples:UInt32}"
+    )
+    try:
+        result = _get_client().query(
+            sql,
+            parameters={"since_hours": since_hours, "min_samples": min_samples},
+        )
+        return {
+            row[0]: {"offset_seconds": float(row[1]), "samples": int(row[2])}
+            for row in result.result_rows
+        }
+    except Exception as exc:
+        logger.warning("get_ntp_drift_batch failed: %s", exc)
+        return {}
+
+
+def get_ntp_drift(device_id: int, since_hours: int = 1) -> dict | None:
+    """Returns NTP drift for a single device, or None if no syslog data."""
+    batch = get_ntp_drift_batch(since_hours=since_hours, min_samples=1)
+    return batch.get(device_id)

@@ -473,6 +473,13 @@
             {% endif %}
           </td>
 
+          {# ── NTP drift ─────────────────────────────────────────────────── #}
+          <td class="text-center ntp-cell" data-device-id="{{ d.id }}">
+            <span class="text-muted" style="font-size:.75rem;opacity:.35" title="NTP — loading…">
+              <i class="bi bi-clock"></i>
+            </span>
+          </td>
+
           <td class="text-nowrap">
             {# Ikona zaufania #}
             {% if d.is_trusted %}

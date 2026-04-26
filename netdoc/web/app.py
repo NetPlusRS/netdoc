@@ -615,6 +615,9 @@ def create_app():
             "wazuh_api_url":      ("https://netdoc-wazuh:55000", "config"),
             "wazuh_api_user":     ("wazuh", "config"),
             "wazuh_api_password": ("wazuh", "config"),
+            # NTP drift alerting
+            "ntp_alert_enabled":   ("1",  "config"),
+            "ntp_alert_threshold": ("30", "config"),
         }
         _db_init = SessionLocal()
         try:
@@ -2440,6 +2443,63 @@ def create_app():
         if err:
             return jsonify({"error": err}), 502
         return jsonify(data)
+
+    @app.route("/api/ntp-status")
+    def api_ntp_status():
+        """NTP clock drift for all devices with recent syslog data.
+
+        Returns {device_id: {offset_seconds, samples, status}} where
+        status is 'ok' | 'warn' | 'unknown'.
+        Query param ?since_hours=1 (default 1h window).
+        """
+        from netdoc.storage.clickhouse import get_ntp_drift_batch
+        since_hours = min(int(request.args.get("since_hours", 1)), 24)
+        threshold = 30
+        try:
+            with SessionLocal() as _db:
+                _row = _db.query(SystemStatus).filter_by(key="ntp_alert_threshold").first()
+                if _row:
+                    threshold = int(_row.value)
+        except Exception:
+            pass
+        try:
+            raw = get_ntp_drift_batch(since_hours=since_hours)
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+        out = {}
+        for dev_id, info in raw.items():
+            offset = info["offset_seconds"]
+            out[dev_id] = {
+                "offset_seconds": offset,
+                "samples": info["samples"],
+                "status": "warn" if offset > threshold else "ok",
+                "threshold": threshold,
+            }
+        return jsonify(out)
+
+    @app.route("/api/devices/<int:device_id>/ntp-status")
+    def api_device_ntp_status(device_id):
+        """NTP clock drift for a single device."""
+        from netdoc.storage.clickhouse import get_ntp_drift
+        since_hours = min(int(request.args.get("since_hours", 1)), 24)
+        threshold = 30
+        try:
+            with SessionLocal() as _db:
+                _row = _db.query(SystemStatus).filter_by(key="ntp_alert_threshold").first()
+                if _row:
+                    threshold = int(_row.value)
+        except Exception:
+            pass
+        info = get_ntp_drift(device_id, since_hours=since_hours)
+        if info is None:
+            return jsonify({"status": "unknown", "offset_seconds": None, "samples": 0, "threshold": threshold})
+        offset = info["offset_seconds"]
+        return jsonify({
+            "status": "warn" if offset > threshold else "ok",
+            "offset_seconds": offset,
+            "samples": info["samples"],
+            "threshold": threshold,
+        })
 
     @app.route("/api/devices/<int:device_id>/diag-alerts/<int:alert_id>/ack", methods=["POST"])
     def api_proxy_alert_ack(device_id, alert_id):

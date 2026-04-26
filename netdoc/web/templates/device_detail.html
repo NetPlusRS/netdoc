@@ -1172,6 +1172,25 @@
   </div>
 
   {# ── Security events — NetDoc-generated alerts (new device, vulns, etc.) ─ #}
+  {# ── NTP clock synchronization status ──────────────────────────────── #}
+  <div class="card mb-3" id="ntp-card">
+    <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center collapsible-header"
+         data-bs-toggle="collapse" data-bs-target="#collapseNtp"
+         aria-expanded="true" aria-controls="collapseNtp">
+      <span><i class="bi bi-clock-history me-1"></i>NTP Clock Synchronization
+        <span id="ntp-badge-header" class="ms-2"></span>
+      </span>
+      <i class="bi bi-chevron-up collapse-icon"></i>
+    </div>
+    <div class="collapse show" id="collapseNtp">
+    <div class="card-body">
+      <div id="ntp-body">
+        <p class="text-muted small mb-0">Loading…</p>
+      </div>
+    </div>
+    </div>
+  </div>
+
   <div class="card mb-3 d-none" id="secevt-card">
     <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center collapsible-header"
          data-bs-toggle="collapse" data-bs-target="#collapseSecEvt"
@@ -1290,6 +1309,75 @@
         '</tr></thead><tbody>' + rows + '</tbody></table></div>';
     })
     .catch(function () {});
+}());
+</script>
+
+<script>
+(function () {
+  var deviceId = {{ dev.id }};
+  fetch('/api/devices/' + deviceId + '/ntp-status')
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (data) {
+      var body = document.getElementById('ntp-body');
+      var badge = document.getElementById('ntp-badge-header');
+      if (!data) {
+        body.innerHTML = '<p class="text-muted small mb-0">Could not load NTP data.</p>';
+        return;
+      }
+      var status = data.status;
+      var offset = data.offset_seconds;
+      var samples = data.samples;
+      var threshold = data.threshold;
+      if (status === 'unknown') {
+        badge.innerHTML = '<span class="badge bg-secondary" style="font-size:.7rem">No syslog data</span>';
+        body.innerHTML =
+          '<p class="text-muted small mb-0">' +
+          '<i class="bi bi-question-circle me-1"></i>' +
+          'No syslog messages received in the last hour — NTP drift cannot be measured. ' +
+          'Configure syslog forwarding on the device to enable NTP monitoring.' +
+          '</p>';
+        return;
+      }
+      var isOk = (status === 'ok');
+      var colorCls  = isOk ? 'text-success' : (offset > threshold * 10 ? 'text-danger' : 'text-warning');
+      var badgeCls  = isOk ? 'bg-success' : (offset > threshold * 10 ? 'bg-danger' : 'bg-warning text-dark');
+      var icon      = isOk ? 'bi-clock-fill' : 'bi-clock-history';
+      badge.innerHTML = '<span class="badge ' + badgeCls + '" style="font-size:.7rem">' +
+        (isOk ? 'OK' : 'DRIFT ' + offset.toFixed(1) + 's') + '</span>';
+      body.innerHTML =
+        '<div class="row g-3">' +
+        '<div class="col-auto">' +
+        '<div class="text-center px-3">' +
+        '<i class="bi ' + icon + ' ' + colorCls + '" style="font-size:2rem"></i>' +
+        '<div class="mt-1 fw-semibold ' + colorCls + '" style="font-size:1.1rem">' +
+          (isOk ? 'Synchronized' : offset.toFixed(1) + 's drift') +
+        '</div>' +
+        '<div class="text-muted" style="font-size:.75rem">threshold: ' + threshold + 's</div>' +
+        '</div></div>' +
+        '<div class="col">' +
+        '<dl class="row mb-0" style="font-size:.85rem">' +
+        '<dt class="col-sm-5 text-muted">Clock offset</dt>' +
+        '<dd class="col-sm-7 fw-semibold ' + colorCls + '">' + offset.toFixed(1) + ' seconds</dd>' +
+        '<dt class="col-sm-5 text-muted">Alert threshold</dt>' +
+        '<dd class="col-sm-7">' + threshold + 's</dd>' +
+        '<dt class="col-sm-5 text-muted">Measured from</dt>' +
+        '<dd class="col-sm-7">' + samples + ' syslog messages (last hour)</dd>' +
+        '<dt class="col-sm-5 text-muted">Method</dt>' +
+        '<dd class="col-sm-7">Syslog header timestamp vs relay receipt time</dd>' +
+        '</dl>' +
+        (isOk ? '' :
+          '<div class="alert alert-warning py-2 px-3 mb-0 mt-2" style="font-size:.82rem">' +
+          '<i class="bi bi-exclamation-triangle-fill me-1"></i>' +
+          'Clock drift detected. Check NTP server configuration on this device. ' +
+          'Time misalignment can affect log correlation and camera recording synchronization.' +
+          '</div>'
+        ) +
+        '</div></div>';
+    })
+    .catch(function () {
+      document.getElementById('ntp-body').innerHTML =
+        '<p class="text-muted small mb-0">NTP status unavailable (ClickHouse not connected).</p>';
+    });
 }());
 </script>
 

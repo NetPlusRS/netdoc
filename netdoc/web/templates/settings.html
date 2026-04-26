@@ -898,6 +898,16 @@
     "Collected from HOST-RESOURCES-MIB (hrStorageUsed / hrStorageSize). Default: 80%."),
   "diag_mem_critical_pct": ("Memory — critical threshold [%]",
     "Device memory utilization (%) that triggers a CRITICAL alert. Default: 90%."),
+  "ntp_alert_enabled": ("NTP clock drift alerting — enabled/disabled",
+    "1 = scanner checks clock drift from syslog timestamps after every scan cycle and creates "
+    "a Security Event when drift exceeds the threshold. "
+    "Requires syslog forwarding configured on the device. "
+    "0 = NTP monitoring disabled."),
+  "ntp_alert_threshold": ("NTP clock drift — alert threshold [seconds]",
+    "Maximum allowed difference (in seconds) between the device's syslog header timestamp "
+    "and the relay receipt time. When exceeded a 'warning' security event is created. "
+    "Default: 30 seconds. Values above 300s trigger 'critical'. "
+    "Applies to all devices that send syslog to NetDoc."),
   "cred_scanning_enabled": ("Credential scanning — enabled/disabled",
     "1 = cred-worker actively tests SSH/Web/RDP/FTP passwords in every cycle. "
     "0 = disabled by default — no login attempts are made until enabled. "
@@ -917,7 +927,7 @@
                        "cred_snmp_enabled", "cred_ssh_enabled",
                        "cred_ftp_enabled", "cred_web_enabled", "cred_rdp_enabled",
                        "cred_mssql_enabled", "cred_mysql_enabled", "cred_postgres_enabled",
-                       "ai_assessment_enabled", "diag_enabled",
+                       "ai_assessment_enabled", "diag_enabled", "ntp_alert_enabled",
                        "cred_scanning_enabled", "vuln_scanning_enabled",
                        "community_scanning_enabled"] %}
 

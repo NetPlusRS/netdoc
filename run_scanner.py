@@ -23,7 +23,7 @@ import subprocess
 import time
 import logging
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # On Windows: hide console windows spawned by subprocesses (schtasks, powershell,
 # docker, arp, etc.) when running as pythonw.exe (no parent console).
@@ -2336,6 +2336,13 @@ def run_scan_cycle(db, scan_type: str = "discovery") -> dict:
             "scanner_last_duration_s": str(elapsed),
             "scanner_last_type": scan_type,
         })
+
+        # NTP drift check — runs after every scan cycle
+        try:
+            _check_ntp_drift_alerts(db)
+        except Exception as _ntp_exc:
+            logger.warning("NTP drift check failed: %s", _ntp_exc)
+
         return stats
 
     except Exception as exc:
@@ -2343,6 +2350,66 @@ def run_scan_cycle(db, scan_type: str = "discovery") -> dict:
         _set_status(db, {"scanner_job": "-", "scanner_last_error": str(exc)})
         return {}
 
+
+
+def _check_ntp_drift_alerts(db) -> None:
+    """Checks NTP clock drift for all devices with recent syslog data.
+
+    Creates a SecurityEvent when drift exceeds ntp_alert_threshold seconds.
+    Deduplication: skips if the last ntp_drift event for the device is < 6h old.
+    """
+    from netdoc.storage.models import Device, SecurityEvent, SystemStatus
+    from netdoc.integrations.wazuh import store_security_event
+
+    enabled_row = db.query(SystemStatus).filter_by(key="ntp_alert_enabled").first()
+    if enabled_row and enabled_row.value == "0":
+        return
+
+    threshold_row = db.query(SystemStatus).filter_by(key="ntp_alert_threshold").first()
+    threshold = int(threshold_row.value) if threshold_row else 30
+
+    try:
+        from netdoc.storage.clickhouse import get_ntp_drift_batch
+        drift_map = get_ntp_drift_batch(since_hours=1)
+    except Exception as exc:
+        logger.warning("NTP drift batch query failed: %s", exc)
+        return
+
+    for device_id, info in drift_map.items():
+        offset = info["offset_seconds"]
+        if offset <= threshold:
+            continue
+
+        # Deduplication: skip if recent ntp_drift alert already exists (< 6h)
+        cutoff = datetime.utcnow() - timedelta(hours=6)
+        recent = (
+            db.query(SecurityEvent)
+            .filter(
+                SecurityEvent.device_id == device_id,
+                SecurityEvent.event_type == "ntp_drift",
+                SecurityEvent.ts >= cutoff,
+            )
+            .first()
+        )
+        if recent:
+            continue
+
+        dev = db.query(Device).filter_by(id=device_id).first()
+        ip = dev.ip if dev else str(device_id)
+        desc = (
+            f"NTP clock drift {offset:.0f}s (threshold: {threshold}s). "
+            f"Checked from {info['samples']} syslog messages in last hour."
+        )
+        logger.warning("NTP drift alert: device %s offset=%.0fs", ip, offset)
+        store_security_event(
+            db,
+            device_id=device_id,
+            event_type="ntp_drift",
+            ip=ip,
+            description=desc,
+            severity="warning" if offset < threshold * 10 else "critical",
+            details={"offset_seconds": offset, "samples": info["samples"], "threshold": threshold},
+        )
 
 
 _SCAN_NOW_FLAG = os.path.join(os.path.dirname(__file__), "scan_now.flag")
@@ -2914,6 +2981,9 @@ def main():
             "wazuh_api_url":      ("https://netdoc-wazuh:55000", "config"),
             "wazuh_api_user":     ("wazuh", "config"),
             "wazuh_api_password": ("wazuh", "config"),
+            # NTP drift alerting
+            "ntp_alert_enabled":   ("1",  "config"),
+            "ntp_alert_threshold": ("30", "config"),
         }
         for cfg_key, (cfg_val, cfg_cat) in _config_defaults.items():
             if not db.query(SystemStatus).filter(SystemStatus.key == cfg_key).first():

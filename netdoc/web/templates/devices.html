@@ -374,6 +374,8 @@ document.getElementById('confirmClearDevices').addEventListener('click', functio
           <th title="Full port scan 1-65535"><i class="bi bi-search"></i></th>
           <th title="Data coverage — which protocols provide data for this device">
             <i class="bi bi-reception-4"></i></th>
+          <th title="NTP clock synchronization — drift between device syslog timestamp and our relay receipt time">
+            <i class="bi bi-clock-history"></i></th>
           <th>Actions</th>
         </tr>
       </thead>
@@ -381,7 +383,7 @@ document.getElementById('confirmClearDevices').addEventListener('click', functio
         {% for d in devices %}
         {% include '_device_row.html' %}
         {% else %}
-        <tr><td colspan="14" class="text-center text-muted py-4">No devices. Run a scan.</td></tr>
+        <tr><td colspan="15" class="text-center text-muted py-4">No devices. Run a scan.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -1964,6 +1966,40 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
     localStorage.setItem(LS_KEY_SEC, v);
     scheduleRefresh(v);
   });
+})();
+
+// NTP drift badges — one batch fetch for all devices
+(function() {
+  function _renderNtpCell(td, data) {
+    if (!data) {
+      td.innerHTML = '<span style="font-size:.75rem;opacity:.3" title="NTP — no syslog data"><i class="bi bi-question-circle text-muted"></i></span>';
+      return;
+    }
+    const offset = data.offset_seconds;
+    const samples = data.samples;
+    const threshold = data.threshold;
+    const status = data.status;
+    const title = `NTP drift: ${offset.toFixed(1)}s (threshold: ${threshold}s, ${samples} samples in last hour)`;
+    if (status === 'ok') {
+      td.innerHTML = `<span style="font-size:.8rem;color:#238636" title="${title}"><i class="bi bi-clock-fill"></i></span>`;
+    } else {
+      const color = offset > threshold * 10 ? '#da3633' : '#e3b341';
+      td.innerHTML = `<span style="font-size:.8rem;color:${color};font-weight:600" title="${title}"><i class="bi bi-clock-history"></i> ${offset.toFixed(0)}s</span>`;
+    }
+  }
+
+  fetch('/api/ntp-status')
+    .then(r => r.ok ? r.json() : null)
+    .catch(() => null)
+    .then(data => {
+      if (!data) return;
+      document.querySelectorAll('.ntp-cell[data-device-id]').forEach(td => {
+        const devId = parseInt(td.dataset.deviceId, 10);
+        _renderNtpCell(td, data[devId] || null);
+      });
+    });
+
+  window._renderNtpCell = _renderNtpCell;
 })();
 
 // Konwertuj UTC timestamps w tabeli na czas lokalny przegladarki
