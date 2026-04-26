@@ -18,8 +18,54 @@
     <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addNetModal">
       <i class="bi bi-plus-lg me-1"></i>Add network
     </button>
+    {% if networks|length > 0 %}
+    <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#clearNetworksModal"
+            title="Delete all networks from the database">
+      <i class="bi bi-trash me-1"></i>Clear all
+    </button>
+    {% endif %}
   </div>
 </div>
+
+<!-- Clear all networks modal -->
+<div class="modal fade" id="clearNetworksModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Clear all networks</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>This will permanently delete all <strong>{{ networks|length }} networks</strong> from the database.</p>
+        <p class="text-muted small mb-0">The scanner will re-detect and re-add networks automatically on the next scan based on your current network connection.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmClearNetworks">
+          <i class="bi bi-trash me-1"></i>Delete all networks
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+document.getElementById('confirmClearNetworks').addEventListener('click', function () {
+  var btn = this;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Deleting…';
+  fetch('/maintenance/clear-networks', {method: 'POST'})
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      bootstrap.Modal.getInstance(document.getElementById('clearNetworksModal')).hide();
+      if (d.ok) { window.location.reload(); } else { alert('Error: ' + d.message); }
+    })
+    .catch(function () { alert('Request failed.'); })
+    .finally(function () {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-trash me-1"></i>Delete all networks';
+    });
+});
+</script>
 
 <!-- Info panel -->
 <div class="accordion mb-3" id="netInfoAccordion">

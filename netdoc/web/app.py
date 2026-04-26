@@ -2331,44 +2331,71 @@ def create_app():
     @app.route("/maintenance/clear-broadcast", methods=["POST"])
     def maintenance_clear_broadcast():
         """Truncate ClickHouse broadcast/metrics tables. Irreversible."""
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
         try:
             from netdoc.storage.clickhouse import _get_client
             ch = _get_client()
             ch.command("TRUNCATE TABLE netdoc_logs.device_metrics")
             ch.command("TRUNCATE TABLE netdoc_logs.device_ping")
-            logger.info("Maintenance: broadcast history cleared by user")
+            _log.info("Maintenance: broadcast history cleared by user")
             return jsonify({"ok": True, "message": "Broadcast & ping history cleared."})
         except Exception as exc:
-            logger.warning("Maintenance clear-broadcast error: %s", exc)
+            _log.warning("Maintenance clear-broadcast error: %s", exc)
             return jsonify({"ok": False, "message": str(exc)}), 500
 
     @app.route("/maintenance/clear-syslog", methods=["POST"])
     def maintenance_clear_syslog():
         """Truncate ClickHouse syslog table. Irreversible."""
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
         try:
             from netdoc.storage.clickhouse import _get_client
             ch = _get_client()
             ch.command("TRUNCATE TABLE netdoc_logs.syslog")
-            logger.info("Maintenance: syslog history cleared by user")
+            _log.info("Maintenance: syslog history cleared by user")
             return jsonify({"ok": True, "message": "Syslog history cleared."})
         except Exception as exc:
-            logger.warning("Maintenance clear-syslog error: %s", exc)
+            _log.warning("Maintenance clear-syslog error: %s", exc)
             return jsonify({"ok": False, "message": str(exc)}), 500
 
     @app.route("/maintenance/clear-devices", methods=["POST"])
     def maintenance_clear_devices():
-        """Delete ALL devices (and cascade: scan_results, security_events, topology). Irreversible."""
+        """Delete ALL devices and all dependent data via TRUNCATE CASCADE. Irreversible."""
+        import logging as _logging
+        from sqlalchemy import text as _text
+        _log = _logging.getLogger(__name__)
         db = SessionLocal()
         try:
-            from netdoc.storage.models import Device
-            count = db.query(Device).count()
-            db.query(Device).delete()
+            count = db.execute(_text("SELECT COUNT(*) FROM devices")).scalar()
+            # TRUNCATE CASCADE removes devices + all 22 FK-dependent tables in one shot
+            db.execute(_text("TRUNCATE TABLE devices RESTART IDENTITY CASCADE"))
             db.commit()
-            logger.info("Maintenance: %d devices deleted by user", count)
-            return jsonify({"ok": True, "message": f"{count} devices deleted."})
+            _log.info("Maintenance: %d devices (+ dependent rows) deleted by user", count)
+            return jsonify({"ok": True, "message": f"{count} devices deleted (all history cleared)."})
         except Exception as exc:
             db.rollback()
-            logger.warning("Maintenance clear-devices error: %s", exc)
+            _log.warning("Maintenance clear-devices error: %s", exc)
+            return jsonify({"ok": False, "message": str(exc)}), 500
+        finally:
+            db.close()
+
+    @app.route("/maintenance/clear-networks", methods=["POST"])
+    def maintenance_clear_networks():
+        """Delete ALL discovered networks. Irreversible."""
+        import logging as _logging
+        from sqlalchemy import text as _text
+        _log = _logging.getLogger(__name__)
+        db = SessionLocal()
+        try:
+            count = db.execute(_text("SELECT COUNT(*) FROM discovered_networks")).scalar()
+            db.execute(_text("TRUNCATE TABLE discovered_networks RESTART IDENTITY CASCADE"))
+            db.commit()
+            _log.info("Maintenance: %d networks deleted by user", count)
+            return jsonify({"ok": True, "message": f"{count} networks deleted."})
+        except Exception as exc:
+            db.rollback()
+            _log.warning("Maintenance clear-networks error: %s", exc)
             return jsonify({"ok": False, "message": str(exc)}), 500
         finally:
             db.close()
