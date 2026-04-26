@@ -42,17 +42,27 @@ if (Test-Path $_venvPythonW) {
 }
 
 $ExpectedContainers = @(
+    # Core (no profile)
     "netdoc-postgres"
     "netdoc-api"
     "netdoc-web"
     "netdoc-nginx"
     "netdoc-clickhouse"
+    # Workers profile
     "netdoc-ping"
     "netdoc-snmp"
     "netdoc-cred"
     "netdoc-vuln"
     "netdoc-internet"
     "netdoc-community"
+    # Syslog profile
+    "netdoc-rsyslog"
+    "netdoc-vector"
+    # Monitoring profile
+    "netdoc-prometheus"
+    "netdoc-loki"
+    "netdoc-promtail"
+    "netdoc-grafana"
 )
 
 function Write-Log {
@@ -206,14 +216,14 @@ if ($missing.Count -eq 0) {
     Write-Log "Missing/stopped: $($missing -join ', ')" "WARN"
     Write-Log "Starting: docker compose up -d ..." "WARN"
 
-    # First attempt: up -d (uses existing images)
-    $composeOut = docker compose -f $ComposeFile --profile workers up -d 2>&1
+    # First attempt: up -d (uses existing images) — include all non-pro profiles
+    $composeOut = docker compose -f $ComposeFile --profile workers --profile syslog --profile monitoring up -d 2>&1
     $composeOk  = ($LASTEXITCODE -eq 0)
 
     if (-not $composeOk) {
         # Image may have been deleted  -  try with rebuild
         Write-Log "up -d failed (missing image?)  -  retrying with --build ..." "WARN"
-        $composeOut = docker compose -f $ComposeFile --profile workers up -d --build 2>&1
+        $composeOut = docker compose -f $ComposeFile --profile workers --profile syslog --profile monitoring up -d --build 2>&1
         $composeOk  = ($LASTEXITCODE -eq 0)
     }
 
@@ -367,7 +377,8 @@ if (-not (Test-Path $BroadcastPid)) {
 }
 
 # ── Syslog Relay  -  continuous listener, monitoring via syslog_relay.pid ───────
-$RelayPid  = Join-Path $ProjectDir "syslog_relay.pid"
+# PID file is written to %TEMP% by run_syslog_relay.py (not the project dir)
+$RelayPid  = Join-Path $env:TEMP "netdoc_syslog_relay.pid"
 $RelayTask = "NetDocSyslogRelay"
 
 if (Test-Path $RelayPid) {
