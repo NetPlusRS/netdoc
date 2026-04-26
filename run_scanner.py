@@ -2353,6 +2353,10 @@ def run_scan_cycle(db, scan_type: str = "discovery") -> dict:
 
     except Exception as exc:
         logger.exception("Scan error: %s", exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
         _set_status(db, {"scanner_job": "-", "scanner_last_error": str(exc)})
         return {}
 
