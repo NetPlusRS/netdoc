@@ -3376,6 +3376,7 @@ def create_app():
         if profile == "pro" and not PRO_ENABLED:
             return jsonify({"error": "NetDoc Pro required"}), 403
         import docker as _docker_sdk
+        import subprocess as _sp
         client, err = _docker_client()
         if not client:
             return jsonify({"error": err}), 500
@@ -3391,11 +3392,30 @@ def create_app():
             except Exception as e:
                 errors.append(f"{name}: {str(e)[:80]}")
         if absent:
-            return jsonify({
-                "ok": False, "started": started, "absent": absent,
-                "message": f"Kontenery nie istnieją — uruchom raz z terminala: "
-                           f"docker compose --profile {profile} up -d",
-            })
+            # Kontenery nie istnieją — tworzymy je przez docker compose up automatycznie
+            import logging as _lg
+            _log = _lg.getLogger(__name__)
+            import pathlib as _plp
+            _compose_file = str(_plp.Path(__file__).parent.parent.parent / "docker-compose.yml")
+            _log.info("Services start: absent containers %s — running docker compose --profile %s up -d", absent, profile)
+            try:
+                result = _sp.run(
+                    ["docker", "compose", "-f", _compose_file, "--profile", profile, "up", "-d"],
+                    capture_output=True, text=True, timeout=120,
+                )
+                if result.returncode != 0:
+                    # Retry with --build (image may not exist yet)
+                    result = _sp.run(
+                        ["docker", "compose", "-f", _compose_file, "--profile", profile, "up", "-d", "--build"],
+                        capture_output=True, text=True, timeout=300,
+                    )
+                if result.returncode == 0:
+                    return jsonify({"ok": True, "started": absent, "created": True, "errors": errors})
+                else:
+                    err_out = (result.stderr or result.stdout or "")[:300]
+                    return jsonify({"ok": False, "absent": absent, "message": err_out}), 500
+            except Exception as exc:
+                return jsonify({"ok": False, "absent": absent, "message": str(exc)}), 500
         return jsonify({"ok": True, "started": started, "errors": errors})
 
     @app.route("/settings/services/<profile>/stop", methods=["POST"])

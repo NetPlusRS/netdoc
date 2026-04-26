@@ -63,6 +63,9 @@ $ExpectedContainers = @(
     "netdoc-loki"
     "netdoc-promtail"
     "netdoc-grafana"
+    # Pro profile
+    "netdoc-ntopng"
+    "netdoc-wazuh"
 )
 
 function Write-Log {
@@ -217,13 +220,13 @@ if ($missing.Count -eq 0) {
     Write-Log "Starting: docker compose up -d ..." "WARN"
 
     # First attempt: up -d (uses existing images) — include all non-pro profiles
-    $composeOut = docker compose -f $ComposeFile --profile workers --profile syslog --profile monitoring up -d 2>&1
+    $composeOut = docker compose -f $ComposeFile --profile workers --profile syslog --profile monitoring --profile pro up -d 2>&1
     $composeOk  = ($LASTEXITCODE -eq 0)
 
     if (-not $composeOk) {
         # Image may have been deleted  -  try with rebuild
         Write-Log "up -d failed (missing image?)  -  retrying with --build ..." "WARN"
-        $composeOut = docker compose -f $ComposeFile --profile workers --profile syslog --profile monitoring up -d --build 2>&1
+        $composeOut = docker compose -f $ComposeFile --profile workers --profile syslog --profile monitoring --profile pro up -d --build 2>&1
         $composeOk  = ($LASTEXITCODE -eq 0)
     }
 
