@@ -18,7 +18,50 @@
 
 <div class="d-flex justify-content-between align-items-center mb-2">
   <h5 class="mb-0"><i class="bi bi-pc-display me-2"></i>Devices ({{ devices|length }})</h5>
+  <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#clearDevicesModal" title="Delete all devices and their history">
+    <i class="bi bi-trash me-1"></i>Clear all devices
+  </button>
 </div>
+
+<!-- Clear all devices modal -->
+<div class="modal fade" id="clearDevicesModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Clear all devices</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>This will permanently delete <strong>all {{ devices|length }} devices</strong> including their scan results, vulnerabilities, credentials and security events.</p>
+        <p class="text-muted small mb-0">Broadcast and syslog history in ClickHouse is <strong>not</strong> deleted — use the buttons on the Broadcast and Syslog pages to clear those separately.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmClearDevices">
+          <i class="bi bi-trash me-1"></i>Delete all devices
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+document.getElementById('confirmClearDevices').addEventListener('click', function () {
+  var btn = this;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Deleting…';
+  fetch('/maintenance/clear-devices', {method: 'POST'})
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      bootstrap.Modal.getInstance(document.getElementById('clearDevicesModal')).hide();
+      if (d.ok) { window.location.reload(); } else { alert('Error: ' + d.message); }
+    })
+    .catch(function () { alert('Request failed.'); })
+    .finally(function () {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-trash me-1"></i>Delete all devices';
+    });
+});
+</script>
 
 {# ── Filtr sieci (pokazywany gdy aktywny) ────────────────────────────────── #}
 <div id="cidrFilterBanner" class="alert alert-info d-flex align-items-center gap-2 py-2 mb-2" style="display:none!important">

@@ -2326,6 +2326,53 @@ def create_app():
         finally:
             db.close()
 
+    # ── Maintenance — clear history ───────────────────────────────────────────
+
+    @app.route("/maintenance/clear-broadcast", methods=["POST"])
+    def maintenance_clear_broadcast():
+        """Truncate ClickHouse broadcast/metrics tables. Irreversible."""
+        try:
+            from netdoc.storage.clickhouse import _get_client
+            ch = _get_client()
+            ch.command("TRUNCATE TABLE netdoc_logs.device_metrics")
+            ch.command("TRUNCATE TABLE netdoc_logs.device_ping")
+            logger.info("Maintenance: broadcast history cleared by user")
+            return jsonify({"ok": True, "message": "Broadcast & ping history cleared."})
+        except Exception as exc:
+            logger.warning("Maintenance clear-broadcast error: %s", exc)
+            return jsonify({"ok": False, "message": str(exc)}), 500
+
+    @app.route("/maintenance/clear-syslog", methods=["POST"])
+    def maintenance_clear_syslog():
+        """Truncate ClickHouse syslog table. Irreversible."""
+        try:
+            from netdoc.storage.clickhouse import _get_client
+            ch = _get_client()
+            ch.command("TRUNCATE TABLE netdoc_logs.syslog")
+            logger.info("Maintenance: syslog history cleared by user")
+            return jsonify({"ok": True, "message": "Syslog history cleared."})
+        except Exception as exc:
+            logger.warning("Maintenance clear-syslog error: %s", exc)
+            return jsonify({"ok": False, "message": str(exc)}), 500
+
+    @app.route("/maintenance/clear-devices", methods=["POST"])
+    def maintenance_clear_devices():
+        """Delete ALL devices (and cascade: scan_results, security_events, topology). Irreversible."""
+        db = SessionLocal()
+        try:
+            from netdoc.storage.models import Device
+            count = db.query(Device).count()
+            db.query(Device).delete()
+            db.commit()
+            logger.info("Maintenance: %d devices deleted by user", count)
+            return jsonify({"ok": True, "message": f"{count} devices deleted."})
+        except Exception as exc:
+            db.rollback()
+            logger.warning("Maintenance clear-devices error: %s", exc)
+            return jsonify({"ok": False, "message": str(exc)}), 500
+        finally:
+            db.close()
+
     @app.route("/api/devices/<int:device_id>/vlan-ports")
     def api_proxy_vlan_ports(device_id):
         """Proxy: przynaleznosc portow do VLAN-ow."""

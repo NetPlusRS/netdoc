@@ -50,8 +50,51 @@
     <button class="btn btn-outline-secondary btn-sm" onclick="fetchLogs()" title="Refresh">
       <i class="bi bi-arrow-clockwise"></i>
     </button>
+    <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#clearSyslogModal" title="Clear syslog history">
+      <i class="bi bi-trash"></i>
+    </button>
   </div>
 </div>
+
+<!-- Clear syslog modal -->
+<div class="modal fade" id="clearSyslogModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Clear syslog history</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>This will permanently delete <strong>all syslog entries</strong> from ClickHouse.</p>
+        <p class="text-muted small mb-0">New syslog messages will continue to be collected immediately after clearing.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmClearSyslog">
+          <i class="bi bi-trash me-1"></i>Clear all syslog
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+document.getElementById('confirmClearSyslog').addEventListener('click', function () {
+  var btn = this;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Clearing…';
+  fetch('/maintenance/clear-syslog', {method: 'POST'})
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      bootstrap.Modal.getInstance(document.getElementById('clearSyslogModal')).hide();
+      if (d.ok) { fetchLogs(); } else { alert('Error: ' + d.message); }
+    })
+    .catch(function () { alert('Request failed.'); })
+    .finally(function () {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-trash me-1"></i>Clear all syslog';
+    });
+});
+</script>
 
 {# ── Filtry ── #}
 <div class="card mb-3">

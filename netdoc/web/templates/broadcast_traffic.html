@@ -17,8 +17,55 @@
     <button class="btn btn-sm btn-primary" id="refreshBtn">
       <i class="bi bi-arrow-clockwise me-1"></i>Refresh
     </button>
+    <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#clearBroadcastModal">
+      <i class="bi bi-trash me-1"></i>Clear history
+    </button>
   </div>
 </div>
+
+<!-- Clear broadcast history modal -->
+<div class="modal fade" id="clearBroadcastModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Clear broadcast history</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>This will permanently delete <strong>all broadcast, multicast and ping history</strong> from ClickHouse.</p>
+        <p class="text-muted small mb-0">Device records in the inventory are not affected. New data will start accumulating immediately after clearing.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmClearBroadcast">
+          <i class="bi bi-trash me-1"></i>Clear all history
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+document.getElementById('confirmClearBroadcast').addEventListener('click', function () {
+  var btn = this;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Clearing…';
+  fetch('/maintenance/clear-broadcast', {method: 'POST'})
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      bootstrap.Modal.getInstance(document.getElementById('clearBroadcastModal')).hide();
+      if (d.ok) {
+        document.getElementById('refreshBtn').click();
+      } else {
+        alert('Error: ' + d.message);
+      }
+    })
+    .catch(function () { alert('Request failed.'); })
+    .finally(function () {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-trash me-1"></i>Clear all history';
+    });
+});
+</script>
 
 <!-- Summary cards -->
 <div class="row g-3 mb-4" id="summaryCards">

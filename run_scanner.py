@@ -2534,10 +2534,6 @@ _COMPOSE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docker
 
 _DOCKER_SERVICES = [
     "netdoc-postgres",
-    "netdoc-prometheus",
-    "netdoc-loki",
-    "netdoc-promtail",
-    "netdoc-grafana",
     "netdoc-nginx",
     "netdoc-api",
     "netdoc-web",
@@ -2548,8 +2544,12 @@ _DOCKER_SERVICES = [
     "netdoc-vuln",
     "netdoc-internet",
     "netdoc-clickhouse",
-    "netdoc-rsyslog",
-    "netdoc-vector",
+]
+# Profile-based optional services (monitoring stack) — started separately with
+# --profile monitoring; not required for core operation, so not checked here.
+_DOCKER_SERVICES_OPTIONAL = [
+    "netdoc-prometheus", "netdoc-loki", "netdoc-promtail",
+    "netdoc-grafana", "netdoc-rsyslog", "netdoc-vector",
 ]
 
 _POSTGRES_PORT = 15432
