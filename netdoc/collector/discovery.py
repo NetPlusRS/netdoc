@@ -2796,6 +2796,13 @@ def run_discovery(db):
     ranges = get_scan_targets(db)
     if not ranges:
         return []
+    # Release the DB transaction before the long nmap scan.
+    # Without this the session is "idle in transaction" for several minutes
+    # and PostgreSQL will kill it if idle_in_transaction_session_timeout is set.
+    try:
+        db.commit()
+    except Exception:
+        pass
     all_hosts = []
     for net_range in ranges:
         if not is_network_reachable(net_range):
