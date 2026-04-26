@@ -160,7 +160,7 @@ def check_ftp(ip: str) -> list:
         ftp.quit()
         results.append({
             "vuln_type": VulnType.anonymous_ftp, "severity": VulnSeverity.high,
-            "title": "Anonymous FTP - dostep bez hasla",
+            "title": "Anonymous FTP - access without password",
             "port": 21, "evidence": (welcome or "login OK")[:200],
         })
     except ftplib.error_perm:
@@ -183,7 +183,7 @@ def check_mqtt(ip: str):
         if len(resp) >= 4 and resp[0] == 0x20 and resp[3] == 0x00:
             return {
                 "vuln_type": VulnType.mqtt_noauth, "severity": VulnSeverity.high,
-                "title": "MQTT bez autentykacji (port 1883)",
+                "title": "MQTT without authentication (port 1883)",
                 "port": 1883, "evidence": "CONNACK rc=0",
             }
     except Exception:
@@ -204,7 +204,7 @@ def check_redis(ip: str):
         if "+PONG" in resp:
             return {
                 "vuln_type": VulnType.redis_noauth, "severity": VulnSeverity.critical,
-                "title": "Redis bez hasla (port 6379) - pelny dostep",
+                "title": "Redis no password (port 6379) - full access",
                 "port": 6379, "evidence": resp.strip()[:100],
             }
     except Exception:
@@ -221,7 +221,7 @@ def check_elasticsearch(ip: str):
             if r.status_code == 200 and "cluster_name" in r.text:
                 return {
                     "vuln_type": VulnType.elasticsearch_noauth, "severity": VulnSeverity.high,
-                    "title": f"Elasticsearch bez auth (port {port})",
+                    "title": f"Elasticsearch no auth (port {port})",
                     "port": port, "evidence": r.text[:200],
                 }
         except Exception:
@@ -237,7 +237,7 @@ def check_docker_api(ip: str):
         if r.status_code == 200 and "Version" in r.text:
             return {
                 "vuln_type": VulnType.docker_api_exposed, "severity": VulnSeverity.critical,
-                "title": "Docker API bez auth (port 2375) - zdalne RCE",
+                "title": "Docker API no auth (port 2375) - remote RCE",
                 "port": 2375, "evidence": r.text[:200],
             }
     except Exception:
@@ -267,8 +267,8 @@ def check_http_management(ip: str, device_type):
             if r.status_code < 400:
                 return {
                     "vuln_type": VulnType.http_management, "severity": VulnSeverity.medium,
-                    "title": f"HTTP management bez HTTPS (port {port})",
-                    "port": port, "evidence": f"HTTP {r.status_code} - brak HTTPS",
+                    "title": f"HTTP management without HTTPS (port {port})",
+                    "port": port, "evidence": f"HTTP {r.status_code} - no HTTPS",
                 }
         except Exception:
             pass
@@ -301,7 +301,7 @@ def check_ssl(ip: str) -> list:
         if self_signed:
             results.append({
                 "vuln_type": VulnType.ssl_self_signed, "severity": VulnSeverity.medium,
-                "title": f"Certyfikat SSL self-signed (port {port})",
+                "title": f"Self-signed SSL certificate (port {port})",
                 "port": port, "evidence": "SSLCertVerificationError",
             })
             continue
@@ -315,7 +315,7 @@ def check_ssl(ip: str) -> list:
                         if not_after < time.time():
                             results.append({
                                 "vuln_type": VulnType.ssl_expired, "severity": VulnSeverity.high,
-                                "title": f"Certyfikat SSL wygasl (port {port})",
+                                "title": f"SSL certificate expired (port {port})",
                                 "port": port, "evidence": f"notAfter={cert.get(key_na)}",
                             })
         except Exception:
@@ -344,7 +344,7 @@ def check_ipmi(ip: str):
         return None
     return {
         "vuln_type": VulnType.ipmi_exposed, "severity": VulnSeverity.high,
-        "title": "IPMI/BMC dostepny (port 623/UDP) - zdalny dostep do firmware",
+        "title": "IPMI/BMC accessible (port 623/UDP) - remote firmware access",
         "port": 623, "evidence": f"RMCP ASF Pong: {data[:12].hex()}",
     }
 
@@ -371,7 +371,7 @@ def check_rdp_exposed(ip: str):
         return None
     return {
         "vuln_type": VulnType.rdp_exposed, "severity": VulnSeverity.high,
-        "title": "RDP dostepny (port 3389) - zdalny pulpit bez VPN",
+        "title": "RDP accessible (port 3389) - remote desktop without VPN",
         "port": 3389, "evidence": f"TPKT/X.224 handshake OK (COTP CC: {resp[:8].hex()})",
     }
 
@@ -399,7 +399,7 @@ def check_vnc(ip: str):
             if 1 in types:  # SecurityType.None = 1 (brak hasla)
                 return {
                     "vuln_type": VulnType.vnc_noauth, "severity": VulnSeverity.critical,
-                    "title": "VNC bez hasla (port 5900) - pelny dostep do pulpitu",
+                    "title": "VNC no password (port 5900) - full desktop access",
                     "port": 5900, "evidence": f"RFB={rfb_str} sec_types={types}",
                 }
     except Exception:
@@ -441,7 +441,7 @@ def check_mongo(ip: str):
                     "uthentication" not in resp_text):
                 return {
                     "vuln_type": VulnType.mongo_noauth, "severity": VulnSeverity.critical,
-                    "title": "MongoDB bez auth (port 27017) - dostep do baz bez hasla",
+                    "title": "MongoDB no auth (port 27017) - database access without password",
                     "port": 27017, "evidence": resp_text[:200],
                 }
     except Exception:
@@ -474,14 +474,14 @@ def check_rtsp(ip: str, device_type=None):
         if "200" in resp:
             return {
                 "vuln_type": VulnType.rtsp_noauth, "severity": VulnSeverity.high,
-                "title": "RTSP kamera bez uwierzytelnienia (port 554)",
+                "title": "RTSP camera without authentication (port 554)",
                 "port": 554,
                 "evidence": resp[:200],
                 "description": (
-                    "Kamera IP udostępnia strumień RTSP bez uwierzytelnienia. "
-                    "Każdy w sieci może oglądać transmisję wideo na żywo. "
-                    "Zalecane: włączyć Basic/Digest auth w ustawieniach kamery "
-                    "lub zablokować port 554 na firewall'u."
+                    "IP camera exposes RTSP stream without authentication. "
+                    "Anyone on the network can watch the live video feed. "
+                    "Recommended: enable Basic/Digest auth in camera settings "
+                    "or block port 554 on the firewall."
                 ),
             }
     except Exception:
@@ -505,7 +505,7 @@ def check_modbus(ip: str):
                 resp[2] == 0x00 and resp[3] == 0x00 and resp[6] == 0x01):
             return {
                 "vuln_type": VulnType.modbus_exposed, "severity": VulnSeverity.critical,
-                "title": "Modbus TCP bez auth (port 502) - urzadzenie przemyslowe dostepne",
+                "title": "Modbus TCP no auth (port 502) - industrial device exposed",
                 "port": 502, "evidence": "FC0x11 response: " + resp.hex()[:60],
             }
     except Exception:
@@ -565,8 +565,8 @@ def check_mysql(ip: str):
                     if len(resp) >= 5 and resp[4] == 0x00:
                         return {
                             "vuln_type": VulnType.mysql_noauth, "severity": VulnSeverity.critical,
-                            "title": f"MySQL bez hasla (port 3306) user={user!r} ver={version}",
-                            "port": 3306, "evidence": f"MySQL {version} user={user!r} login bez hasla",
+                            "title": f"MySQL no password (port 3306) user={user!r} ver={version}",
+                            "port": 3306, "evidence": f"MySQL {version} user={user!r} login without password",
                         }
             except Exception:
                 continue
@@ -584,7 +584,7 @@ def check_couchdb(ip: str):
             if isinstance(data, list):
                 return {
                     "vuln_type": VulnType.couchdb_noauth, "severity": VulnSeverity.critical,
-                    "title": "CouchDB bez uwierzytelnienia (port 5984)",
+                    "title": "CouchDB without authentication (port 5984)",
                     "port": 5984, "evidence": f"_all_dbs: {str(data)[:120]}",
                 }
     except Exception:
@@ -604,7 +604,7 @@ def check_memcached(ip: str):
         if "STAT " in resp:
             return {
                 "vuln_type": VulnType.memcached_exposed, "severity": VulnSeverity.high,
-                "title": "Memcached bez uwierzytelnienia (port 11211)",
+                "title": "Memcached without authentication (port 11211)",
                 "port": 11211, "evidence": resp[:200],
             }
     except Exception:
@@ -621,14 +621,14 @@ def check_influxdb(ip: str):
         if resp.status_code == 200:
             return {
                 "vuln_type": VulnType.influxdb_noauth, "severity": VulnSeverity.critical,
-                "title": "InfluxDB v2 bez uwierzytelnienia (port 8086)",
+                "title": "InfluxDB v2 without authentication (port 8086)",
                 "port": 8086, "evidence": resp.text[:150],
             }
         resp2 = httpx.get(f"http://{ip}:8086/query?q=SHOW+DATABASES", timeout=_HTTP_TIMEOUT)
         if resp2.status_code == 200 and "results" in resp2.text:
             return {
                 "vuln_type": VulnType.influxdb_noauth, "severity": VulnSeverity.critical,
-                "title": "InfluxDB v1 bez uwierzytelnienia (port 8086)",
+                "title": "InfluxDB v1 without authentication (port 8086)",
                 "port": 8086, "evidence": resp2.text[:150],
             }
     except Exception:
@@ -664,9 +664,9 @@ def check_postgres_weak(ip: str):
             conn.close()
             return {
                 "vuln_type": VulnType.postgres_weak_creds, "severity": VulnSeverity.critical,
-                "title": f"PostgreSQL slabe haslo (port 5432) user={user!r}",
+                "title": f"PostgreSQL weak password (port 5432) user={user!r}",
                 "port": 5432,
-                "evidence": f"user={user!r} password={'(brak)' if not pwd else repr(pwd)}",
+                "evidence": f"user={user!r} password={'(empty)' if not pwd else repr(pwd)}",
             }
         except Exception:
             pass
@@ -712,9 +712,9 @@ def check_mssql_weak(ip: str):
                 if result:
                     return {
                         "vuln_type": VulnType.mssql_weak_creds, "severity": VulnSeverity.critical,
-                        "title": f"MSSQL slabe haslo (port 1433) user={user!r}",
+                        "title": f"MSSQL weak password (port 1433) user={user!r}",
                         "port": 1433,
-                        "evidence": f"user={user!r} password={'(brak)' if not pwd else repr(pwd)}",
+                        "evidence": f"user={user!r} password={'(empty)' if not pwd else repr(pwd)}",
                     }
             except Exception:
                 pass
@@ -780,7 +780,7 @@ def check_vnc_weak(ip: str):
                 if len(result) >= 4 and _s.unpack(">I", result[:4])[0] == 0:
                     return {
                         "vuln_type": VulnType.vnc_weak_creds, "severity": VulnSeverity.critical,
-                        "title": f"VNC slabe haslo (port 5900): {pwd!r}",
+                        "title": f"VNC weak password (port 5900): {pwd!r}",
                         "port": 5900, "evidence": f"SecurityType=VncAuth password={pwd!r} accepted",
                     }
         except Exception:
@@ -810,8 +810,8 @@ def check_cassandra(ip: str):
         if len(resp) >= 9 and resp[4] == 0x02:  # READY = no auth required
             return {
                 "vuln_type": VulnType.cassandra_noauth, "severity": VulnSeverity.critical,
-                "title": "Apache Cassandra bez uwierzytelnienia (port 9042)",
-                "port": 9042, "evidence": "CQL STARTUP → READY (brak uwierzytelnienia)",
+                "title": "Apache Cassandra without authentication (port 9042)",
+                "port": 9042, "evidence": "CQL STARTUP → READY (no authentication)",
             }
     except Exception:
         pass
@@ -868,9 +868,9 @@ def check_rtsp_weak(ip: str):
             if "RTSP/1.0" in resp and "200" in resp and "401" not in resp:
                 return {
                     "vuln_type": VulnType.rtsp_weak_creds, "severity": VulnSeverity.high,
-                    "title": f"Kamera RTSP slabe haslo (port 554) user={user!r}",
+                    "title": f"RTSP camera weak password (port 554) user={user!r}",
                     "port": 554,
-                    "evidence": f"DESCRIBE Basic auth user={user!r} pwd={'(brak)' if not pwd else '***'} -> 200 OK",
+                    "evidence": f"DESCRIBE Basic auth user={user!r} pwd={'(empty)' if not pwd else '***'} -> 200 OK",
                 }
         except Exception:
             continue
@@ -919,9 +919,9 @@ def check_firewall(ip: str, device_type=None):
     if len(open_ports) >= threshold:
         return {
             "vuln_type": VulnType.firewall_disabled, "severity": VulnSeverity.high,
-            "title": f"Brak/slaby firewall - {len(open_ports)} portow dostepnych sieciowo",
+            "title": f"No/weak firewall - {len(open_ports)} ports accessible on network",
             "port": None,
-            "evidence": f"Otwarte porty ({len(open_ports)}/{len(PROBE_PORTS)}): {open_ports}",
+            "evidence": f"Open ports ({len(open_ports)}/{len(PROBE_PORTS)}): {open_ports}",
         }
     return None
 
@@ -1165,13 +1165,13 @@ def check_onvif_noauth(ip: str) -> Optional[dict]:
                 device_info = _onvif_get_device_info(ip, port)
                 return {
                     "vuln_type": VulnType.onvif_noauth, "severity": VulnSeverity.high,
-                    "title": f"ONVIF kamera — zarządzanie bez uwierzytelnienia (port {port})",
+                    "title": f"ONVIF camera - management without authentication (port {port})",
                     "port": port,
-                    "evidence": f"GetCapabilities HTTP 200 bez auth na {ip}:{port}/onvif/device_service",
+                    "evidence": f"GetCapabilities HTTP 200 no auth on {ip}:{port}/onvif/device_service",
                     "description": (
-                        "Protokół ONVIF dostępny bez logowania. Atakujący może przeglądać "
-                        "strumienie wideo, sterować PTZ, zmieniać konfigurację kamery "
-                        "i pobierać nagrania bez żadnych uprawnień."
+                        "ONVIF protocol accessible without login. Attacker can browse "
+                        "video streams, control PTZ, change camera configuration "
+                        "and download recordings without any credentials."
                     ),
                     "enrichment": device_info,  # może być {} jeśli kamera wymaga auth
                 }
@@ -1204,12 +1204,12 @@ def check_mjpeg_noauth(ip: str) -> Optional[dict]:
                 if r.status_code == 200 and ("multipart" in ct or "mjpeg" in ct):
                     return {
                         "vuln_type": VulnType.mjpeg_noauth, "severity": VulnSeverity.high,
-                        "title": f"Strumień MJPEG bez logowania (port {port})",
+                        "title": f"MJPEG stream without authentication (port {port})",
                         "port": port,
-                        "evidence": f"HTTP 200 Content-Type: {ct[:80]} na {ip}:{port}{path}",
+                        "evidence": f"HTTP 200 Content-Type: {ct[:80]} on {ip}:{port}{path}",
                         "description": (
-                            "Obraz z kamery jest publicznie dostępny bez uwierzytelnienia. "
-                            "Każdy w sieci może oglądać transmisję na żywo."
+                            "Camera image is publicly accessible without authentication. "
+                            "Anyone on the network can watch the live feed."
                         ),
                     }
             except Exception:
@@ -1240,12 +1240,12 @@ def check_rtmp_noauth(ip: str) -> Optional[dict]:
         return None
     return {
         "vuln_type": VulnType.rtmp_exposed, "severity": VulnSeverity.medium,
-        "title": "RTMP streaming serwer dostępny (port 1935)",
+        "title": "RTMP streaming server exposed (port 1935)",
         "port": 1935,
         "evidence": f"RTMP handshake OK (S0=0x{resp[0]:02x})",
         "description": (
-            "Serwer RTMP dostępny w sieci. Może ujawniać prywatne transmisje wideo "
-            "(kamery, monitoring, konferencje). Zweryfikuj czy wymaga uwierzytelnienia."
+            "RTMP server accessible on network. May expose private video streams "
+            "(cameras, surveillance, conferences). Verify if authentication is required."
         ),
     }
 
@@ -1266,13 +1266,13 @@ def check_dahua_dvr_exposed(ip: str) -> Optional[dict]:
         return None
     return {
         "vuln_type": VulnType.dahua_dvr_exposed, "severity": VulnSeverity.high,
-        "title": "Dahua DVR/NVR/kamera — port 37777 dostępny",
+        "title": "Dahua DVR/NVR/camera - port 37777 exposed",
         "port": 37777,
-        "evidence": f"TCP 37777 akceptuje połączenia (Dahua proprietary protocol)",
+        "evidence": "TCP 37777 accepts connections (Dahua proprietary protocol)",
         "description": (
-            "Rejestrator/kamera Dahua nasłuchuje na porcie 37777 (protokół własnościowy). "
-            "Dostęp bez właściwego firewall'a umożliwia zarządzanie urządzeniem, "
-            "pobieranie nagrań i podgląd kamer na żywo."
+            "Dahua recorder/camera listening on port 37777 (proprietary protocol). "
+            "Access without proper firewall allows device management, "
+            "recording download and live camera view."
         ),
     }
 
@@ -1341,15 +1341,15 @@ def check_xmeye_dvr_exposed(ip: str) -> Optional[dict]:
 
     return {
         "vuln_type": VulnType.xmeye_dvr_exposed, "severity": VulnSeverity.high,
-        "title": "XMEye/Sofia DVR — port 34567 dostępny bez ochrony",
+        "title": "XMEye/Sofia DVR - port 34567 exposed without protection",
         "port": 34567,
-        "evidence": "TCP 34567 akceptuje połączenia (XMEye/Sofia DVR protocol, brak lockout konta)",
+        "evidence": "TCP 34567 accepts connections (XMEye/Sofia DVR protocol, no account lockout)",
         "description": (
-            "Rejestrator DVR/NVR z chipsetem XMEye/Sofia nasłuchuje na porcie 34567. "
-            "Protokół działa bez szyfrowania (plaintext) — dane logowania i strumień wideo "
-            "są widoczne w sieci. Brak mechanizmu blokowania konta umożliwia ataki brute-force. "
-            "Na starszym firmware: podatność RCE (CVE-2017-7577). "
-            "Zalecane: blokada portu 34567 na firewall'u lub VLAN izolujący kamery."
+            "DVR/NVR recorder with XMEye/Sofia chipset listening on port 34567. "
+            "Protocol runs without encryption (plaintext) — credentials and video stream "
+            "are visible on the network. No account lockout enables brute-force attacks. "
+            "On older firmware: RCE vulnerability (CVE-2017-7577). "
+            "Recommended: block port 34567 on firewall or isolate cameras in VLAN."
         ),
     }
 
@@ -1467,11 +1467,11 @@ def check_unauth_reboot(ip: str) -> Optional[dict]:
                 return {
                     "vuln_type": VulnType.unauth_reboot,
                     "severity": VulnSeverity.critical,
-                    "title": f"Endpoint restartu bez uwierzytelnienia: {path}",
+                    "title": f"Restart endpoint without authentication: {path}",
                     "port": port,
                     "evidence": (
                         f"GET {scheme}://{ip}:{port}{path} -> {r.status_code} "
-                        f"content-type={ct!r} (brak WWW-Authenticate, brak HTML)"
+                        f"content-type={ct!r} (no WWW-Authenticate, no HTML)"
                     ),
                 }
             except Exception:
@@ -1515,16 +1515,16 @@ def check_tftp(ip: str) -> Optional[dict]:
         return None
 
     if opcode == 3:
-        evidence = f"TFTP DATA packet ({len(data)} B) — serwer wyslal dane pliku bez auth"
+        evidence = f"TFTP DATA packet ({len(data)} B) - server sent file data without auth"
     else:
         err_code = (data[2] << 8) | data[3] if len(data) >= 4 else 0
         err_msg = data[4:].rstrip(b"\x00").decode("utf-8", errors="replace") if len(data) > 4 else ""
-        evidence = f"TFTP ERROR packet opcode=5 err={err_code} msg={err_msg!r:.60} — serwer TFTP aktywny"
+        evidence = f"TFTP ERROR packet opcode=5 err={err_code} msg={err_msg!r:.60} - TFTP server active"
 
     return {
         "vuln_type": VulnType.tftp_exposed,
         "severity": VulnSeverity.high,
-        "title": "TFTP serwer dostepny bez uwierzytelnienia (UDP 69)",
+        "title": "TFTP server accessible without authentication (UDP 69)",
         "port": 69,
         "evidence": evidence,
     }
@@ -1555,20 +1555,20 @@ def check_cisco_smart_install(ip: str) -> Optional[dict]:
             s.settimeout(_TCP_TIMEOUT)
             try:
                 data = s.recv(64)
-                evidence = f"TCP 4786 open, response {len(data)} B — Smart Install vstack aktywny"
+                evidence = f"TCP 4786 open, response {len(data)} B - Smart Install vstack active"
             except socket.timeout:
-                evidence = "TCP 4786 open — port Smart Install dostępny (brak odpowiedzi na probe)"
+                evidence = "TCP 4786 open - Smart Install port reachable (no response to probe)"
             return {
                 "vuln_type": VulnType.cisco_smart_install,
                 "severity": VulnSeverity.critical,
-                "title": "Cisco Smart Install dostępny bez auth (CVE-2018-0171)",
+                "title": "Cisco Smart Install exposed without auth (CVE-2018-0171)",
                 "port": 4786,
                 "evidence": evidence,
                 "description": (
-                    "Cisco Smart Install (vstack) działa bez uwierzytelnienia. "
-                    "CVE-2018-0171 (CVSS 9.8): atakujący może odczytać/nadpisać konfigurację "
-                    "urządzenia (z hasłami), wymusić reload lub załadować złośliwy firmware IOS. "
-                    "Fix: 'no vstack' lub ACL ograniczający dostęp do IP dyrektora Smart Install."
+                    "Cisco Smart Install (vstack) operates without authentication. "
+                    "CVE-2018-0171 (CVSS 9.8): attacker can read/overwrite device configuration "
+                    "(including passwords), force reload or load malicious IOS firmware. "
+                    "Fix: 'no vstack' or ACL restricting access to Smart Install director IP."
                 ),
             }
     except Exception:
@@ -1619,14 +1619,14 @@ def check_cisco_web_exec(ip: str, device_type) -> Optional[dict]:
                     return {
                         "vuln_type": VulnType.cisco_web_exec,
                         "severity": VulnSeverity.critical,
-                        "title": "Cisco IOS HTTP exec — pełny dostęp bez uwierzytelnienia",
+                        "title": "Cisco IOS HTTP exec - full access without authentication",
                         "port": port,
-                        "evidence": f"HTTP 200 na {path} — exec interface dostępny bez auth",
+                        "evidence": f"HTTP 200 on {path} - exec interface accessible without auth",
                         "description": (
-                            "Cisco IOS HTTP Server udostępnia exec CLI na /level/15/exec/- "
-                            "bez logowania (poziom 15 = pełny enable). Atakujący może wykonać "
+                            "Cisco IOS HTTP Server exposes exec CLI on /level/15/exec/- "
+                            "without login (level 15 = full enable). Attacker can run "
                             "show running-config, configure terminal, reload. "
-                            "Fix: 'no ip http server' lub 'ip http access-class'."
+                            "Fix: 'no ip http server' or 'ip http access-class'."
                         ),
                     }
                 # Auth required but Cisco exec interface exposed — brute-force / HTTP Basic risk
@@ -1637,17 +1637,17 @@ def check_cisco_web_exec(ip: str, device_type) -> Optional[dict]:
                     return {
                         "vuln_type": VulnType.cisco_web_exec,
                         "severity": VulnSeverity.high,
-                        "title": "Cisco IOS HTTP exec dostępny przez sieć (wymagane auth)",
+                        "title": "Cisco IOS HTTP exec accessible via network (auth required)",
                         "port": port,
                         "evidence": (
-                            f"HTTP 401 na {path} — "
+                            f"HTTP 401 on {path} — "
                             f"WWW-Auth: {r.headers.get('www-authenticate', '')[:80]}"
                         ),
                         "description": (
-                            "Cisco IOS HTTP Server exec interface dostępny z sieci. "
-                            "Wymaga auth, ale HTTP Basic Auth przesyła hasło w Base64 — "
-                            "podatne na sniffing i brute-force. "
-                            "Fix: 'no ip http server', zarządzaj przez SSH/HTTPS."
+                            "Cisco IOS HTTP Server exec interface accessible from network. "
+                            "Auth required, but HTTP Basic Auth sends password in Base64 — "
+                            "vulnerable to sniffing and brute-force. "
+                            "Fix: 'no ip http server', manage via SSH/HTTPS."
                         ),
                     }
             except Exception:
