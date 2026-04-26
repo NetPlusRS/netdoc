@@ -2343,6 +2343,12 @@ def run_scan_cycle(db, scan_type: str = "discovery") -> dict:
         except Exception as _ntp_exc:
             logger.warning("NTP drift check failed: %s", _ntp_exc)
 
+        # err-disabled via syslog — catches devices without SNMP access
+        try:
+            _check_syslog_err_disabled(db)
+        except Exception as _errd_exc:
+            logger.warning("syslog err-disabled check failed: %s", _errd_exc)
+
         return stats
 
     except Exception as exc:
@@ -2409,6 +2415,82 @@ def _check_ntp_drift_alerts(db) -> None:
             description=desc,
             severity="warning" if offset < threshold * 10 else "critical",
             details={"offset_seconds": offset, "samples": info["samples"], "threshold": threshold},
+        )
+
+
+def _check_syslog_err_disabled(db) -> None:
+    """Detects err-disabled events from syslog (%PM-4-ERR_DISABLE messages).
+
+    Creates a SecurityEvent for each new err-disabled detection seen in syslog
+    in the last scan window (1h). Deduplicates: skips if a recent event exists.
+    Works for devices that send syslog but may not have SNMP access.
+    """
+    from netdoc.storage.models import Device, SecurityEvent, SystemStatus
+    from netdoc.integrations.wazuh import store_security_event
+
+    enabled_row = db.query(SystemStatus).filter_by(key="diag_enabled").first()
+    if enabled_row and enabled_row.value == "0":
+        return
+
+    try:
+        from netdoc.storage.clickhouse import _get_client
+        ch = _get_client()
+    except Exception:
+        return
+
+    # Query syslog for err-disabled messages in the last hour
+    sql = (
+        "SELECT device_id, src_ip, message, timestamp"
+        " FROM netdoc_logs.syslog"
+        " WHERE received_at >= now() - INTERVAL 1 HOUR"
+        "   AND device_id > 0"
+        "   AND (positionCaseInsensitive(message, 'ERR_DISABLE') > 0"
+        "        OR positionCaseInsensitive(message, 'err-disable') > 0"
+        "        OR positionCaseInsensitive(message, 'bpduguard error') > 0"
+        "        OR positionCaseInsensitive(message, 'port-security error') > 0)"
+        " ORDER BY timestamp DESC"
+        " LIMIT 50"
+    )
+    try:
+        rows = ch.query(sql).result_rows
+    except Exception as exc:
+        logger.warning("syslog err-disabled query failed: %s", exc)
+        return
+
+    cutoff = datetime.utcnow() - timedelta(hours=2)
+    seen_devices: set[int] = set()
+
+    for row in rows:
+        device_id, src_ip, message, ts = row[0], row[1], row[2], row[3]
+        if device_id in seen_devices:
+            continue
+
+        # Deduplication: skip if recent SecurityEvent for this device
+        recent = (
+            db.query(SecurityEvent)
+            .filter(
+                SecurityEvent.device_id == device_id,
+                SecurityEvent.event_type == "err_disabled_syslog",
+                SecurityEvent.ts >= cutoff,
+            )
+            .first()
+        )
+        if recent:
+            continue
+
+        seen_devices.add(device_id)
+        dev = db.query(Device).filter_by(id=device_id).first()
+        ip = dev.ip if dev else src_ip
+
+        logger.warning("err-disabled via syslog: device %s — %s", ip, message[:100])
+        store_security_event(
+            db,
+            device_id=device_id,
+            event_type="err_disabled_syslog",
+            ip=ip,
+            description=f"Syslog: {message[:200]}",
+            severity="critical",
+            details={"message": message, "src_ip": src_ip},
         )
 
 

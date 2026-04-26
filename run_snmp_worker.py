@@ -1939,6 +1939,13 @@ def scan_once() -> None:
         except Exception as exc:
             logger.warning("Alert computation error: %s", exc)
 
+    # err-disabled check runs every cycle (not just every 30 min) — ports can be
+    # err-disabled at any time and the user needs to know quickly.
+    try:
+        _check_err_disabled(devices, snmp_timeout=snmp_timeout)
+    except Exception as exc:
+        logger.warning("err-disabled check error: %s", exc)
+
     # ── Network Tier Analysis ──────────────────────────────────────────────────
     # Uruchamiane co 1h — analiza roli L2/L3 urządzeń na podstawie LLDP, FDB, portów, STP
     _TIER_INTERVAL = 3600  # 1 godzina
@@ -2017,6 +2024,170 @@ def _collect_resource_metrics(
             logger.info("Resource metrics: %d points (CPU/mem) -> ClickHouse", len(batch))
         except Exception as exc:
             logger.warning("Resource metrics insert error: %s", exc)
+
+
+# OID: CISCO-IF-EXTENSION-MIB::cieIfOperStatusCause.<ifIndex>
+# Value 1 = connected (normal), 2 = notConnect (no cable), >2 = err-disabled with reason code.
+# Common codes: 11=portSecurity, 30=dot1xSecurityViolation, 42=bpduGuard, 49=loopback-detection
+_CIE_OPSTATUS_CAUSE_OID = "1.3.6.1.4.1.9.9.276.1.1.2.1.4"
+_CIE_CAUSE_LABELS = {
+    11: "port-security",
+    16: "link-flap",
+    20: "l2ptGuard",
+    30: "dot1x",
+    40: "udldAggressiveMode",
+    41: "bpduGuard",
+    42: "bpduGuard",
+    43: "channelMisconfig",
+    44: "pagpFlap",
+    49: "loopback",
+    52: "arpInspection",
+    60: "stormControl",
+    62: "dot1adIncompItype",
+}
+
+
+def _check_err_disabled(devices, snmp_timeout: int = 2) -> None:
+    """Detects err-disabled ports via SNMP and saves DevicePortAlert with type 'err_disabled'.
+
+    Two-layer detection:
+    1. Cisco devices: SNMP GET cieIfOperStatusCause — value >2 means err-disabled (not just no cable)
+    2. All devices (fallback): admin_status=True AND oper_status=False AND alias set
+       (labelled port that went down — err-disabled or similar condition)
+
+    Deduplication is handled by the DevicePortAlert upsert (unique per device+if_index+alert_type).
+    Alert is removed automatically when port recovers (oper_status becomes True).
+    """
+    from netdoc.storage.models import Interface, DevicePortAlert
+    from netdoc.collector.drivers.snmp import _snmp_get
+
+    snmp_devs = [d for d in devices if d.snmp_community]
+    if not snmp_devs:
+        return
+
+    dev_ids = [d.id for d in snmp_devs]
+    db = SessionLocal()
+    try:
+        # Bulk load: admin-up / oper-down interfaces
+        suspect_ifaces = (
+            db.query(Interface)
+            .filter(
+                Interface.device_id.in_(dev_ids),
+                Interface.if_index.isnot(None),
+                Interface.admin_status.is_(True),
+                Interface.oper_status.is_(False),
+            )
+            .all()
+        )
+
+        # Group by device
+        suspect_by_dev: dict[int, list] = {}
+        for row in suspect_ifaces:
+            suspect_by_dev.setdefault(row.device_id, []).append(row)
+
+        dev_by_id = {d.id: d for d in snmp_devs}
+
+        new_err_alerts: list[dict] = []    # {device_id, if_index, name, cause_label}
+        recovered_keys: set[tuple] = set() # (device_id, if_index) where port is back up
+
+        # Determine which (device_id, if_index) are currently oper-down
+        suspect_keys = {(r.device_id, r.if_index) for r in suspect_ifaces}
+
+        for dev_id, iface_rows in suspect_by_dev.items():
+            dev = dev_by_id[dev_id]
+            is_cisco = "cisco" in (dev.vendor or "").lower() or "cisco" in (dev.os_version or "").lower()
+
+            for row in iface_rows:
+                if_index = row.if_index
+                name = row.name or f"if{if_index}"
+                alias = row.alias or ""
+                cause_label = "err-disabled"
+
+                if is_cisco:
+                    # SNMP GET: cieIfOperStatusCause.<ifIndex>
+                    try:
+                        oid = f"{_CIE_OPSTATUS_CAUSE_OID}.{if_index}"
+                        raw = _snmp_get(dev.ip, dev.snmp_community, oid, timeout=snmp_timeout)
+                        if raw is None:
+                            # OID not supported — fall through to heuristic
+                            pass
+                        else:
+                            cause_int = int(raw)
+                            if cause_int <= 2:
+                                # 1=connected, 2=notConnect (no cable) — not err-disabled
+                                continue
+                            cause_label = _CIE_CAUSE_LABELS.get(cause_int, f"cause-{cause_int}")
+                    except Exception:
+                        pass  # OID unavailable — fall through to heuristic below
+
+                else:
+                    # Non-Cisco: only alert when port has an alias (was intentionally configured)
+                    if not alias:
+                        continue
+
+                new_err_alerts.append({
+                    "device_id":   dev_id,
+                    "if_index":    if_index,
+                    "name":        name,
+                    "cause_label": cause_label,
+                })
+
+        # Existing err_disabled alerts for these devices
+        existing = (
+            db.query(DevicePortAlert)
+            .filter(
+                DevicePortAlert.device_id.in_(dev_ids),
+                DevicePortAlert.alert_type == "err_disabled",
+            )
+            .all()
+        )
+        existing_by_key = {(a.device_id, a.if_index): a for a in existing}
+
+        if not new_err_alerts and not existing:
+            return
+
+        now = __import__("datetime").datetime.utcnow()
+
+        for alert in new_err_alerts:
+            key = (alert["device_id"], alert["if_index"])
+            existing_a = existing_by_key.get(key)
+            desc = alert["cause_label"]
+            if existing_a:
+                existing_a.value_current = None
+                existing_a.last_seen = now
+                # Update description (cause) if it changed from generic to specific
+                if existing_a.trend_pct is None or desc != "err-disabled":
+                    existing_a.alert_type = "err_disabled"
+            else:
+                db.add(DevicePortAlert(
+                    device_id      = alert["device_id"],
+                    if_index       = alert["if_index"],
+                    interface_name = alert["name"],
+                    alert_type     = "err_disabled",
+                    severity       = "critical",
+                    value_current  = None,
+                    value_baseline = None,
+                    trend_pct      = None,
+                    first_seen     = now,
+                    last_seen      = now,
+                ))
+
+        # Remove resolved: err_disabled alert for port that is now oper-up
+        for a in existing:
+            key = (a.device_id, a.if_index)
+            if key not in suspect_keys:
+                if a.acknowledged_at is None:
+                    db.delete(a)
+
+        db.commit()
+        new_count = len(new_err_alerts)
+        if new_count:
+            logger.info("err-disabled alerts: %d port(s)", new_count)
+    except Exception as exc:
+        db.rollback()
+        logger.warning("_check_err_disabled failed: %s", exc)
+    finally:
+        db.close()
 
 
 def _compute_alerts(devices) -> None:

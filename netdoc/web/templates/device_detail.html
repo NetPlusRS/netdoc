@@ -1386,7 +1386,7 @@
   var deviceId = {{ dev.id }};
   var _SEV_CLASS = {info: 'text-info', warning: 'text-warning', critical: 'text-danger', error: 'text-danger'};
   var _SEV_ICON  = {info: 'bi-info-circle', warning: 'bi-exclamation-triangle', critical: 'bi-exclamation-octagon', error: 'bi-exclamation-octagon'};
-  var _TYPE_LABEL = {new_device: 'New Device', new_vuln: 'Vulnerability', port_change: 'Port Change', ip_conflict: 'IP Conflict'};
+  var _TYPE_LABEL = {new_device: 'New Device', new_vuln: 'Vulnerability', port_change: 'Port Change', ip_conflict: 'IP Conflict', ntp_drift: 'NTP Drift', err_disabled_syslog: 'Err-Disabled (syslog)'};
   fetch('/api/devices/' + deviceId + '/security-events')
     .then(function (r) {
       if (!r.ok) return null;
@@ -1898,7 +1898,7 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
   }
 
   function _alertTypeLabel(t) {
-    return {error_rate:'Port errors/h', error_trend:'Error trend', cpu_high:'CPU', mem_high:'RAM'}[t] || t;
+    return {error_rate:'Port errors/h', error_trend:'Error trend', cpu_high:'CPU', mem_high:'RAM', err_disabled:'Err-Disabled'}[t] || t;
   }
 
   function loadDiagnostics() {
