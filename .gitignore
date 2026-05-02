@@ -21,8 +21,9 @@ logs/agents/*
 *.pid
 *.log
 
-# CLI Command Reference — partial checkpoints only, final YAMLs are tracked
+# CLI Command Reference — partial checkpoints and generated HTML are excluded
 device_commands/*.partial.yaml
+device_commands/cli_reference.html
 
 # Runtime flags
 scan_now.flag
