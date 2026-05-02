@@ -24,6 +24,9 @@ logs/agents/*
 # CLI Command Reference — only partial checkpoints are excluded (HTML is tracked)
 device_commands/*.partial.yaml
 
+# CLI Extractor — proprietary extraction tool, private knowledge (results tracked, tool not)
+netdoc/collector/cli_extractor.py
+
 # Runtime flags
 scan_now.flag
 
