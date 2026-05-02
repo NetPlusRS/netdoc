@@ -1,79 +1,4 @@
-#!/usr/bin/env python3
-"""Generate a standalone HTML CLI reference from device_commands/*.yaml files.
-
-Usage:
-    python export_cli_reference.py [output_path]
-
-Output defaults to device_commands/cli_reference.html
-"""
-
-import json
-import sys
-from pathlib import Path
-
-COMMANDS_DIR = Path(__file__).parent / "device_commands"
-DEFAULT_OUTPUT = COMMANDS_DIR / "cli_reference.html"
-
-
-def _collect_tags(tree: dict) -> set:
-    tags: set = set()
-    for key, val in tree.items():
-        if key.startswith("_") or not isinstance(val, dict):
-            continue
-        for t in val.get("_tags", []):
-            tags.add(t)
-        tags |= _collect_tags(val)
-    return tags
-
-
-def _count_commands(tree: dict) -> int:
-    count = 0
-    for key, val in tree.items():
-        if key.startswith("_"):
-            continue
-        count += 1
-        if isinstance(val, dict):
-            count += _count_commands(val)
-    return count
-
-
-def load_databases() -> list:
-    try:
-        import yaml
-    except ImportError:
-        sys.exit("PyYAML not installed — run: pip install pyyaml")
-
-    dbs = []
-    for fpath in sorted(COMMANDS_DIR.glob("*.yaml")):
-        if fpath.stem.endswith(".partial"):
-            continue
-        try:
-            with open(fpath, encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-            if not isinstance(data, dict):
-                continue
-            commands = data.get("commands", {})
-            dbs.append({
-                "slug":          fpath.stem,
-                "model":         data.get("model", fpath.stem),
-                "firmware":      data.get("firmware", ""),
-                "system":        data.get("system", ""),
-                "source_ip":     data.get("source_ip", ""),
-                "notes":         data.get("notes", ""),
-                "command_count": _count_commands(commands),
-                "tags":          sorted(_collect_tags(commands)),
-                "commands":      commands,
-            })
-        except Exception as e:
-            print(f"Warning: skip {fpath.name}: {e}", file=sys.stderr)
-    return dbs
-
-
-def generate_html(dbs: list, output: Path) -> None:
-    data_json   = json.dumps(dbs,              ensure_ascii=False, separators=(",", ":"))
-    generated   = __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M")
-
-    html = """<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
@@ -162,7 +87,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
     </button>
   </div>
   <input id="searchBox" type="search" placeholder="Search commands&#8230;" autocomplete="off">
-  <div style="font-size:.68rem;color:var(--muted);margin-top:4px">Generated """ + generated + """</div>
+  <div style="font-size:.68rem;color:var(--muted);margin-top:4px">Generated 2026-05-02 23:36</div>
   <hr style="border-color:var(--border);margin:10px 0">
   <div id="dbList"></div>
 </div>
@@ -197,7 +122,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 </div>
 
 <script>
-const DATABASES = """ + data_json + """;
+const DATABASES = [{"slug":"cisco_mobility_express_wlc_8.10","model":"Cisco Mobility Express WLC","firmware":"8.10.196.0","system":"wlc-controller","source_ip":"192.168.5.99","notes":"","command_count":95,"tags":["acl","ap-management","auth","backup","dangerous","debug","dhcp","interfaces","qos","save-config","stats","syslog","wireless-rf"],"commands":{"?":{"_desc":""},"apciscoshell":{"_desc":"Go to AP Console","_tags":["ap-management"]},"clear":{"_desc":"Clear selected configuration elements.","acl-counters":{"_desc":"Clear the ACl counters for given acl name.","_tags":["acl"]},"advanced":{"802.11a":{"_desc":"Clear advanced 802.11a configurations","_tags":["wireless-rf"],"packet":{"_desc":"Clear the 802.11a  packet parameters config","_tags":["stats","debug","wireless-rf"]}},"802.11b":{"_desc":"Clear advanced 802.11b configurations","_tags":["wireless-rf"],"packet":{"_desc":"Clear the 802.11b packet parameters config","_tags":["stats","debug","wireless-rf"]}},"_desc":"Clear advanced configuration"},"ap":{"_desc":"Clear the join stats contents on Cisco AP(s).","_tags":["stats","ap-management"],"config":{"_desc":"Reset Cisco AP configuration data to factory defaults.","_tags":["dangerous","ap-management"]},"eventlog":{"_desc":"Clear the event log contents on Cisco AP(s).","_tags":["syslog","ap-management"],"all":{"_desc":"Clear event logs of all Cisco APs.","_tags":["syslog","ap-management"]}},"join":{"_desc":"Clear the join stats contents on Cisco AP(s).","_tags":["stats","ap-management"],"stats":{"_desc":"Clear the join stats contents on Cisco AP(s).","_tags":["stats","ap-management"]}},"tsm":{"802.11a":{"_desc":"Clear 802.11a tsm stats for an AP.","_tags":["stats","wireless-rf","ap-management"]},"802.11b":{"_desc":"Clear 802.11b tsm stats for a client.","_tags":["stats","wireless-rf","ap-management"]},"_desc":"Clear tsm stats for an AP.","_tags":["stats","ap-management"]},"wmm":{"802.11a":{"_desc":"Clear 802.11a wmm stats for an AP.","_tags":["stats","wireless-rf","ap-management"]},"802.11b":{"_desc":"Clear 802.11b wmm stats for an AP.","_tags":["stats","wireless-rf","ap-management"]},"_desc":"Clear wmm stats for an AP.","_tags":["stats","ap-management"]}},"arp":{"<A.B.C.D>":{"_desc":"Clear the ARP entry for a specific IP.","c":{"_desc":""}},"_desc":"Clear the ARP table.","all":{"_desc":"Clear All ARP entries"}},"atf":{"_desc":"Clear ATE commands","c":{"_desc":""}},"avc":{"_desc":"Clear AVC commands.","c":{"_desc":""}},"cac":{"_desc":"Clear Cac commands.","video":{"_desc":"Clear Cac Video.","stats":{"_desc":"Clear Cac Video Statistics.","_tags":["stats"]}},"voice":{"_desc":"Clear Cac Voice.","stats":{"_desc":"Clear Cac Voice Statistics.","_tags":["stats"]}}},"client":{"_desc":"Clear stats for a client.","_tags":["stats"],"tsm":{"802.11a":{"_desc":"Clear 802.11a tsm stats for a client.","_tags":["stats","wireless-rf"]},"802.11b":{"_desc":"Clear 802.11b tsm stats for a client.","_tags":["stats","wireless-rf"]},"_desc":"Clear tsm stats for a client.","_tags":["stats"]}},"config":{"_desc":"Reset configuration data to factory defaults.","_tags":["dangerous"]},"crash-files":{"_desc":"Clears WLC crash and core files.","c":{"_desc":""}},"debug":{"_desc":"Clear debug options.","_tags":["debug"],"file":{"_desc":"Clears the debug file.","_tags":["debug"]}},"dx":{"_desc":"Clears DX related statistics","_tags":["stats"],"lcache":{"_desc":"Clears DX DB related statistics","_tags":["stats"],"stats":{"_desc":"Clears DX DB related statistics","_tags":["stats"]}}},"flex-avc":{"_desc":"Clear FlexConnect AVC commands.","statistics":{"_desc":"Clear ALL FlexConnect AVC statistics.","_tags":["stats"],"client":{"_desc":"Clear FlexConnect AVC statistics for Client.","_tags":["stats"]},"group":{"_desc":"Clear FlexConnect AVC statistics for Client.","_tags":["stats"]}}},"flexconnect":{"_desc":"Clear FlexConnect Data...","flex-avc":{"_desc":"Clear FlexConnect AVC commands.","statistics":{"_desc":"Clear ALL FlexConnect AVC statistics.","_tags":["stats"]}}},"flexstats":{"_desc":"Clear flex statistics counters.","_tags":["stats"],"dhcp":{"_desc":"Clears DHCP Proxy statistics.","_tags":["stats","dhcp"]},"radius":{"_desc":"Clears Radius Auth statistics.","_tags":["stats","auth"]}},"hyperlocation":{"_desc":"clear hyperlocation cmx-config"},"icap":{"_desc":"Clear ICap data","_tags":["ap-management"]},"ipv6":{"_desc":"Clear IPv6 Information"},"location":{"_desc":"Clears Location based system parameters","_tags":["stats"]},"login-banner":{"_desc":"Clear controller login banner.","_tags":["syslog"]},"mdns":{"_desc":"Clears mDNS service database"},"mesh":{"_desc":"Clears stranded ap entries.","_tags":["ap-management"]},"mob-exp":{"_desc":"Clears Mobility Express","_tags":["ap-management"]},"mobility":{"_desc":"Clears mobility error stats for a peer.","_tags":["stats","ap-management"]},"msglog":{"_desc":"Clear message log entries.","_tags":["syslog"]},"network":{"_desc":"Clears network profile"},"nmsp":{"_desc":"NMSP related information."},"policy":{"_desc":"Clear policy stats","_tags":["stats"]},"queue-info":{"_desc":"Clear Message Queue Information.","_tags":["qos"]},"redirect-url":{"_desc":"Clear the custom Web Authentication Redirect URL.","_tags":["auth"]},"redundancy":{"_desc":"Clears Redundancy Statistics","_tags":["stats"]},"session":{"_desc":"Clear telnet/ssh sessions"},"stats":{"_desc":"Clear statistics counters.","_tags":["stats"]},"telemetry":{"_desc":"Clear Telemetry related information"},"transfer":{"_desc":"Clear the transfer information.","_tags":["backup"]},"traplog":{"_desc":"Clear the trap log.","_tags":["syslog","ap-management"]},"webimage":{"_desc":"Clear the custom Web Authentication Image.","_tags":["auth"]},"webmessage":{"_desc":"Clear the custom Web Authentication Message.","_tags":["auth"]},"webtitle":{"_desc":"Clear the custom Web Authentication Title.","_tags":["auth"]}},"config":{"_desc":"Configure switch options and settings."},"cping":{"_desc":"Send capwap echo packets to a specified mobility peer IP address.","_tags":["debug","ap-management"]},"debug":{"_desc":"Manages system debug options.","_tags":["debug"]},"eping":{"_desc":"Send Ethernet-over-IP echo packets to a specified mobility peer IP address.","_tags":["debug","interfaces","ap-management"]},"grep":{"_desc":"Print lines matching a pattern."},"help":{"_desc":"Help"},"linktest":{"_desc":"Perform a link test to a specified MAC address.","_tags":["wireless-rf"]},"logout":{"_desc":"Exit this session. Any unsaved changes are lost.","_tags":["save-config","syslog"]},"ping":{"_desc":"Send ICMP echo packets to a specified IP address.","_tags":["debug"]},"reset":{"_desc":"Reboot (hard reload) options.","_tags":["stats","dangerous"]},"restart":{"_desc":"Restart (soft reload) the switch.","_tags":["stats","dangerous"]},"save":{"_desc":"Save switch configurations.","_tags":["save-config"]},"show":{"_desc":"Display switch options and settings."},"test":{"_desc":"Test trigger commands"},"transfer":{"_desc":"Transfer a file to or from the switch.","_tags":["backup"]}}}];
 const TAG_COLORS = {
   dangerous:"#dc3545",  "factory-reset":"#dc3545",
   stats:"#0dcaf0",      "wireless-rf":"#0dcaf0",   "version-info":"#0dcaf0", "ap-management":"#0dcaf0",
@@ -375,7 +300,7 @@ function doSearch(q) {
     return;
   }
   var ql = q.toLowerCase();
-  var re = new RegExp(q.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\$&'), 'gi');
+  var re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'gi');
   function hl(s) { return esc(s).replace(re, function(m) { return '<span class="hl">'+m+'</span>'; }); }
 
   var flat = flatTree(curDb.commands, '');
@@ -430,20 +355,4 @@ document.getElementById('dbView').addEventListener('click', function(e) {
 if (DATABASES.length === 1) openDb(DATABASES[0].slug);
 </script>
 </body>
-</html>"""
-
-    output.parent.mkdir(exist_ok=True)
-    output.write_text(html, encoding="utf-8")
-    print(f"Generated: {output}  ({output.stat().st_size // 1024} KB, {len(dbs)} database(s))")
-
-
-def main():
-    output = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_OUTPUT
-    dbs = load_databases()
-    if not dbs:
-        sys.exit(f"No YAML files found in {COMMANDS_DIR}")
-    generate_html(dbs, output)
-
-
-if __name__ == "__main__":
-    main()
+</html>

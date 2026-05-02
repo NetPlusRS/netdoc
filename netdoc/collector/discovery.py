@@ -1892,9 +1892,14 @@ def _guess_device_type(open_ports, os_name, vendor=None, mac=None, hostname=None
     _effective_os = os_lower or _banner_hint
 
     # 1. OS fingerprint / banner — najpewniejszy sygnal
-    # Wyjątek: Cisco WAP (Wireless Access Point) — hostname/OS zawiera "wap"
+    # Wyjątek: Cisco WAP/AP — hostname zaczyna się od "AP" (enterprise: AP4C71-...)
+    # lub OS/model zawiera "wap", "air-ap", "aironet", "cisco ap"
+    _hostname_lower = (hostname or "").lower()
     _is_cisco_wap = ("cisco" in _effective_os or "cisco" in vendor_lower) and (
-        "wap" in (hostname or "").lower() or "wap" in os_lower
+        "wap" in _hostname_lower or "wap" in os_lower
+        or "air-ap" in os_lower or "aironet" in os_lower or "cisco ap" in os_lower
+        or "access point" in os_lower or "ap3g" in os_lower
+        or (_hostname_lower.startswith("ap") and len(_hostname_lower) > 4)  # AP4C71-..., AP3802-...
     )
     if not _is_cisco_wap and ("cisco" in _effective_os or "junos" in _effective_os or "routeros" in _effective_os):
         return DeviceType.router

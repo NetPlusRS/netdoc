@@ -1,0 +1,356 @@
+commands:
+  '?':
+    _desc: ''
+  apciscoshell:
+    _desc: Go to AP Console
+    _tags:
+    - ap-management
+  clear:
+    _desc: Clear selected configuration elements.
+    acl-counters:
+      _desc: Clear the ACl counters for given acl name.
+      _tags:
+      - acl
+    advanced:
+      802.11a:
+        _desc: Clear advanced 802.11a configurations
+        _tags:
+        - wireless-rf
+        packet:
+          _desc: Clear the 802.11a  packet parameters config
+          _tags:
+          - stats
+          - debug
+          - wireless-rf
+      802.11b:
+        _desc: Clear advanced 802.11b configurations
+        _tags:
+        - wireless-rf
+        packet:
+          _desc: Clear the 802.11b packet parameters config
+          _tags:
+          - stats
+          - debug
+          - wireless-rf
+      _desc: Clear advanced configuration
+    ap:
+      _desc: Clear the join stats contents on Cisco AP(s).
+      _tags:
+      - stats
+      - ap-management
+      config:
+        _desc: Reset Cisco AP configuration data to factory defaults.
+        _tags:
+        - dangerous
+        - ap-management
+      eventlog:
+        _desc: Clear the event log contents on Cisco AP(s).
+        _tags:
+        - syslog
+        - ap-management
+        all:
+          _desc: Clear event logs of all Cisco APs.
+          _tags:
+          - syslog
+          - ap-management
+      join:
+        _desc: Clear the join stats contents on Cisco AP(s).
+        _tags:
+        - stats
+        - ap-management
+        stats:
+          _desc: Clear the join stats contents on Cisco AP(s).
+          _tags:
+          - stats
+          - ap-management
+      tsm:
+        802.11a:
+          _desc: Clear 802.11a tsm stats for an AP.
+          _tags:
+          - stats
+          - wireless-rf
+          - ap-management
+        802.11b:
+          _desc: Clear 802.11b tsm stats for a client.
+          _tags:
+          - stats
+          - wireless-rf
+          - ap-management
+        _desc: Clear tsm stats for an AP.
+        _tags:
+        - stats
+        - ap-management
+      wmm:
+        802.11a:
+          _desc: Clear 802.11a wmm stats for an AP.
+          _tags:
+          - stats
+          - wireless-rf
+          - ap-management
+        802.11b:
+          _desc: Clear 802.11b wmm stats for an AP.
+          _tags:
+          - stats
+          - wireless-rf
+          - ap-management
+        _desc: Clear wmm stats for an AP.
+        _tags:
+        - stats
+        - ap-management
+    arp:
+      <A.B.C.D>:
+        _desc: Clear the ARP entry for a specific IP.
+        c:
+          _desc: ''
+      _desc: Clear the ARP table.
+      all:
+        _desc: Clear All ARP entries
+    atf:
+      _desc: Clear ATE commands
+      c:
+        _desc: ''
+    avc:
+      _desc: Clear AVC commands.
+      c:
+        _desc: ''
+    cac:
+      _desc: Clear Cac commands.
+      video:
+        _desc: Clear Cac Video.
+        stats:
+          _desc: Clear Cac Video Statistics.
+          _tags:
+          - stats
+      voice:
+        _desc: Clear Cac Voice.
+        stats:
+          _desc: Clear Cac Voice Statistics.
+          _tags:
+          - stats
+    client:
+      _desc: Clear stats for a client.
+      _tags:
+      - stats
+      tsm:
+        802.11a:
+          _desc: Clear 802.11a tsm stats for a client.
+          _tags:
+          - stats
+          - wireless-rf
+        802.11b:
+          _desc: Clear 802.11b tsm stats for a client.
+          _tags:
+          - stats
+          - wireless-rf
+        _desc: Clear tsm stats for a client.
+        _tags:
+        - stats
+    config:
+      _desc: Reset configuration data to factory defaults.
+      _tags:
+      - dangerous
+    crash-files:
+      _desc: Clears WLC crash and core files.
+      c:
+        _desc: ''
+    debug:
+      _desc: Clear debug options.
+      _tags:
+      - debug
+      file:
+        _desc: Clears the debug file.
+        _tags:
+        - debug
+    dx:
+      _desc: Clears DX related statistics
+      _tags:
+      - stats
+      lcache:
+        _desc: Clears DX DB related statistics
+        _tags:
+        - stats
+        stats:
+          _desc: Clears DX DB related statistics
+          _tags:
+          - stats
+    flex-avc:
+      _desc: Clear FlexConnect AVC commands.
+      statistics:
+        _desc: Clear ALL FlexConnect AVC statistics.
+        _tags:
+        - stats
+        client:
+          _desc: Clear FlexConnect AVC statistics for Client.
+          _tags:
+          - stats
+        group:
+          _desc: Clear FlexConnect AVC statistics for Client.
+          _tags:
+          - stats
+    flexconnect:
+      _desc: Clear FlexConnect Data...
+      flex-avc:
+        _desc: Clear FlexConnect AVC commands.
+        statistics:
+          _desc: Clear ALL FlexConnect AVC statistics.
+          _tags:
+          - stats
+    flexstats:
+      _desc: Clear flex statistics counters.
+      _tags:
+      - stats
+      dhcp:
+        _desc: Clears DHCP Proxy statistics.
+        _tags:
+        - stats
+        - dhcp
+      radius:
+        _desc: Clears Radius Auth statistics.
+        _tags:
+        - stats
+        - auth
+    hyperlocation:
+      _desc: clear hyperlocation cmx-config
+    icap:
+      _desc: Clear ICap data
+      _tags:
+      - ap-management
+    ipv6:
+      _desc: Clear IPv6 Information
+    location:
+      _desc: Clears Location based system parameters
+      _tags:
+      - stats
+    login-banner:
+      _desc: Clear controller login banner.
+      _tags:
+      - syslog
+    mdns:
+      _desc: Clears mDNS service database
+    mesh:
+      _desc: Clears stranded ap entries.
+      _tags:
+      - ap-management
+    mob-exp:
+      _desc: Clears Mobility Express
+      _tags:
+      - ap-management
+    mobility:
+      _desc: Clears mobility error stats for a peer.
+      _tags:
+      - stats
+      - ap-management
+    msglog:
+      _desc: Clear message log entries.
+      _tags:
+      - syslog
+    network:
+      _desc: Clears network profile
+    nmsp:
+      _desc: NMSP related information.
+    policy:
+      _desc: Clear policy stats
+      _tags:
+      - stats
+    queue-info:
+      _desc: Clear Message Queue Information.
+      _tags:
+      - qos
+    redirect-url:
+      _desc: Clear the custom Web Authentication Redirect URL.
+      _tags:
+      - auth
+    redundancy:
+      _desc: Clears Redundancy Statistics
+      _tags:
+      - stats
+    session:
+      _desc: Clear telnet/ssh sessions
+    stats:
+      _desc: Clear statistics counters.
+      _tags:
+      - stats
+    telemetry:
+      _desc: Clear Telemetry related information
+    transfer:
+      _desc: Clear the transfer information.
+      _tags:
+      - backup
+    traplog:
+      _desc: Clear the trap log.
+      _tags:
+      - syslog
+      - ap-management
+    webimage:
+      _desc: Clear the custom Web Authentication Image.
+      _tags:
+      - auth
+    webmessage:
+      _desc: Clear the custom Web Authentication Message.
+      _tags:
+      - auth
+    webtitle:
+      _desc: Clear the custom Web Authentication Title.
+      _tags:
+      - auth
+  config:
+    _desc: Configure switch options and settings.
+  cping:
+    _desc: Send capwap echo packets to a specified mobility peer IP address.
+    _tags:
+    - debug
+    - ap-management
+  debug:
+    _desc: Manages system debug options.
+    _tags:
+    - debug
+  eping:
+    _desc: Send Ethernet-over-IP echo packets to a specified mobility peer IP address.
+    _tags:
+    - debug
+    - interfaces
+    - ap-management
+  grep:
+    _desc: Print lines matching a pattern.
+  help:
+    _desc: Help
+  linktest:
+    _desc: Perform a link test to a specified MAC address.
+    _tags:
+    - wireless-rf
+  logout:
+    _desc: Exit this session. Any unsaved changes are lost.
+    _tags:
+    - save-config
+    - syslog
+  ping:
+    _desc: Send ICMP echo packets to a specified IP address.
+    _tags:
+    - debug
+  reset:
+    _desc: Reboot (hard reload) options.
+    _tags:
+    - stats
+    - dangerous
+  restart:
+    _desc: Restart (soft reload) the switch.
+    _tags:
+    - stats
+    - dangerous
+  save:
+    _desc: Save switch configurations.
+    _tags:
+    - save-config
+  show:
+    _desc: Display switch options and settings.
+  test:
+    _desc: Test trigger commands
+  transfer:
+    _desc: Transfer a file to or from the switch.
+    _tags:
+    - backup
+firmware: 8.10.196.0
+model: Cisco Mobility Express WLC
+notes: ''
+source_ip: 192.168.5.99
+system: wlc-controller
