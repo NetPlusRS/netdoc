@@ -383,12 +383,6 @@ A33000-A33FFF     (base 16)		TIAMA
 				New Territories    852
 				HK
 
-8C-1F-64   (hex)		VT100 SRL
-66D000-66DFFF     (base 16)		VT100 SRL
-				Via A. Meucci 11
-				Caldiero  ITALY  37042
-				IT
-
 8C-1F-64   (hex)		Flextronics International Kft
 154000-154FFF     (base 16)		Flextronics International Kft
 				38. Zrinyi Str.
@@ -8296,6 +8290,36 @@ C65000-C65FFF     (base 16)		Headwave
 				Marie-Elisab.-V.-Humboldt 35a 
 				Berlin    13057
 				DE
+
+8C-1F-64   (hex)		Cognicom, Inc.
+FE6000-FE6FFF     (base 16)		Cognicom, Inc.
+				5095 Murphy Canyon Rd, Ste 240
+				San Diego  CA  92123
+				US
+
+8C-1F-64   (hex)		TEX COMPUTER SRL 
+1CC000-1CCFFF     (base 16)		TEX COMPUTER SRL 
+				Via O. Respighi 13
+				CATTOLICA   RIMINI   47841
+				IT
+
+8C-1F-64   (hex)		JS Tech Co., Ltd.
+51C000-51CFFF     (base 16)		JS Tech Co., Ltd.
+				Room 807, Building A, 190 Soha-ro
+				Gwangmyeong-si  Gyeonggi-do  14322
+				KR
+
+8C-1F-64   (hex)		VT100 SRL
+66D000-66DFFF     (base 16)		VT100 SRL
+				Viale Dell'Artigianato 4
+				Caldiero  ITALY  37042
+				IT
+
+8C-1F-64   (hex)		Portrait Displays, Inc.
+893000-893FFF     (base 16)		Portrait Displays, Inc.
+				4637 Chabot Drive, Suite 115
+				Pleasanton  CA  94588
+				US
 
 8C-1F-64   (hex)		Jacobs Technology, Inc.
 A98000-A98FFF     (base 16)		Jacobs Technology, Inc.
@@ -16712,6 +16736,24 @@ DF0000-DF0FFF     (base 16)		Cyberkar Systems inc.
 				Broomfield  CO  80021
 				US
 
+8C-1F-64   (hex)		Jiangsu Yi Rong Mstar Technology Ltd.
+5F4000-5F4FFF     (base 16)		Jiangsu Yi Rong Mstar Technology Ltd.
+				Building 1-4, No. 9, Yongfu Road, Dafeng Economic Development Zone, 
+				Yancheng City  Jiangsu  224199
+				CN
+
+8C-1F-64   (hex)		MB connect line GmbH
+12F000-12FFFF     (base 16)		MB connect line GmbH
+				Winnettener Strasse 6
+				Dinkelsbuehl  Bavaria  91550
+				DE
+
+8C-1F-64   (hex)		LEMIER
+C95000-C95FFF     (base 16)		LEMIER
+				Entuziastov 34-4-21
+				Moscow    105118
+				RU
+
 8C-1F-64   (hex)		Vision Systems Safety Tech
 E6F000-E6FFFF     (base 16)		Vision Systems Safety Tech
 				5 Chemin de Chiradie
@@ -22514,12 +22556,6 @@ C55000-C55FFF     (base 16)		Intelligent Energy Ltd
 				Loughborough  Leicestershire  LE11 3GB
 				GB
 
-70-B3-D5   (hex)		Creotech Instruments S.A.
-91E000-91EFFF     (base 16)		Creotech Instruments S.A.
-				ul. Gen. L. Okulickiego 7/9
-				Piaseczno  Mazovia  05-500
-				PL
-
 70-B3-D5   (hex)		McKay Brothers LLC
 A4B000-A4BFFF     (base 16)		McKay Brothers LLC
 				2355 Broadway
@@ -25129,6 +25165,30 @@ A9F000-A9FFFF     (base 16)		DADHWAL AI PRIVATE LIMITED
 				F 74, INDUSTRIAL AREA PHASE 7
 				SAS NAGAR  PUNJAB  160055
 				IN
+
+8C-1F-64   (hex)		Guan Show Technologe Co., Ltd.
+A41000-A41FFF     (base 16)		Guan Show Technologe Co., Ltd.
+				No.127, Jianguo 1st Rd., Lingya Dist.
+				 Kaohsiung City     802
+				TW
+
+8C-1F-64   (hex)		Ability Intelligent Corp.
+ADA000-ADAFFF     (base 16)		Ability Intelligent Corp.
+				No. 200, Sec.3, Zhonghuan Rd., Xinzhuang Dist., New Taipei City 242030, Taiwan (R.O.C.)
+				New Taipei City    242030
+				TW
+
+8C-1F-64   (hex)		MYIR Electronics Limited
+8B4000-8B4FFF     (base 16)		MYIR Electronics Limited
+				Room 04, 6th Floor, Building No.2, Fada Road, Yunli Smart Park,Bantian, Longgang District, Shenzhen, Guangdong, China
+				Shenzhen  Guangdong  518129
+				CN
+
+70-B3-D5   (hex)		Creotech Quantum SA
+91E000-91EFFF     (base 16)		Creotech Quantum SA
+				Migdalowa 4
+				Warsaw  Mazovia  02-796
+				PL
 
 8C-1F-64   (hex)		Flow Power
 82B000-82BFFF     (base 16)		Flow Power
@@ -33455,6 +33515,24 @@ DF2000-DF2FFF     (base 16)		LOMAR SRL
 				Yueqing  Zhejiang  325604
 				CN
 
+8C-1F-64   (hex)		TAKAHATA PRECISION Co., LTD.
+5AD000-5ADFFF     (base 16)		TAKAHATA PRECISION Co., LTD.
+				Nishi-Shinjuku, Shinjuku-ku, Tokyo 3-9-12  Building 9F
+				Nishi-Shinjuku     160-0023
+				JP
+
+8C-1F-64   (hex)		TECHMOVERS SYSTEMS INDIA LIMITED
+3A5000-3A5FFF     (base 16)		TECHMOVERS SYSTEMS INDIA LIMITED
+				Unit no 327, 3rd floor, Bussa Industrial Estate, Behind Century Bazar, Prabhadevi
+				Mumbai  Maharashtra  400025
+				IN
+
+8C-1F-64   (hex)		MDA SatConn UK
+28F000-28FFFF     (base 16)		MDA SatConn UK
+				Spectrum Point,279 Farnborough Road, 
+				Farnborough  Hampshire  GU14 7LS
+				GB
+
 8C-1F-64   (hex)		Mobileye
 D63000-D63FFF     (base 16)		Mobileye
 				13 Hartom st.
@@ -41692,3 +41770,21 @@ BEB000-BEBFFF     (base 16)		aelettronica group srl
 				Forradsgatan 4
 				Sundsvall  Vasternorrland  85633
 				SE
+
+8C-1F-64   (hex)		Transports Publics Genevois
+640000-640FFF     (base 16)		Transports Publics Genevois
+				Route de la Chapelle 1
+				Grand-Lancy  Genève  1212
+				CH
+
+8C-1F-64   (hex)		AVEA Group, Inc.
+BD4000-BD4FFF     (base 16)		AVEA Group, Inc.
+				55 E Monroe Street Suite 3800
+				Chicago  IL  60603
+				US
+
+8C-1F-64   (hex)		CrossBar, Inc.
+310000-310FFF     (base 16)		CrossBar, Inc.
+				2055 Laurelwood Rd. Suite 230
+				Santa Clara  CA  95054-2729
+				US
