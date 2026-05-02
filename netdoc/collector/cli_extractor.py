@@ -759,6 +759,15 @@ def main():
     print(f"\nGotowe! Zapisano do: {out_path}")
     print(f"Top-level komend: {len(tree)}")
 
+    # Regenerate standalone HTML after every successful extraction
+    try:
+        import subprocess
+        exporter = Path(__file__).parent.parent.parent / "export_cli_reference.py"
+        if exporter.exists():
+            subprocess.run([sys.executable, str(exporter)], check=False)
+    except Exception as e:
+        logger.warning("HTML export failed (non-critical): %s", e)
+
 
 if __name__ == "__main__":
     main()
