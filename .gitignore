@@ -21,8 +21,8 @@ logs/agents/*
 *.pid
 *.log
 
-# CLI Command Reference — extracted YAML databases (generated from live devices)
-device_commands/
+# CLI Command Reference — partial checkpoints only, final YAMLs are tracked
+device_commands/*.partial.yaml
 
 # Runtime flags and shortcuts
 scan_now.flag
