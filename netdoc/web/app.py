@@ -982,6 +982,44 @@ def create_app():
             except Exception:
                 oui_db_date = None
 
+            # Bulk reverse-FDB: dla każdego urządzenia znajdź który switch/port widzi jego MAC.
+            # Jedna query + Python grouping zamiast N zapytań per urządzenie.
+            try:
+                from netdoc.storage.models import DeviceFdbEntry as _FdbE
+                from sqlalchemy.orm import aliased as _aliased
+                from sqlalchemy import func as _func
+                _SwitchAlias = _aliased(Device)
+                _device_macs = [d.mac.lower() for d in devs if d.mac]
+                _mac_to_dev_id = {d.mac.lower(): d.id for d in devs if d.mac}
+                if _device_macs:
+                    _fdb_conn_rows = (
+                        db.query(_FdbE, _SwitchAlias)
+                        .join(_SwitchAlias, _SwitchAlias.id == _FdbE.device_id)
+                        .filter(_func.lower(_FdbE.mac).in_(_device_macs))
+                        .order_by(_FdbE.mac, _FdbE.polled_at.desc())
+                        .limit(len(_device_macs) * 5)
+                        .all()
+                    )
+                    # Zachowaj tylko najświeższy wpis per urządzenie (pierwsza para per MAC = najnowsza)
+                    _connected_via: dict = {}
+                    for _fdb, _sw in _fdb_conn_rows:
+                        _dev_id = _mac_to_dev_id.get(_fdb.mac.lower() if _fdb.mac else None)
+                        if _dev_id and _dev_id not in _connected_via:
+                            _connected_via[_dev_id] = {
+                                "switch_id":       _sw.id,
+                                "switch_ip":       _sw.ip,
+                                "switch_hostname": _sw.hostname or _sw.ip,
+                                "interface_name":  _fdb.interface_name,
+                                "if_index":        _fdb.if_index,
+                                "vlan_id":         _fdb.vlan_id,
+                                "polled_at":       _fdb.polled_at,
+                            }
+                else:
+                    _connected_via = {}
+            except Exception as _exc:
+                app.logger.warning("bulk FDB lookup failed: %s", _exc)
+                _connected_via = {}
+
             # Zloz slownik statystyk per device
             device_stats = {}
             for d in devs:
@@ -1043,6 +1081,7 @@ def create_app():
                     "display_port_count": _disp_cnt,
                     "display_port_source": _disp_src,
                     "display_port_time":  _disp_time,
+                    "connected_via":      _connected_via.get(d.id),
                 }
 
             # Pasek podsumowania — obliczenia na danych juz w pamieci (bez dodatkowych zapytan DB)
@@ -1908,11 +1947,17 @@ def create_app():
                     "serial":       dev.serial_number,
                 }
 
+            sorted_open_ports = (
+                sorted(latest_scan.open_ports.items(), key=lambda x: int(x[0]))
+                if latest_scan and latest_scan.open_ports else []
+            )
+
             return render_template(
                 "device_detail.html",
                 dev=dev,
                 interfaces=interfaces,
                 latest_scan=latest_scan,
+                sorted_open_ports=sorted_open_ports,
                 vulns=vulns,
                 topo_links=topo_links,
                 field_history=field_history,
@@ -1953,6 +1998,137 @@ def create_app():
         finally:
             db.close()
         return redirect(url_for("device_detail", device_id=device_id))
+
+    @app.route("/devices/<int:device_id>/notes", methods=["POST"])
+    def device_notes_save(device_id):
+        """AJAX auto-save notatek do asset_notes."""
+        from flask import request as _req
+        notes = _req.get_json(silent=True) or {}
+        text = notes.get("notes", "") or ""
+        _, err = _api("patch", f"/api/devices/{device_id}", json={"asset_notes": text or None})
+        if err:
+            return jsonify({"ok": False, "error": err}), 502
+        return jsonify({"ok": True})
+
+    @app.route("/devices/<int:device_id>/print")
+    def device_print(device_id):
+        """Paszport urzadzenia — strona do wydruku PDF."""
+        from netdoc.storage.models import (
+            Device as _Dev, Interface as _Iface, Credential as _Cred,
+            TopologyLink as _Topo, DeviceVlanPort as _VlanPort,
+            DeviceSensor as _Sensor, ScanResult as _Scan,
+        )
+        from netdoc.config.credentials import decrypt as _decrypt
+        db = SessionLocal()
+        try:
+            dev = db.query(_Dev).filter(_Dev.id == device_id).first()
+            if not dev:
+                return "Device not found", 404
+
+            ifaces = (db.query(_Iface)
+                      .filter(_Iface.device_id == device_id)
+                      .order_by(_Iface.if_index)
+                      .all())
+
+            # Credentials — per-device first, then globals that have been used successfully
+            # (skip global credentials that never worked — reduces noise on the passport)
+            creds_raw = (db.query(_Cred)
+                         .filter(
+                             (_Cred.device_id == device_id) |
+                             ((_Cred.device_id.is_(None)) & (_Cred.last_success_at.isnot(None)))
+                         )
+                         .order_by(_Cred.device_id.desc().nullslast(), _Cred.priority)
+                         .all())
+            creds = []
+            for c in creds_raw:
+                pwd = None
+                try:
+                    if c.password_encrypted:
+                        pwd = _decrypt(c.password_encrypted)
+                except Exception:
+                    pwd = "***"
+                creds.append({
+                    "method":    c.method.value,
+                    "username":  c.username or "",
+                    "password":  pwd or "",
+                    "notes":     c.notes or "",
+                    "success_at": c.last_success_at,
+                    "per_device": c.device_id == device_id,
+                })
+
+            # VLAN membership grouped by vlan_id
+            vlan_rows = (db.query(_VlanPort)
+                         .filter(_VlanPort.device_id == device_id)
+                         .order_by(_VlanPort.vlan_id, _VlanPort.if_index)
+                         .all())
+            vlans_by_id: dict = {}
+            for vp in vlan_rows:
+                entry = vlans_by_id.setdefault(vp.vlan_id, {"name": vp.vlan_name or "", "ports": []})
+                if vp.vlan_name and not entry["name"]:
+                    entry["name"] = vp.vlan_name
+                # find iface name
+                iface_name = next((i.name for i in ifaces if i.if_index == vp.if_index), None)
+                entry["ports"].append({
+                    "if_index":  vp.if_index,
+                    "name":      iface_name or f"if{vp.if_index}",
+                    "mode":      vp.port_mode or "?",
+                    "is_pvid":   vp.is_pvid,
+                })
+
+            # Topology links (LLDP/CDP neighbours)
+            topo = (db.query(_Topo)
+                    .filter((_Topo.src_device_id == device_id) | (_Topo.dst_device_id == device_id))
+                    .all())
+            neighbors = []
+            for lnk in topo:
+                if lnk.src_device_id == device_id:
+                    peer = lnk.dst_device
+                    local_iface = lnk.src_interface
+                    peer_iface  = lnk.dst_interface
+                else:
+                    peer = lnk.src_device
+                    local_iface = lnk.dst_interface
+                    peer_iface  = lnk.src_interface
+                neighbors.append({
+                    "protocol":    lnk.protocol.value if lnk.protocol else "?",
+                    "local_port":  local_iface.name if local_iface else "—",
+                    "peer_ip":     str(peer.ip) if (peer and peer.ip) else "—",
+                    "peer_host":   (peer.hostname or str(peer.ip) if peer.ip else "?") if peer else "—",
+                    "peer_port":   peer_iface.name if peer_iface else "—",
+                    "peer_model":  peer.model or "" if peer else "",
+                })
+
+            # Latest port scan
+            latest_scan = (db.query(_Scan)
+                           .filter(_Scan.device_id == device_id, _Scan.scan_type == "tcp")
+                           .order_by(_Scan.scan_time.desc())
+                           .first())
+            open_ports = []
+            if latest_scan and latest_scan.open_ports:
+                open_ports = sorted(
+                    [(p, s) for p, s in latest_scan.open_ports.items()],
+                    key=lambda x: int(x[0])
+                )
+
+            sensors = (db.query(_Sensor)
+                       .filter(_Sensor.device_id == device_id)
+                       .order_by(_Sensor.sensor_name)
+                       .all())
+
+            import datetime as _dt
+            return render_template(
+                "device_passport_print.html",
+                dev=dev,
+                ifaces=ifaces,
+                creds=creds,
+                vlans_by_id=vlans_by_id,
+                neighbors=neighbors,
+                open_ports=open_ports,
+                sensors=sensors,
+                printed_at=_dt.datetime.now().strftime("%Y-%m-%d %H:%M"),
+            )
+        finally:
+            db.close()
 
     @app.route("/devices/<int:device_id>/reclassify", methods=["POST"])
     def device_reclassify(device_id):
@@ -2213,6 +2389,14 @@ def create_app():
             return jsonify({"error": err}), 502
         return jsonify(data)
 
+    @app.route("/api/devices/<int:device_id>/where-connected")
+    def api_proxy_where_connected(device_id):
+        """Proxy: odwrotne FDB — na jakim porcie switcha widziano MAC urządzenia."""
+        data, err = _api("get", f"/api/devices/{device_id}/where-connected")
+        if err:
+            return jsonify({"error": err}), 502
+        return jsonify(data)
+
     @app.route("/api/devices/<int:device_id>/ntopng-flows")
     def api_ntopng_flows(device_id):
         """PRO: top flows for this device from ntopng REST API."""
@@ -2371,7 +2555,18 @@ def create_app():
         db = SessionLocal()
         try:
             count = db.execute(_text("SELECT COUNT(*) FROM devices")).scalar()
-            # TRUNCATE CASCADE removes devices + all 22 FK-dependent tables in one shot
+            # Terminate all other DB connections so TRUNCATE doesn't wait for worker locks.
+            # Workers will reconnect automatically after the operation.
+            terminated = db.execute(_text(
+                "SELECT COUNT(*) FROM ("
+                "  SELECT pg_terminate_backend(pid) FROM pg_stat_activity"
+                "  WHERE datname = current_database() AND pid <> pg_backend_pid()"
+                ") t"
+            )).scalar()
+            _log.info("Maintenance: terminated %d other DB connections before truncate", terminated or 0)
+            # Safety net — fail fast instead of hanging if a connection sneaks back in
+            db.execute(_text("SET LOCAL lock_timeout = '30s'"))
+            # TRUNCATE CASCADE removes devices + all FK-dependent tables in one shot
             db.execute(_text("TRUNCATE TABLE devices RESTART IDENTITY CASCADE"))
             db.commit()
             _log.info("Maintenance: %d devices (+ dependent rows) deleted by user", count)
@@ -6733,6 +6928,34 @@ Dla urządzeń nieobsoletes: "replacements": []"""
 </body>
 </html>
 """, containers_json=container_list_json)
+
+    # ─── CLI Command Reference ────────────────────────────────────────────────
+
+    @app.route("/cli-reference")
+    def cli_reference():
+        """Lista baz komend CLI (per model+firmware)."""
+        import requests as _req
+        try:
+            r = _req.get(f"{API_URL}/api/command-ref/", timeout=5)
+            refs = r.json() if r.ok else []
+        except Exception:
+            refs = []
+        return render_template("cli_reference.html", refs=refs)
+
+    @app.route("/cli-reference/<slug>")
+    def cli_reference_detail(slug: str):
+        """Drzewo komend dla konkretnego slug (model+firmware)."""
+        import requests as _req
+        try:
+            r = _req.get(f"{API_URL}/api/command-ref/{slug}", timeout=5)
+            if not r.ok:
+                flash(f"Baza komend '{slug}' nie istnieje", "danger")
+                return redirect(url_for("cli_reference"))
+            ref = r.json()
+        except Exception as exc:
+            flash(f"Błąd ładowania bazy komend: {exc}", "danger")
+            return redirect(url_for("cli_reference"))
+        return render_template("cli_reference_detail.html", ref=ref, slug=slug)
 
     return app
 

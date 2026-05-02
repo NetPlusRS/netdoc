@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from netdoc.config.settings import settings
 from netdoc.storage.database import init_db
-from netdoc.api.routes import devices, topology, events, scan, credentials, logs as logs_route, vulnerabilities, syslog as syslog_route, metrics_if as metrics_if_route
+from netdoc.api.routes import devices, topology, events, scan, credentials, logs as logs_route, vulnerabilities, syslog as syslog_route, metrics_if as metrics_if_route, command_ref as command_ref_route
 from netdoc.api import metrics
 
 logging.basicConfig(
@@ -61,6 +61,7 @@ app.include_router(syslog_route.router)
 app.include_router(metrics_if_route.router)
 app.include_router(metrics_if_route.alerts_router)
 app.include_router(metrics_if_route.broadcast_router)
+app.include_router(command_ref_route.router)
 
 
 @app.get("/", tags=["health"])

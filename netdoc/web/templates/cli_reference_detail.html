@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}CLI Ref — {{ ref.model }}{% endblock %}
+
+{% block content %}
+{# Macro must be defined before first use in inherited templates #}
+{% macro render_tree(node, depth) %}
+  {% for key, val in node.items() %}
+    {% if not key.startswith('_') and val is mapping %}
+      {% set desc = val.get('_desc', '') %}
+      {% set tags = val.get('_tags', []) %}
+      {% set has_children = val | selectattr('startswith', 'equalto', '_') | list | length < val | length %}
+      <div class="cmd-node" data-tags="{{ tags | join(' ') }}"
+           style="padding-left:{{ depth * 16 }}px;border-left:{{ '2px solid var(--border)' if depth > 0 else 'none' }};margin-left:{{ '4px' if depth > 0 else '0' }}">
+        <div class="d-flex align-items-start py-1 cmd-row" style="gap:.5rem">
+          {% if has_children %}
+          <button class="btn btn-link p-0 tree-toggle" style="color:var(--text-muted);min-width:16px;font-size:.75rem"
+                  onclick="toggleNode(this)">
+            <i class="bi bi-chevron-down"></i>
+          </button>
+          {% else %}
+          <span style="min-width:16px;display:inline-block"></span>
+          {% endif %}
+
+          <code class="cmd-name" style="color:var(--accent);font-size:.85rem;white-space:nowrap">{{ key }}</code>
+
+          {% if desc %}
+          <span class="text-muted cmd-desc" style="font-size:.8rem">{{ desc }}</span>
+          {% endif %}
+
+          {% for tag in tags %}
+          {% set tc = {
+            'dangerous': 'danger', 'stats': 'info', 'snmp-config': 'warning',
+            'backup': 'primary', 'debug': 'secondary', 'save-config': 'success',
+            'syslog': 'primary', 'version-info': 'info', 'auth': 'warning',
+            'factory-reset': 'danger',
+          }.get(tag, 'secondary') %}
+          <span class="badge bg-{{ tc }}" style="font-size:.62rem;flex-shrink:0">{{ tag }}</span>
+          {% endfor %}
+        </div>
+
+        {% if has_children %}
+        <div class="tree-children">
+          {{ render_tree(val, depth + 1) | safe }}
+        </div>
+        {% endif %}
+      </div>
+    {% endif %}
+  {% endfor %}
+{% endmacro %}
+<div class="container-fluid py-3">
+
+  {# ── Header ── #}
+  <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+    <a href="/cli-reference" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>CLI Reference
+    </a>
+    <div>
+      <h4 class="mb-0 d-inline">{{ ref.model }}</h4>
+      <span class="badge bg-secondary ms-2">{{ ref.firmware }}</span>
+    </div>
+    <span class="text-muted" style="font-size:.82rem">
+      <i class="bi bi-terminal me-1"></i>{{ ref.command_count }} commands
+      {% if ref.source_ip %}&nbsp;·&nbsp;<i class="bi bi-hdd-network me-1"></i>{{ ref.source_ip }}{% endif %}
+    </span>
+  </div>
+
+  <div class="row g-3">
+    {# ── Sidebar: search + tag filter ── #}
+    <div class="col-lg-3 col-xl-2">
+      <div class="card mb-3">
+        <div class="card-body p-2">
+          <input id="cmdSearch" type="search" class="form-control form-control-sm mb-2"
+                 placeholder="Search commands…" autocomplete="off">
+          <div id="searchResults" class="d-none">
+            <div class="text-muted mb-1" id="searchCount" style="font-size:.75rem"></div>
+            <div id="searchList" style="max-height:40vh;overflow-y:auto"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header py-2 px-3" style="font-size:.78rem;font-weight:600">
+          <i class="bi bi-tags me-1"></i>Tag filters
+        </div>
+        <div class="card-body p-2">
+          <button class="btn btn-sm w-100 mb-1 btn-outline-secondary active" id="tagAll"
+                  onclick="filterTag(null, this)">All</button>
+          {% for tag in ref.tags %}
+          {% set tc = {
+            'dangerous': 'danger', 'stats': 'info', 'snmp-config': 'warning',
+            'backup': 'primary', 'debug': 'secondary', 'save-config': 'success',
+            'syslog': 'primary', 'version-info': 'info', 'auth': 'warning',
+            'vlan': 'secondary', 'interfaces': 'secondary', 'ntp': 'secondary',
+            'topology': 'secondary', 'factory-reset': 'danger', 'dhcp': 'secondary',
+            'acl': 'secondary',
+          }.get(tag, 'secondary') %}
+          <button class="btn btn-sm w-100 mb-1 btn-outline-{{ tc }}"
+                  onclick="filterTag('{{ tag }}', this)">
+            {{ tag }}
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {# ── Main: command tree ── #}
+    <div class="col-lg-9 col-xl-10">
+      <div class="card">
+        <div class="card-body p-2" id="treeContainer">
+          {{ render_tree(ref.commands, 0) | safe }}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.cmd-row:hover{background:var(--bg3);border-radius:4px;}
+.tree-toggle{text-decoration:none!important;}
+.cmd-node{transition:opacity .15s;}
+.cmd-node.hidden{display:none;}
+.search-result-item{padding:.3rem .5rem;border-radius:4px;cursor:pointer;font-size:.82rem;}
+.search-result-item:hover{background:var(--bg3);}
+.search-result-item code{color:var(--accent);}
+</style>
+
+<script>
+// ── Tree toggle ──────────────────────────────────────────────
+function toggleNode(btn) {
+  var children = btn.closest('.cmd-node').querySelector('.tree-children');
+  var icon = btn.querySelector('i');
+  if (!children) return;
+  var collapsed = children.style.display === 'none';
+  children.style.display = collapsed ? '' : 'none';
+  icon.className = collapsed ? 'bi bi-chevron-down' : 'bi bi-chevron-right';
+}
+
+// ── Tag filter ───────────────────────────────────────────────
+function filterTag(tag, btn) {
+  document.querySelectorAll('[onclick^="filterTag"]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.cmd-node').forEach(node => {
+    if (!tag) { node.classList.remove('hidden'); return; }
+    var tags = (node.dataset.tags || '').split(' ');
+    node.classList.toggle('hidden', !tags.includes(tag));
+  });
+}
+
+// ── Search ───────────────────────────────────────────────────
+var _flat = null;
+
+function buildFlat() {
+  if (_flat) return _flat;
+  _flat = [];
+  document.querySelectorAll('.cmd-node').forEach(function(node) {
+    var code = node.querySelector(':scope > .cmd-row .cmd-name');
+    var desc = node.querySelector(':scope > .cmd-row .cmd-desc');
+    var tags = (node.dataset.tags || '').split(' ').filter(Boolean);
+    if (code) {
+      _flat.push({
+        name: code.textContent.trim(),
+        desc: desc ? desc.textContent.trim() : '',
+        tags: tags,
+        el: node,
+      });
+    }
+  });
+  return _flat;
+}
+
+document.getElementById('cmdSearch').addEventListener('input', function() {
+  var q = this.value.trim().toLowerCase();
+  var results = document.getElementById('searchResults');
+  var list = document.getElementById('searchList');
+  var count = document.getElementById('searchCount');
+
+  if (q.length < 1) {
+    results.classList.add('d-none');
+    document.querySelectorAll('.cmd-node').forEach(n => n.classList.remove('hidden'));
+    return;
+  }
+
+  var flat = buildFlat();
+  var matches = flat.filter(function(item) {
+    return item.name.toLowerCase().includes(q)
+        || item.desc.toLowerCase().includes(q)
+        || item.tags.some(t => t.includes(q));
+  });
+
+  list.innerHTML = matches.slice(0, 50).map(function(item) {
+    var tagHtml = item.tags.map(t => '<span class="badge bg-secondary ms-1" style="font-size:.6rem">' + t + '</span>').join('');
+    return '<div class="search-result-item" onclick="scrollToNode(this)" data-name="' + item.name + '">'
+      + '<code>' + item.name + '</code>' + tagHtml
+      + (item.desc ? '<br><span class="text-muted">' + item.desc + '</span>' : '')
+      + '</div>';
+  }).join('');
+
+  count.textContent = matches.length + ' results' + (matches.length > 50 ? ' (first 50)' : '');
+  results.classList.remove('d-none');
+});
+
+function scrollToNode(el) {
+  var name = el.dataset.name;
+  var nodes = document.querySelectorAll('.cmd-node');
+  for (var n of nodes) {
+    var code = n.querySelector(':scope > .cmd-row .cmd-name');
+    if (code && code.textContent.trim() === name) {
+      n.scrollIntoView({behavior: 'smooth', block: 'center'});
+      n.style.outline = '2px solid var(--accent)';
+      setTimeout(() => n.style.outline = '', 2000);
+      return;
+    }
+  }
+}
+</script>
+{% endblock %}

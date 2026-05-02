@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}CLI Reference{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center mb-4 gap-3">
+    <h4 class="mb-0"><i class="bi bi-terminal-split me-2 text-accent"></i>CLI Command Reference</h4>
+    <span class="text-muted" style="font-size:.85rem">Command database per model + firmware version. Independent of current devices on the network.</span>
+  </div>
+
+  {% if refs %}
+
+  {# Grupowanie po system #}
+  {% set system_labels = {
+    'wlc-controller': ('bi-router',        'info',      'WLC Controller'),
+    'ap-shell':       ('bi-broadcast-pin', 'success',   'AP IOS Shell'),
+  } %}
+
+  {% for system_key, group in refs | groupby('system') %}
+  {% set icon, color, label = system_labels.get(system_key, ('bi-terminal', 'secondary', system_key or 'Other')) %}
+
+  <div class="mb-4">
+    <div class="d-flex align-items-center mb-3 gap-2">
+      <span class="badge bg-{{ color }} px-2 py-1" style="font-size:.8rem">
+        <i class="bi {{ icon }} me-1"></i>{{ label }}
+      </span>
+      <span class="text-muted" style="font-size:.8rem">{{ group | list | length }} command databases</span>
+      <div class="flex-grow-1 border-top ms-2" style="opacity:.2"></div>
+    </div>
+
+    <div class="row g-3">
+      {% for ref in group %}
+      <div class="col-md-6 col-xl-4">
+        <div class="card h-100 border-{{ color }}" style="border-left-width:3px !important">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <h6 class="mb-0">{{ ref.model }}</h6>
+              <span class="badge bg-secondary" style="font-size:.7rem">{{ ref.firmware }}</span>
+            </div>
+            <div class="text-muted mb-2" style="font-size:.8rem">
+              <i class="bi bi-terminal me-1"></i>{{ ref.command_count }} commands
+              {% if ref.source_ip %}
+              &nbsp;·&nbsp;<i class="bi bi-hdd-network me-1"></i>{{ ref.source_ip }}
+              {% endif %}
+            </div>
+
+            {% if ref.tags %}
+            <div class="mb-3" style="line-height:1.8">
+              {% for tag in ref.tags %}
+              {% set tag_color = {
+                'dangerous': 'danger',
+                'stats': 'info',
+                'snmp-config': 'warning',
+                'backup': 'primary',
+                'debug': 'secondary',
+                'save-config': 'success',
+                'syslog': 'primary',
+                'version-info': 'info',
+                'auth': 'warning',
+                'vlan': 'secondary',
+                'interfaces': 'secondary',
+                'ntp': 'secondary',
+                'topology': 'secondary',
+                'factory-reset': 'danger',
+                'wireless-rf': 'info',
+                'ap-management': 'info',
+                'dhcp': 'secondary',
+                'acl': 'warning',
+                'crypto': 'secondary',
+                'qos': 'secondary',
+              }.get(tag, 'secondary') %}
+              <span class="badge bg-{{ tag_color }} me-1" style="font-size:.68rem">{{ tag }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if ref.notes %}
+            <p class="text-muted mb-3" style="font-size:.78rem">{{ ref.notes[:120] }}{% if ref.notes|length > 120 %}…{% endif %}</p>
+            {% endif %}
+
+            <a href="/cli-reference/{{ ref.slug }}" class="btn btn-outline-{{ color }} btn-sm w-100">
+              <i class="bi bi-search me-1"></i>Browse commands
+            </a>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+  {% else %}
+  <div class="card">
+    <div class="card-body text-center py-5">
+      <i class="bi bi-terminal text-muted" style="font-size:3rem;opacity:.3"></i>
+      <p class="text-muted mt-3 mb-1">No command databases.</p>
+      <p class="text-muted" style="font-size:.85rem">
+        Run the CLI extractor on a device with SSH access:<br>
+        <code>python -m netdoc.collector.cli_extractor --ip &lt;IP&gt; --user &lt;user&gt; --password &lt;pass&gt; --mode cisco_wlc --model "..." --firmware "..."</code>
+      </p>
+    </div>
+  </div>
+  {% endif %}
+</div>
+<style>.text-accent{color:var(--accent)}</style>
+{% endblock %}
