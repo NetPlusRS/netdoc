@@ -65,10 +65,10 @@ def create_credential(body: CredentialIn, db: Session = Depends(get_db)):
         if not dev:
             raise HTTPException(404, f"Device {body.device_id} nie istnieje")
     existing = db.query(Credential).filter(
-        Credential.device_id.is_(body.device_id),
+        Credential.device_id.is_(None) if body.device_id is None else Credential.device_id == body.device_id,
         Credential.method == body.method,
         Credential.username == body.username,
-        Credential.password_encrypted.is_(body.password),
+        Credential.password_encrypted.is_(None) if body.password is None else Credential.password_encrypted == body.password,
     ).first()
     if existing:
         raise HTTPException(409, "Credential już istnieje (duplikat)")

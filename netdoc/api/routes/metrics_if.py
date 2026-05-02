@@ -5,6 +5,7 @@ Endpointy:
     GET /api/devices/{id}/if-metrics/rates   — biezace predkosci in/out per interfejs
     GET /api/devices/{id}/port-summary       — zestawienie portow (tryb, VLAN, STP, sasiad, predkosc)
     GET /api/devices/{id}/fdb                — tablica MAC-port (FDB)
+    GET /api/devices/{id}/where-connected    — odwrotne FDB: na jakim porcie switcha widziano ten MAC
     GET /api/devices/{id}/vlan-ports         — przynaleznosc portow do VLAN-ow
     GET /api/devices/{id}/stp                — stan STP + root bridge
     GET /api/devices/{id}/alerts             — aktywne alerty diagnostyczne dla urządzenia
@@ -19,7 +20,8 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy import func
+from sqlalchemy.orm import Session, aliased
 
 from netdoc.storage.database import get_db
 from netdoc.storage.models import Device, DeviceFdbEntry, DeviceVlanPort, DeviceStpPort, Interface, TopologyLink, DevicePortAlert
@@ -316,11 +318,55 @@ def get_fdb(
                 "interface_name": e.interface_name,
                 "vlan_id":        e.vlan_id,
                 "fdb_status":     e.fdb_status,
-                "polled_at":      e.polled_at.isoformat() if e.polled_at else None,
+                "polled_at":      e.polled_at.strftime("%Y-%m-%dT%H:%M:%SZ") if e.polled_at else None,
             }
             for e in entries
         ],
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Reverse FDB — where is this device connected?
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/{device_id}/where-connected")
+def get_where_connected(device_id: int, db: Session = Depends(get_db)):
+    """Odwrotne FDB lookup — na jakim porcie switcha widziano MAC tego urządzenia.
+
+    Przeszukuje tablice FDB wszystkich switchy i zwraca listę portów,
+    na których widziano MAC tego urządzenia. Pozwala ustalić fizyczne
+    podłączenie urządzenia do infrastruktury.
+    """
+    device = _get_device_or_404(device_id, db)
+    if not device.mac:
+        return {"device_id": device_id, "mac": None, "connections": []}
+
+    SwitchAlias = aliased(Device)
+    mac_lower = device.mac.lower()
+    rows = (
+        db.query(DeviceFdbEntry, SwitchAlias)
+        .join(SwitchAlias, SwitchAlias.id == DeviceFdbEntry.device_id)
+        .filter(func.lower(DeviceFdbEntry.mac) == mac_lower)
+        .order_by(DeviceFdbEntry.polled_at.desc())
+        .limit(10)
+        .all()
+    )
+
+    connections = []
+    for fdb, switch in rows:
+        connections.append({
+            "switch_id":       switch.id,
+            "switch_ip":       switch.ip,
+            "switch_hostname": switch.hostname or switch.ip,
+            "switch_vendor":   switch.vendor,
+            "if_index":        fdb.if_index,
+            "interface_name":  fdb.interface_name,
+            "vlan_id":         fdb.vlan_id,
+            "fdb_status":      fdb.fdb_status,
+            "polled_at":       fdb.polled_at.strftime("%Y-%m-%dT%H:%M:%SZ") if fdb.polled_at else None,
+        })
+
+    return {"device_id": device_id, "mac": device.mac, "connections": connections}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -356,7 +402,7 @@ def get_vlan_ports(
                 "vlan_id":   e.vlan_id,
                 "vlan_name": e.vlan_name,
                 "ports":     [],
-                "polled_at": e.polled_at.isoformat() if e.polled_at else None,
+                "polled_at": e.polled_at.strftime("%Y-%m-%dT%H:%M:%SZ") if e.polled_at else None,
             }
         vlans[e.vlan_id]["ports"].append({
             "if_index":  e.if_index,
@@ -424,7 +470,7 @@ def get_stp(
                 "stp_state_label": _STP_STATE_LABELS.get(p.stp_state) if p.stp_state is not None else None,
                 "stp_role":      p.stp_role,
                 "path_cost":     p.path_cost,
-                "polled_at":     p.polled_at.isoformat() if p.polled_at else None,
+                "polled_at":     p.polled_at.strftime("%Y-%m-%dT%H:%M:%SZ") if p.polled_at else None,
             }
             for p in ports
         ],

@@ -109,9 +109,9 @@ VENDOR_PROFILES: dict[str, dict] = {
         "stp_supported": True,
         "metrics_hc_supported": True,
         "extra_oids": {
-            "cpu_util": "1.3.6.1.4.1.2636.3.1.13.1.8.9.1.0.0",  # jnxOperatingCPU
-            "mem_util": "1.3.6.1.4.1.2636.3.1.13.1.11.9.1.0.0", # jnxOperatingBuffer
-            "temp":     "1.3.6.1.4.1.2636.3.1.13.1.7.9.1.0.0",  # jnxOperatingTemp
+            "cpu_util": "1.3.6.1.4.1.2636.3.1.13.1.6.9.1.0.0",  # jnxOperatingCPU (.6)
+            "mem_util": "1.3.6.1.4.1.2636.3.1.13.1.7.9.1.0.0",  # jnxOperatingBuffer (.7)
+            "temp":     "1.3.6.1.4.1.2636.3.1.13.1.5.9.1.0.0",  # jnxOperatingTemp (.5)
         },
     },
 
@@ -125,7 +125,7 @@ VENDOR_PROFILES: dict[str, dict] = {
         "stp_supported": True,
         "metrics_hc_supported": True,
         "extra_oids": {
-            "cpu_load":    "1.3.6.1.4.1.14988.1.1.3.14",  # mtxrCpuFrequency (nie load — ostroz.)
+            "cpu_load":    "1.3.6.1.4.1.14988.1.1.7.4",    # mtxrCPULoad (0-100%)
             "temp_cpu":    "1.3.6.1.4.1.14988.1.1.3.11",  # mtxrHlCpuTemperature
             "temp_board":  "1.3.6.1.4.1.14988.1.1.3.10",  # mtxrHlBoardTemperature
             "voltage":     "1.3.6.1.4.1.14988.1.1.3.8",   # mtxrHlVoltage
@@ -138,7 +138,7 @@ VENDOR_PROFILES: dict[str, dict] = {
     "ubiquiti_unifi": {
         "display_name": "Ubiquiti UniFi",
         "sysObjectID_prefix": ["1.3.6.1.4.1.41112.1.6."],
-        "sysdescr_regex": r"unifi|ubiquiti.*ap|ubnt.*ap",
+        "sysdescr_regex": r"unifi",
         "fdb_supported": True,
         "vlan_supported": True,
         "stp_supported": False,  # AP — typowo brak STP
@@ -175,7 +175,7 @@ VENDOR_PROFILES: dict[str, dict] = {
         "stp_supported": True,
         "metrics_hc_supported": True,
         "extra_oids": {
-            "cpu_util": "1.3.6.1.4.1.11.2.14.11.5.1.9.6.1.0",  # hpSwitchCpuStat
+            "cpu_util": "1.3.6.1.4.1.11.2.14.11.5.1.9.6.1.6.1",  # hpSwitchCpuStatValue (field=6, index=1)
         },
     },
 

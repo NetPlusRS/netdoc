@@ -7,3 +7,7 @@ __pycache__
 .coverage
 data/oui/
 netdoc_fallback.db
+logs/
+_private/
+.git/
+tests/

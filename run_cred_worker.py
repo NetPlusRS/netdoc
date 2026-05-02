@@ -105,7 +105,8 @@ _file_handler = _WinSafeRotatingFileHandler(
     maxBytes=1 * 1024 * 1024, backupCount=1,  # 1MB × 1 kopia
 )
 _file_handler.setFormatter(logging.Formatter(_LOG_FMT))
-logging.getLogger().addHandler(_file_handler)
+if __name__ == "__main__":
+    logging.getLogger().addHandler(_file_handler)
 
 _DEFAULT_INTERVAL        = int(os.getenv("CRED_INTERVAL_S",        "60"))
 _DEFAULT_SSH_W           = int(os.getenv("CRED_SSH_WORKERS",       "16"))
@@ -2210,6 +2211,10 @@ def _process_device(device_id: int, ip: str,
         # Zawsze drenuj zdarzenia ochrony — nawet gdy wystąpił wyjątek wcześniej.
         # Bez finally: zdarzenia z poprzedniego cyklu narastają w globalnym dict
         # i przy następnym cyklu count jest fałszywie zawyżony.
+        try:
+            db.rollback()  # ensure clean session state even if except-block rollback failed
+        except Exception:
+            pass
         try:
             _process_protection_events(db, device_id, ip)
         except Exception:

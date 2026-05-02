@@ -176,7 +176,10 @@ def _save_lldp_neighbors(db, src_device_id: int, src_ip: str, neighbors: list[di
             # Brak IP — szukaj po MAC lub hostname w bazie
             mac_norm = normalize_mac(mac_raw) if mac_raw else None
             if mac_norm:
-                remote_device = db.query(Device).filter(Device.mac == mac_norm).first()
+                from sqlalchemy import func as _func
+                remote_device = db.query(Device).filter(
+                    _func.lower(Device.mac) == mac_norm.lower()
+                ).first()
             if remote_device is None and hostname:
                 remote_device = db.query(Device).filter(Device.hostname == hostname).first()
             if remote_device is not None:
@@ -849,8 +852,10 @@ def _enrich_interfaces(ip: str, community: str, timeout: int = 2) -> list[dict]:
     """
     from netdoc.collector.snmp_walk import snmp_walk
 
-    _SKIP_NAMES = {"lo", "loopback", "sit0", "ip6tnl0", "ip6_vti0", "ip_vti0",
+    _SKIP_NAMES = {"lo", "sit0", "ip6tnl0", "ip6_vti0", "ip_vti0",
                    "erspan0", "ifb0", "ifb1", "ovs-system"}
+    # prefix-based: loopback0/1 (Cisco Loopback0), null0 (Cisco Null0 discard)
+    _SKIP_PREFIXES = ("loopback", "null")
 
     ifaces: dict[str, dict] = {}  # klucz: ifIndex (str)
 
@@ -885,14 +890,18 @@ def _enrich_interfaces(ip: str, community: str, timeout: int = 2) -> list[dict]:
                     elif field_id == _IF_OPERSTATUS_ID:
                         try:
                             v = int.from_bytes(raw_val, "big") if isinstance(raw_val, (bytes, bytearray)) else int(raw_val)
-                            entry["oper_status"] = v == 1
+                            # 1=up, 5=dormant, 6=notPresent, 7=lowerLayerDown are "up-like"
+                            # 2=down, 3=testing, 4=unknown are "down-like"
+                            entry["oper_status"] = v in (1, 5, 6, 7)
                         except (TypeError, ValueError):
                             pass
                     elif field_id == _IF_SPEED_ID:
                         try:
                             v = int.from_bytes(raw_val, "big") if isinstance(raw_val, (bytes, bytearray)) else int(raw_val)
-                            # ifSpeed w bps — konwertuj do Mbps (0 = nieznane, max 4Gbps)
-                            entry["speed_mbps_low"] = v // 1_000_000 if v else 0
+                            # ifSpeed w bps — konwertuj do Mbps
+                            # 0xFFFFFFFF = Gauge32 sentinel: speed >= 4Gbps, use ifHighSpeed instead
+                            if v and v != 0xFFFFFFFF:
+                                entry["speed_mbps_low"] = v // 1_000_000
                         except (TypeError, ValueError):
                             pass
                 elif base_oid == _IFX_TABLE_OID:
@@ -943,7 +952,8 @@ def _enrich_interfaces(ip: str, community: str, timeout: int = 2) -> list[dict]:
     result = []
     for v in ifaces.values():
         name = v.get("name", "")
-        if not name or name.lower() in _SKIP_NAMES:
+        _nl = name.lower()
+        if not name or _nl in _SKIP_NAMES or _nl.startswith(_SKIP_PREFIXES):
             continue
         spd = v.get("speed_mbps") or v.get("speed_mbps_low") or None
         if spd == 0:
@@ -1156,13 +1166,25 @@ def _save_interfaces(db, device_id: int, ifaces: list[dict]) -> int:
             },
         )
         db.execute(stmt)
-        # Usuń interfejsy nieobecne w bieżącym pollu (zniknęły z urządzenia)
+        # Stale cleanup — skip when walk returned < 50% of known interfaces
+        # (partial timeout would otherwise wipe the whole interface table)
         current_indices = [r["if_index"] for r in rows]
-        db.query(Interface).filter(
-            Interface.device_id == device_id,
-            Interface.if_index.isnot(None),
-            Interface.if_index.notin_(current_indices),
-        ).delete(synchronize_session=False)
+        existing_count = (
+            db.query(Interface)
+            .filter(Interface.device_id == device_id, Interface.if_index.isnot(None))
+            .count()
+        )
+        if existing_count == 0 or len(rows) >= existing_count * 0.5:
+            db.query(Interface).filter(
+                Interface.device_id == device_id,
+                Interface.if_index.isnot(None),
+                Interface.if_index.notin_(current_indices),
+            ).delete(synchronize_session=False)
+        else:
+            logger.warning(
+                "_save_interfaces device_id=%s: partial walk (%d vs %d known) — skipping stale cleanup",
+                device_id, len(rows), existing_count,
+            )
         db.commit()
         return len(rows)
     except Exception as exc:
@@ -1520,9 +1542,12 @@ def _save_trunk_info(db, device_id: int, trunk_data: dict) -> int:
             rows = db.query(Interface).filter_by(device_id=device_id, if_index=if_index).all()
             for iface in rows:
                 iface.port_mode   = info.get("port_mode")
-                iface.native_vlan = info.get("native_vlan")
                 iface.trunk_encap = info.get("trunk_encap")
                 iface.trunk_vlans = info.get("trunk_vlans")
+                # Only overwrite native_vlan when we have an actual value — access ports
+                # in trunk_data have native_vlan=None which would erase previously known VLAN
+                if info.get("native_vlan") is not None:
+                    iface.native_vlan = info["native_vlan"]
                 updated += 1
         db.commit()
     except Exception as exc:
@@ -1728,8 +1753,9 @@ def scan_once() -> None:
                 old_fmt = [
                     {
                         "name":        i["name"],
-                        "oper_status": 1 if i.get("oper_status") else 2,
-                        "speed_mbps":  i.get("speed_mbps") or 0,
+                        "oper_status": (1 if i.get("oper_status") is True
+                                        else (2 if i.get("oper_status") is False else None)),
+                        "speed_mbps":  i.get("speed_mbps"),
                     }
                     for i in ifaces
                 ]
@@ -2001,7 +2027,7 @@ def _collect_resource_metrics(
         extra = (device_extra_oids or {}).get(dev.id, {})
         return collect_host_resources(
             str(dev.ip), dev.snmp_community, snmp_timeout,
-            cpu_oid=extra.get("cpu_5min"),
+            cpu_oid=extra.get("cpu_5min_new") or extra.get("cpu_5min"),
             ram_free_oid=extra.get("ram_free"),
             ram_used_oid=extra.get("ram_used"),
         ), dev.id
@@ -2036,7 +2062,7 @@ _CIE_CAUSE_LABELS = {
     20: "l2ptGuard",
     30: "dot1x",
     40: "udldAggressiveMode",
-    41: "bpduGuard",
+    41: "bpduGuardForced",
     42: "bpduGuard",
     43: "channelMisconfig",
     44: "pagpFlap",
@@ -2095,7 +2121,9 @@ def _check_err_disabled(devices, snmp_timeout: int = 2) -> None:
 
         for dev_id, iface_rows in suspect_by_dev.items():
             dev = dev_by_id[dev_id]
-            is_cisco = "cisco" in (dev.vendor or "").lower() or "cisco" in (dev.os_version or "").lower()
+            from netdoc.collector.snmp_profiles import detect_vendor_profile as _dvp
+            _profile_name = _dvp(dev.snmp_sys_object_id, dev.os_version)
+            is_cisco = _profile_name.startswith("cisco_")
 
             for row in iface_rows:
                 if_index = row.if_index
@@ -2103,22 +2131,36 @@ def _check_err_disabled(devices, snmp_timeout: int = 2) -> None:
                 alias = row.alias or ""
                 cause_label = "err-disabled"
 
+                # Skip virtual interfaces — cannot be err-disabled by definition
+                # port-channel/LAG: oper-down is normal when no active members
+                # VLAN SVI: oper-down when VLAN has no active routed ports
+                _nl = name.lower()
+                if (_nl.startswith("port-channel") or _nl.startswith("lag")
+                        or _nl.startswith("ae") or _nl.startswith("bond")
+                        or _nl.startswith("vlan")
+                        or (_nl.startswith("po") and len(_nl) >= 3 and _nl[2].isdigit())):
+                    continue
+
                 if is_cisco:
                     # SNMP GET: cieIfOperStatusCause.<ifIndex>
                     try:
                         oid = f"{_CIE_OPSTATUS_CAUSE_OID}.{if_index}"
                         raw = _snmp_get(dev.ip, dev.snmp_community, oid, timeout=snmp_timeout)
                         if raw is None:
-                            # OID not supported — fall through to heuristic
-                            pass
+                            # OID not supported on this Cisco device (e.g. SG300 Small Business)
+                            # Fall back to alias heuristic same as non-Cisco
+                            if not alias:
+                                continue
                         else:
                             cause_int = int(raw)
-                            if cause_int <= 2:
-                                # 1=connected, 2=notConnect (no cable) — not err-disabled
+                            if cause_int <= 3:
+                                # 1=connected, 2=notConnect(no cable), 3=notApplicable — not err-disabled
                                 continue
                             cause_label = _CIE_CAUSE_LABELS.get(cause_int, f"cause-{cause_int}")
                     except Exception:
-                        pass  # OID unavailable — fall through to heuristic below
+                        # OID unavailable — fall back to alias heuristic same as non-Cisco
+                        if not alias:
+                            continue
 
                 else:
                     # Non-Cisco: only alert when port has an alias (was intentionally configured)

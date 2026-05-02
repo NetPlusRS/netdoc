@@ -18,10 +18,18 @@ _client_lock = threading.Lock()
 
 def _get_client():
     global _client
-    if _client is not None:
-        return _client
+    # Fast path: client exists — verify it's still alive before returning
+    current = _client
+    if current is not None:
+        try:
+            current.ping()
+            return current
+        except Exception:
+            with _client_lock:
+                if _client is current:  # reset only if no other thread reconnected already
+                    _client = None
     with _client_lock:
-        if _client is not None:  # double-checked locking
+        if _client is not None:
             return _client
         try:
             import clickhouse_connect
@@ -300,11 +308,11 @@ def query_if_metrics_history(
     """Zwraca zagregowaną historię prędkości interfejsu (bajty/s) per okno czasowe.
 
     Dla liczników kumulatywnych (octets_hc/octets): oblicza pochodną:
-      delta = max(value_w_bucket) - max(value_w_poprzednim_bucket)
-      rate  = delta / krok_sekundy  [bajty/s]
-    Zwraca listę słowników: {bucket, avg_value, max_value}
-    avg_value = max_value = bytes/s (identyczne — dla kompatybilności z API)
-    Uwaga: pierwszy bucket zawsze 0 (brak poprzedniego punktu referencyjnego).
+      rate = (cur_max - prev_max) / rzeczywisty_czas_między_bucketami [bajty/s]
+
+    Używa rzeczywistego czasu między bucketami (nie stałego kroku) — poprawne
+    gdy SNMP worker pominął cykl (brakujący bucket) i gap jest > step.
+    Pierwszy bucket jest pomijany (brak punktu referencyjnego → rate=0).
     """
     params: dict = {
         "device_id":   device_id,
@@ -314,21 +322,30 @@ def query_if_metrics_history(
         "step":        step_minutes * 60,
     }
     # Oblicza maksymalną wartość licznika per bucket, potem różnicę między
-    # sąsiednimi bucketami dzieloną przez krok [s] → bytes/s.
-    # Używa lagInFrame() (window function) zamiast neighbor() — neighbor() jest
-    # deprecated/wyłączony w ClickHouse 24.8+ (allow_deprecated_error_prone_window_functions=0).
+    # sąsiednimi bucketami dzieloną przez RZECZYWISTY czas między nimi [s] → bytes/s.
+    # Dzięki temu brakujące buckety (brak pomiaru w danym cyklu) nie zawyżają rate.
+    # Używa lagInFrame() (window function) — neighbor() deprecated w ClickHouse 24.8+.
     sql = (
         "SELECT"
         "  bucket,"
-        "  round(if(prev_max >= 0 AND cur_max >= prev_max,"
-        "     (cur_max - prev_max) / {step:Float64}, 0), 2) AS avg_value,"
-        "  round(if(prev_max >= 0 AND cur_max >= prev_max,"
-        "     (cur_max - prev_max) / {step:Float64}, 0), 2) AS max_value"
+        "  if(prev_max < 0 OR cur_max < prev_max, toFloat64(0),"
+        "     round((cur_max - prev_max)"
+        "           / greatest(toFloat64(toUnixTimestamp(bucket)) - toFloat64(toUnixTimestamp(prev_bucket)),"
+        "                      toFloat64({step:UInt32})), 2)"
+        "  ) AS avg_value,"
+        "  if(prev_max < 0 OR cur_max < prev_max, toFloat64(0),"
+        "     round((cur_max - prev_max)"
+        "           / greatest(toFloat64(toUnixTimestamp(bucket)) - toFloat64(toUnixTimestamp(prev_bucket)),"
+        "                      toFloat64({step:UInt32})), 2)"
+        "  ) AS max_value"
         " FROM ("
         "  SELECT bucket, cur_max,"
         "    lagInFrame(cur_max, 1, toFloat64(-1))"
         "      OVER (ORDER BY bucket ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)"
-        "      AS prev_max"
+        "      AS prev_max,"
+        "    lagInFrame(bucket, 1, bucket)"
+        "      OVER (ORDER BY bucket ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)"
+        "      AS prev_bucket"
         "  FROM ("
         "    SELECT"
         "      toStartOfInterval(ts, toIntervalSecond({step:UInt32})) AS bucket,"
@@ -342,6 +359,7 @@ def query_if_metrics_history(
         "    ORDER BY bucket"
         "  )"
         " )"
+        " WHERE prev_max >= 0 AND cur_max >= prev_max"  # filtruj: brak ref (prev=-1) i counter-wraps
         " ORDER BY bucket"
     )
     try:
@@ -589,14 +607,16 @@ def query_broadcast_history(device_id: int, since_hours: int = 24, step_minutes:
         "step_f":      float(step_sec),   # Float64 — used in rate division
     }
     sql_snmp = (
-        f"SELECT bucket, metric, prev_max, cur_max, step"
+        f"SELECT bucket, metric, prev_max, cur_max, prev_bucket"
         f" FROM ("
         f"  SELECT bucket, metric,"
         f"    sum_max AS cur_max,"
         f"    lagInFrame(sum_max, 1, toFloat64(-1))"
         f"      OVER (PARTITION BY metric ORDER BY bucket"
         f"            ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS prev_max,"
-        f"    {{step_f:Float64}} AS step"
+        f"    lagInFrame(bucket, 1, bucket)"
+        f"      OVER (PARTITION BY metric ORDER BY bucket"
+        f"            ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS prev_bucket"
         f"  FROM ("
         f"    SELECT bucket, metric, sum(max_val) AS sum_max"
         f"    FROM ("
@@ -628,10 +648,14 @@ def query_broadcast_history(device_id: int, since_hours: int = 24, step_minutes:
     try:
         client = _get_client()
         buckets: dict[str, dict[str, float]] = {}
-        for bucket, metric, prev_max, cur_max, step in client.query(sql_snmp, parameters=params).result_rows:
+        for bucket, metric, prev_max, cur_max, prev_bucket in client.query(sql_snmp, parameters=params).result_rows:
             key = bucket.isoformat() if hasattr(bucket, "isoformat") else str(bucket)
-            if prev_max >= 0 and cur_max >= prev_max and step > 0:
-                rate = round((cur_max - prev_max) / step, 4)
+            if prev_max >= 0 and cur_max >= prev_max:
+                try:
+                    elapsed = (bucket - prev_bucket).total_seconds()
+                except Exception:
+                    elapsed = step_sec
+                rate = round((cur_max - prev_max) / max(elapsed, step_sec), 4)
             else:
                 rate = 0.0
             buckets.setdefault(key, {})[metric] = rate

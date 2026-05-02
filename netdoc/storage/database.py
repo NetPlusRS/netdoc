@@ -249,6 +249,7 @@ def _migrate_columns() -> None:
         )""",
         "CREATE INDEX IF NOT EXISTS ix_fdb_device_id  ON device_fdb (device_id)",
         "CREATE INDEX IF NOT EXISTS ix_fdb_mac        ON device_fdb (mac)",
+        "CREATE INDEX IF NOT EXISTS ix_fdb_mac_lower  ON device_fdb (lower(mac))",
         "CREATE INDEX IF NOT EXISTS ix_fdb_polled_at  ON device_fdb (polled_at)",
         # VLAN membership — przynaleznosc portow do VLAN (2026-04-04)
         """CREATE TABLE IF NOT EXISTS device_vlan_port (
@@ -372,12 +373,17 @@ def _migrate_columns() -> None:
     for sql in migrations:
         try:
             with engine.begin() as conn:
-                conn.execute(text("SET LOCAL lock_timeout = '5s'"))
+                conn.execute(text("SET LOCAL lock_timeout = '2s'"))
                 conn.execute(text(sql))
         except Exception as exc:
             short = str(exc)[:120].replace("\n", " ")
             errors.append(short)
-            logger.debug("Migracja pominięta (ok gdy kolumna/tabela już istnieje): %s", short)
+            _expected = ("already exists", "duplicate_object", "DuplicateObject",
+                         "does not exist", "lock timeout", "LockNotAvailable")
+            if any(kw in str(exc) for kw in _expected):
+                logger.debug("Migracja pominięta: %s", short)
+            else:
+                logger.warning("Migracja NIEUDANA (nieoczekiwany błąd): %s", short)
     if errors:
         logger.info("Migracja kolumn: %d kroków wykonano, %d pominięto (patrz DEBUG)", len(migrations) - len(errors), len(errors))
     else:
