@@ -24,18 +24,28 @@
 </div>
 
 <!-- Clear all devices modal -->
-<div class="modal fade" id="clearDevicesModal" tabindex="-1">
+<div class="modal fade" id="clearDevicesModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Clear all devices</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" id="clearDevicesCloseBtn" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p>This will permanently delete <strong>all {{ devices|length }} devices</strong> including their scan results, vulnerabilities, credentials and security events.</p>
-        <p class="text-muted small mb-0">Broadcast and syslog history in ClickHouse is <strong>not</strong> deleted — use the buttons on the Broadcast and Syslog pages to clear those separately.</p>
+        <div id="clearDevicesConfirmBody">
+          <p>This will permanently delete <strong>all {{ devices|length }} devices</strong> including their scan results, vulnerabilities, credentials and security events.</p>
+          <p class="text-muted small mb-0">Broadcast and syslog history in ClickHouse is <strong>not</strong> deleted — use the buttons on the Broadcast and Syslog pages to clear those separately.</p>
+        </div>
+        <div id="clearDevicesProgressBody" style="display:none">
+          <p class="mb-2" id="clearDevicesProgressLabel">Stopping active workers…</p>
+          <div class="progress" style="height:8px">
+            <div class="progress-bar progress-bar-striped progress-bar-animated bg-danger"
+                 id="clearDevicesProgressBar" role="progressbar" style="width:0%"></div>
+          </div>
+          <p class="text-muted small mt-2 mb-0" id="clearDevicesProgressNote">Terminating database connections and releasing locks…</p>
+        </div>
       </div>
-      <div class="modal-footer">
+      <div class="modal-footer" id="clearDevicesFooter">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-danger" id="confirmClearDevices">
           <i class="bi bi-trash me-1"></i>Delete all devices
@@ -46,19 +56,66 @@
 </div>
 <script>
 document.getElementById('confirmClearDevices').addEventListener('click', function () {
-  var btn = this;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Deleting…';
+  var confirmBody = document.getElementById('clearDevicesConfirmBody');
+  var progressBody = document.getElementById('clearDevicesProgressBody');
+  var footer = document.getElementById('clearDevicesFooter');
+  var closeBtn = document.getElementById('clearDevicesCloseBtn');
+  var bar = document.getElementById('clearDevicesProgressBar');
+  var label = document.getElementById('clearDevicesProgressLabel');
+  var note = document.getElementById('clearDevicesProgressNote');
+
+  // Switch to progress view
+  confirmBody.style.display = 'none';
+  progressBody.style.display = '';
+  footer.style.display = 'none';
+  closeBtn.style.display = 'none';
+
+  // Animate progress through steps
+  var steps = [
+    { pct: 20, lbl: 'Stopping active workers…',           note: 'Terminating database connections and releasing locks…' },
+    { pct: 50, lbl: 'Releasing database locks…',          note: 'Waiting for all worker transactions to close…' },
+    { pct: 75, lbl: 'Deleting devices and history…',      note: 'TRUNCATE CASCADE — removing all dependent records…' },
+  ];
+  var stepIdx = 0;
+  function runStep() {
+    if (stepIdx >= steps.length) return;
+    var s = steps[stepIdx++];
+    bar.style.width = s.pct + '%';
+    label.textContent = s.lbl;
+    note.textContent = s.note;
+    if (stepIdx < steps.length) setTimeout(runStep, 900);
+  }
+  runStep();
+
   fetch('/maintenance/clear-devices', {method: 'POST'})
     .then(function (r) { return r.json(); })
     .then(function (d) {
-      bootstrap.Modal.getInstance(document.getElementById('clearDevicesModal')).hide();
-      if (d.ok) { window.location.reload(); } else { alert('Error: ' + d.message); }
+      if (d.ok) {
+        bar.style.width = '100%';
+        bar.classList.remove('progress-bar-animated');
+        label.textContent = 'Done — ' + d.message;
+        note.textContent = 'Reloading page…';
+        setTimeout(function () { window.location.reload(); }, 800);
+      } else {
+        // Show error and restore modal to closeable state
+        progressBody.style.display = 'none';
+        confirmBody.style.display = '';
+        var errDiv = document.createElement('div');
+        errDiv.className = 'alert alert-danger mb-0';
+        errDiv.innerHTML = '<i class="bi bi-x-circle me-2"></i><strong>Error:</strong> ';
+        errDiv.appendChild(document.createTextNode(d.message || 'Unknown error'));
+        confirmBody.innerHTML = '';
+        confirmBody.appendChild(errDiv);
+        footer.style.display = '';
+        closeBtn.style.display = '';
+      }
     })
-    .catch(function () { alert('Request failed.'); })
-    .finally(function () {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-trash me-1"></i>Delete all devices';
+    .catch(function () {
+      progressBody.style.display = 'none';
+      confirmBody.style.display = '';
+      confirmBody.innerHTML = '<div class="alert alert-danger mb-0"><i class="bi bi-x-circle me-2"></i>Request failed — check server logs.</div>';
+      footer.style.display = '';
+      closeBtn.style.display = '';
     });
 });
 </script>
@@ -243,7 +300,7 @@ document.getElementById('confirmClearDevices').addEventListener('click', functio
     <i class="bi bi-funnel me-1"></i>More…
   </button>
   <button class="btn btn-sm btn-link text-muted p-0" id="devFilterReset" title="Reset all filters">
-    <i class="bi bi-x-circle me-1"></i>Resetuj
+    <i class="bi bi-x-circle me-1"></i>Reset
   </button>
   {# ── Auto-refresh ──────────────────────────────────────────── #}
   <div class="d-flex align-items-center gap-1 ms-1" title="Auto-refresh of the devices page">
@@ -261,7 +318,7 @@ document.getElementById('confirmClearDevices').addEventListener('click', functio
   <a href="/devices/ai-report" target="_blank"
      class="btn btn-sm btn-outline-info ms-auto"
      title="Generate PDF/HTML report from AI assessments for all analyzed devices">
-    <i class="bi bi-file-earmark-text me-1"></i>Raport AI
+    <i class="bi bi-file-earmark-text me-1"></i>AI Report
     <span class="badge bg-info text-dark ms-1">{{ ai_last_by_device|length }}</span>
   </a>
   {% endif %}
@@ -293,11 +350,11 @@ document.getElementById('confirmClearDevices').addEventListener('click', functio
         <button class="btn btn-sm dev-flag-btn"
                 data-flag="{{ _c }}"
                 style="background:{{ _hex }};border:2px solid {{ _hex }};color:white;width:28px;height:28px;padding:0"
-                title="Flaga {{ _c }}"></button>
+                title="Flag {{ _c }}"></button>
         {% endfor %}
         <button class="btn btn-sm btn-outline-secondary dev-flag-btn"
                 data-flag=""
-                style="width:28px;height:28px;padding:0" title="Bez flagi"><i class="bi bi-x"></i></button>
+                style="width:28px;height:28px;padding:0" title="No flag"><i class="bi bi-x"></i></button>
       </div>
     </div>
     <div>
@@ -1207,7 +1264,7 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
       ${at ? `<span class="badge bg-secondary"><i class="bi bi-clock me-1"></i>${at}</span>` : ""}
       ${data.is_obsolete ? `<span class="badge bg-danger"><i class="bi bi-tools me-1"></i>Requires replacement</span>` : `<span class="badge bg-success"><i class="bi bi-check-lg me-1"></i>Hardware current</span>`}
       <span class="badge bg-${riskColor}" title="Security risk level"><i class="bi bi-shield me-1"></i>${RISK_LABELS[riskLevel] || riskLevel}</span>
-      ${fromHistory ? `<span class="badge bg-info text-dark">Historia</span>` : ""}
+      ${fromHistory ? `<span class="badge bg-info text-dark">History</span>` : ""}
     </div>`;
 
     if (data.summary) {
@@ -1739,7 +1796,7 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
       // null = nigdy nie widziane — traktuj jak uncertain, nie UP
       newClass = 'badge badge-uncertain status-badge';
       newText  = '?';
-      newTitle = 'Status: NIEPEWNY';
+      newTitle = 'Status: UNCERTAIN';
     } else if (item.is_active) {
       newClass = 'badge badge-up status-badge';
       newText  = 'UP';
@@ -1895,8 +1952,8 @@ document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
           if (staleText && data.monitoring_stale) {
             const m = data.monitoring_age_min || 0;
             staleText.textContent = m >= 60
-              ? Math.floor(m/60) + 'h ' + (m%60) + 'min temu'
-              : m >= 2 ? m + ' min temu' : 'przed chwila';
+              ? Math.floor(m/60) + 'h ' + (m%60) + 'min ago'
+              : m >= 2 ? m + ' min ago' : 'just now';
           }
         }
       })

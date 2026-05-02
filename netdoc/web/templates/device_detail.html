@@ -41,8 +41,12 @@
     {% if dev.is_monitored %}
     <span class="badge bg-warning text-dark">&#128065; Monitored</span>
     {% endif %}
-    {# ── Passport button ─────────────────────────────────────────────────── #}
-    <div class="ms-auto">
+    {# ── Print Passport + Pro Passport ──────────────────────────────────── #}
+    <div class="ms-auto d-flex gap-2">
+      <a href="{{ url_for('device_print', device_id=dev.id) }}" target="_blank"
+         class="btn btn-sm btn-outline-primary">
+        <i class="bi bi-printer me-1"></i>Print Passport
+      </a>
       {% if pro_passport %}
         {# Pro: split button — opens readiness modal or shows dropdown with latest #}
         <div class="btn-group">
@@ -66,7 +70,6 @@
           {% endif %}
         </div>
       {% else %}
-        {# Community: visible but disabled with tooltip #}
         <button class="btn btn-sm btn-outline-secondary" disabled
                 title="Device Passport — available in NetDoc Pro">
           <i class="bi bi-file-earmark-text me-1"></i>Device Passport
@@ -96,6 +99,9 @@
             <tr><td>MAC</td><td>
               {% if dev.mac %}<code>{{ dev.mac }}</code>{% else %}<span class="text-muted">—</span>{% endif %}
             </td></tr>
+            <tr id="connected-via-row" style="display:none"><td>Connected via</td>
+              <td id="connected-via-val"></td>
+            </tr>
             <tr><td>Vendor (OUI)</td><td>
               {{ dev.vendor or '<span class="text-muted">—</span>' | safe }}
             </td></tr>
@@ -412,7 +418,7 @@
       {% if vap_data %}
       <div class="card mb-3">
         <div class="card-header fw-semibold py-2">
-          <i class="bi bi-wifi me-1"></i>WiFi — SSIDs i klienci
+          <i class="bi bi-wifi me-1"></i>WiFi — SSIDs and clients
           <span class="badge bg-primary ms-2">{{ vap_data|sum(attribute='sta_count') }} clients</span>
         </div>
         <div class="card-body p-0">
@@ -422,8 +428,8 @@
                 <th>SSID</th>
                 <th>BSSID</th>
                 <th>Radio</th>
-                <th>Interfejs</th>
-                <th class="text-end">Klienci</th>
+                <th>Interface</th>
+                <th class="text-end">Clients</th>
                 <th class="text-end">TX</th>
                 <th class="text-end">RX</th>
               </tr>
@@ -455,7 +461,7 @@
             </tbody>
           </table>
           {% if vap_data[0].polled_at %}
-          <div class="text-muted small px-3 py-2">Ostatni odczyt: {{ vap_data[0].polled_at.strftime('%Y-%m-%d %H:%M') }}</div>
+          <div class="text-muted small px-3 py-2">Last read: {{ vap_data[0].polled_at.strftime('%Y-%m-%d %H:%M') }}</div>
           {% endif %}
         </div>
       </div>
@@ -734,7 +740,7 @@
                   <th style="min-width:9rem">Port</th>
                   <th style="width:5rem">Speed</th>
                   <th style="width:5rem">Status</th>
-                  <th style="width:7rem">Tryb</th>
+                  <th style="width:7rem">Mode</th>
                   <th style="width:9rem">VLAN</th>
                   <th style="width:7rem">STP</th>
                   <th>Neighbor (LLDP/CDP)</th>
@@ -750,7 +756,7 @@
       {% endif %}
 
       {# ── Interface Traffic Chart ──────────────────────────────────────── #}
-      {% if interfaces and dev.snmp_community %}
+      {% if interfaces %}
       <div class="card mb-3" id="card-if-traffic">
         <div class="card-header fw-semibold py-2 d-flex justify-content-between align-items-center">
           <span><i class="bi bi-graph-up me-1"></i>Interface Traffic</span>
@@ -772,8 +778,14 @@
           </div>
         </div>
         <div class="card-body">
-          <canvas id="ifTrafficChart" style="height:160px"></canvas>
+          <canvas id="ifTrafficChart" style="height:160px{% if not dev.snmp_community %};display:none{% endif %}"></canvas>
+          {% if not dev.snmp_community %}
+          <div class="text-muted text-center small py-3">
+            <i class="bi bi-wifi-off me-1"></i>SNMP not configured — no traffic data available.
+          </div>
+          {% else %}
           <div id="if-traffic-msg" class="text-muted text-center small py-2" style="display:none">No data — worker collects metrics every 5 min.</div>
+          {% endif %}
         </div>
         <div class="card-footer py-2">
           <table class="table table-sm mb-0" style="font-size:.82rem" id="if-rates-table">
@@ -784,7 +796,7 @@
               <th title="Inbound discards — buffer overflow">In Drop</th>
               <th title="Outbound discards">Out Drop</th>
             </tr></thead>
-            <tbody id="if-rates-body"><tr><td colspan="7" class="text-muted text-center">Ladowanie...</td></tr></tbody>
+            <tbody id="if-rates-body"><tr><td colspan="7" class="text-muted text-center">Loading...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -811,14 +823,14 @@
           {# FDB tab #}
           <div id="l2-tab-fdb" class="l2-tab-pane">
             <div class="px-3 pt-2 pb-1 d-flex gap-2">
-              <input id="fdb-mac-filter" class="form-control form-control-sm" placeholder="Filtruj MAC..." style="width:16rem">
+              <input id="fdb-mac-filter" class="form-control form-control-sm" placeholder="Filter MAC..." style="width:16rem">
             </div>
             <div class="table-responsive" style="max-height:320px;overflow-y:auto">
               <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
                 <thead class="table-light sticky-top"><tr>
                   <th>MAC</th><th>Port / Interface</th><th>VLAN</th><th>Status</th>
                 </tr></thead>
-                <tbody id="fdb-tbody"><tr><td colspan="4" class="text-muted text-center py-3">Ladowanie...</td></tr></tbody>
+                <tbody id="fdb-tbody"><tr><td colspan="4" class="text-muted text-center py-3">Loading...</td></tr></tbody>
               </table>
             </div>
           </div>
@@ -827,9 +839,9 @@
             <div class="table-responsive" style="max-height:320px;overflow-y:auto">
               <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
                 <thead class="table-light sticky-top"><tr>
-                  <th style="width:3rem">VLAN</th><th style="width:8rem">Nazwa</th><th>Porty (ifIndex) — <span class="text-muted fw-normal">* = native/PVID, T: = trunk</span></th><th style="width:10rem">Tryb</th>
+                  <th style="width:3rem">VLAN</th><th style="width:8rem">Name</th><th>Ports (ifIndex) — <span class="text-muted fw-normal">* = native/PVID, T: = trunk</span></th><th style="width:10rem">Mode</th>
                 </tr></thead>
-                <tbody id="vlan-tbody"><tr><td colspan="4" class="text-muted text-center py-3">Ladowanie...</td></tr></tbody>
+                <tbody id="vlan-tbody"><tr><td colspan="4" class="text-muted text-center py-3">Loading...</td></tr></tbody>
               </table>
             </div>
           </div>
@@ -841,7 +853,7 @@
                 <thead class="table-light sticky-top"><tr>
                   <th>Port #</th><th>Interface</th><th>State</th><th>Role</th><th>Cost</th>
                 </tr></thead>
-                <tbody id="stp-tbody"><tr><td colspan="5" class="text-muted text-center py-3">Ladowanie...</td></tr></tbody>
+                <tbody id="stp-tbody"><tr><td colspan="5" class="text-muted text-center py-3">Loading...</td></tr></tbody>
               </table>
             </div>
           </div>
@@ -855,7 +867,7 @@
         <div class="card-body py-2 d-flex align-items-center justify-content-between gap-2">
           <div>
             <span class="fw-semibold">Full port scan (1–65535)</span>
-            <span class="ms-2 text-muted small">automatyczny, cykliczny</span>
+            <span class="ms-2 text-muted small">automatic, cyclic</span>
           </div>
           <form method="post" action="{{ url_for('device_toggle_full_scan', device_id=dev.id) }}" class="d-inline">
             {% if dev.no_full_scan %}
@@ -936,7 +948,7 @@
               <tr><th>Port</th><th>Service</th><th>Product / Banner</th></tr>
             </thead>
             <tbody>
-              {% for port_num, info in latest_scan.open_ports.items() | sort %}
+              {% for port_num, info in sorted_open_ports %}
               {% set svc = info.service or '' %}
               {% set prod = info.product or '' %}
               {% set ver = info.version or '' %}
@@ -1281,12 +1293,21 @@
       }
       var flows = data.flows || [];
       document.getElementById('ntopng-count').textContent = flows.length;
+      function _x(s) { if (s == null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
       if (data.ntopng_url) {
-        document.getElementById('ntopng-link-wrap').innerHTML =
-          '<a href="' + data.ntopng_url + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation()">Open ntopng →</a>';
+        var _a = document.createElement('a');
+        _a.href = data.ntopng_url;
+        _a.target = '_blank';
+        _a.rel = 'noopener';
+        _a.className = 'btn btn-sm btn-outline-secondary';
+        _a.onclick = function(ev) { ev.stopPropagation(); };
+        _a.textContent = 'Open ntopng →';
+        var _wrap = document.getElementById('ntopng-link-wrap');
+        _wrap.innerHTML = '';
+        _wrap.appendChild(_a);
       }
       if (flows.length === 0) {
-        body.innerHTML = '<p class="text-muted small p-3 mb-0">No active flows for ' + data.ip + '.</p>';
+        body.innerHTML = '<p class="text-muted small p-3 mb-0">No active flows for ' + _x(data.ip) + '.</p>';
         return;
       }
       var rows = flows.map(function (f) {
@@ -1294,11 +1315,11 @@
                   : f.bytes >= 1024 ? (f.bytes / 1024).toFixed(1) + ' KB'
                   : f.bytes + ' B';
         return '<tr>' +
-          '<td class="small font-monospace">' + (f.src_ip || '') + (f.src_port ? ':' + f.src_port : '') + '</td>' +
-          '<td class="small font-monospace">' + (f.dst_ip || '') + (f.dst_port ? ':' + f.dst_port : '') + '</td>' +
-          '<td class="small"><span class="badge bg-secondary">' + (f.proto || '?') + '</span></td>' +
+          '<td class="small font-monospace">' + _x(f.src_ip) + (f.src_port ? ':' + _x(f.src_port) : '') + '</td>' +
+          '<td class="small font-monospace">' + _x(f.dst_ip) + (f.dst_port ? ':' + _x(f.dst_port) : '') + '</td>' +
+          '<td class="small"><span class="badge bg-secondary">' + _x(f.proto || '?') + '</span></td>' +
           '<td class="small text-end">' + bytes + '</td>' +
-          '<td class="small text-muted">' + (f.info || '') + '</td>' +
+          '<td class="small text-muted">' + _x(f.info) + '</td>' +
           '</tr>';
       }).join('');
       body.innerHTML =
@@ -1383,6 +1404,7 @@
 
 <script>
 (function () {
+  function _x(s) { if (s == null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   var deviceId = {{ dev.id }};
   var _SEV_CLASS = {info: 'text-info', warning: 'text-warning', critical: 'text-danger', error: 'text-danger'};
   var _SEV_ICON  = {info: 'bi-info-circle', warning: 'bi-exclamation-triangle', critical: 'bi-exclamation-octagon', error: 'bi-exclamation-octagon'};
@@ -1403,13 +1425,13 @@
         var sev   = e.severity || 'info';
         var cls   = _SEV_CLASS[sev] || 'text-secondary';
         var icon  = _SEV_ICON[sev]  || 'bi-dot';
-        var label = _TYPE_LABEL[e.event_type] || e.event_type;
+        var label = _TYPE_LABEL[e.event_type] || _x(e.event_type);
         return '<tr>' +
-          '<td class="small text-muted font-monospace">' + (e.ts || '') + '</td>' +
+          '<td class="small text-muted font-monospace">' + _x(e.ts) + '</td>' +
           '<td class="small"><i class="bi ' + icon + ' ' + cls + ' me-1"></i>' +
             '<span class="badge bg-secondary bg-opacity-25 text-body border">' + label + '</span></td>' +
-          '<td class="small ' + cls + ' fw-semibold text-uppercase">' + sev + '</td>' +
-          '<td class="small">' + (e.description || '') + '</td>' +
+          '<td class="small ' + cls + ' fw-semibold text-uppercase">' + _x(sev) + '</td>' +
+          '<td class="small">' + _x(e.description) + '</td>' +
           '</tr>';
       }).join('');
       document.getElementById('secevt-body').innerHTML =
@@ -1425,6 +1447,7 @@
 
 <script>
 (function () {
+  function _x(s) { if (s == null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   var deviceId = {{ dev.id }};
   var _SEV_BADGE = {critical: 'bg-danger', warning: 'bg-warning text-dark', info: 'bg-secondary'};
   fetch('/api/devices/' + deviceId + '/wazuh-alerts')
@@ -1437,11 +1460,11 @@
       var rows = data.alerts.map(function (a) {
         var badge = _SEV_BADGE[a.severity] || 'bg-secondary';
         return '<tr>' +
-          '<td class="small text-muted font-monospace">' + (a.ts || '') + '</td>' +
-          '<td class="small text-center"><span class="badge ' + badge + '">' + a.rule_level + '</span></td>' +
-          '<td class="small font-monospace text-muted">' + (a.rule_id || '') + '</td>' +
-          '<td class="small">' + (a.description || '') + '</td>' +
-          '<td class="small text-muted">' + (a.agent_name || '') + '</td>' +
+          '<td class="small text-muted font-monospace">' + _x(a.ts) + '</td>' +
+          '<td class="small text-center"><span class="badge ' + badge + '">' + _x(a.rule_level) + '</span></td>' +
+          '<td class="small font-monospace text-muted">' + _x(a.rule_id) + '</td>' +
+          '<td class="small">' + _x(a.description) + '</td>' +
+          '<td class="small text-muted">' + _x(a.agent_name) + '</td>' +
           '</tr>';
       }).join('');
       document.getElementById('wazuh-body').innerHTML =
@@ -1527,7 +1550,7 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
   let _chart   = null;
 
   function fmtBps(v) {
-    if (!v || v < 0) return '—';
+    if (v == null || v < 0) return '—';
     if (v >= 1e9) return (v/1e9).toFixed(2) + ' Gbps';
     if (v >= 1e6) return (v/1e6).toFixed(2) + ' Mbps';
     if (v >= 1e3) return (v/1e3).toFixed(1) + ' Kbps';
@@ -1559,18 +1582,39 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
   }
 
   function _renderTrafficChart(inData, outData, hours) {
-    const msg     = document.getElementById('if-traffic-msg');
-    const buckets = inData.buckets || [];
-    if (buckets.length === 0) {
-      msg.style.display = '';
+    const msg  = document.getElementById('if-traffic-msg');
+    const canvas = document.getElementById('ifTrafficChart');
+    const inBuckets  = inData.buckets  || [];
+    const outBuckets = outData.buckets || [];
+
+    if (inBuckets.length === 0 && outBuckets.length === 0) {
+      if (msg)    msg.style.display = '';
+      if (canvas) canvas.style.display = 'none';
       if (_chart) { _chart.destroy(); _chart = null; }
       return;
     }
-    msg.style.display = 'none';
-    const labels  = buckets.map(b => _fmtBucket(b.bucket, hours));
-    const inVals  = buckets.map(b => (b.avg_value || 0) * 8);   // bytes/s → bps
-    const outVals = (outData.buckets || []).map(b => (b.avg_value || 0) * 8);
-    const ctx = document.getElementById('ifTrafficChart').getContext('2d');
+    if (msg)    msg.style.display = 'none';
+    if (canvas) canvas.style.display = '';
+
+    // Wyrównaj in/out po kluczu bucket (timestamp string) — unikamy przesunięcia
+    // gdy jeden kierunek ma brakujące pomiary (różne długości tablic).
+    const outMap = {};
+    for (const b of outBuckets) outMap[b.bucket] = (b.avg_value || 0) * 8;
+
+    // Scal: użyj in-series jako bazy; dodaj buckety obecne tylko w out
+    const allBuckets = new Map();
+    for (const b of inBuckets)  allBuckets.set(b.bucket, { in: (b.avg_value || 0) * 8, out: 0 });
+    for (const b of outBuckets) {
+      if (allBuckets.has(b.bucket)) allBuckets.get(b.bucket).out = (b.avg_value || 0) * 8;
+      else allBuckets.set(b.bucket, { in: 0, out: (b.avg_value || 0) * 8 });
+    }
+    const merged = Array.from(allBuckets.entries()).sort((a, b) => a[0] < b[0] ? -1 : 1);
+
+    const labels  = merged.map(([ts]) => _fmtBucket(ts, hours));
+    const inVals  = merged.map(([, v]) => v.in);
+    const outVals = merged.map(([, v]) => v.out);
+
+    const ctx = canvas.getContext('2d');
     if (_chart) _chart.destroy();
     _chart = new Chart(ctx, {
       type: 'line',
@@ -1596,6 +1640,7 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
     const ifIndex = document.getElementById('if-select')?.value;
     const hours   = parseInt(document.getElementById('if-hours')?.value || 24);
     if (!ifIndex) return;
+    {% if not dev.snmp_community %}return;{% endif %}  // no SNMP — no data
     // Dopasuj granulację do okresu: im dłuższy okres tym większy krok → stała liczba punktów (~150-200)
     const step = hours <= 6 ? 5 : (hours <= 24 ? 10 : (hours <= 72 ? 30 : 60));
     const base = API+'/if-metrics?if_index='+ifIndex+'&hours='+hours+'&step_minutes='+step;
@@ -1603,7 +1648,7 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
       apiFetch(base+'&metric=in_octets_hc'),
       apiFetch(base+'&metric=out_octets_hc'),
     ]).then(([inHC, outHC]) => {
-      if ((inHC.buckets || []).length > 0) return [inHC, outHC];
+      if ((inHC.buckets || []).length > 0 || (outHC.buckets || []).length > 0) return [inHC, outHC];
       // Fallback: urzadzenie nie obsluguje 64-bit HC — probuj 32-bit
       return Promise.all([
         apiFetch(base+'&metric=in_octets'),
@@ -2188,5 +2233,48 @@ document.querySelectorAll('.collapsible-header').forEach(function(header) {
   </div>
 </div>
 {% endif %}
+
+<script>
+(function(){
+  const DEV_ID = {{ dev.id }};
+
+  function _e(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function _fmtAge(iso) {
+    if (!iso) return '';
+    const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+    const diff = Math.floor((Date.now() - d.getTime()) / 60000);
+    if (diff <= 0)   return 'just now';
+    if (diff < 60)   return diff + ' min ago';
+    if (diff < 1440) return Math.floor(diff / 60) + 'h ago';
+    return Math.floor(diff / 1440) + 'd ago';
+  }
+
+  window.addEventListener('load', function() {
+    const row = document.getElementById('connected-via-row');
+    const val = document.getElementById('connected-via-val');
+    if (!row || !val) return;
+
+    fetch('/api/devices/' + DEV_ID + '/where-connected')
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => {
+        const conns = data.connections || [];
+        if (!conns.length) return;
+        const c = conns[0];
+        let html = '<a href="/devices/' + c.switch_id + '">' + _e(c.switch_hostname) + '</a>'
+          + ' &rarr; <strong>' + _e(c.interface_name || (c.if_index ? 'port ' + c.if_index : '?')) + '</strong>';
+        if (c.vlan_id) html += ' <span class="badge bg-secondary">VLAN ' + _e(c.vlan_id) + '</span>';
+        if (c.polled_at) html += ' <small class="text-muted ms-1">' + _fmtAge(c.polled_at) + '</small>';
+        if (conns.length > 1) html += ' <small class="text-muted ms-2">+' + (conns.length - 1) + ' more</small>';
+        val.innerHTML = html;
+        row.style.display = '';
+      })
+      .catch(() => {});
+  });
+})();
+</script>
 
 {% endblock %}

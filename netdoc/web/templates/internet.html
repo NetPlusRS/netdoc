@@ -2,42 +2,42 @@
 {% block title %}Internet{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h4 class="mb-0"><i class="bi bi-globe2 me-2"></i>Status Internetu / WAN</h4>
-  {% if updated_at %}<small class="text-muted">Sprawdzono: {{ updated_at }}</small>{% endif %}
+  <h4 class="mb-0"><i class="bi bi-globe2 me-2"></i>Internet / WAN Status</h4>
+  {% if updated_at %}<small class="text-muted">Checked: {{ updated_at }}</small>{% endif %}
 </div>
 
 {% if wan and wan.ok %}
 <div class="card mb-4">
-  <div class="card-header"><i class="bi bi-geo-alt me-1"></i>Publiczne IP i lokalizacja WAN</div>
+  <div class="card-header"><i class="bi bi-geo-alt me-1"></i>Public IP and WAN location</div>
   <div class="card-body">
     <div class="row g-3 text-center">
       <div class="col-6 col-md-3">
         <div class="display-6 fw-bold">{{ wan.ip or "?" }}</div>
-        <div class="text-muted small mt-1">Publiczne IP</div>
+        <div class="text-muted small mt-1">Public IP</div>
       </div>
       <div class="col-6 col-md-3">
         <div class="display-6">{{ wan.country or "?" }}</div>
-        <div class="text-muted small mt-1">Kraj (ISO)</div>
+        <div class="text-muted small mt-1">Country (ISO)</div>
       </div>
       <div class="col-6 col-md-3">
         <div class="display-6 fs-4">{{ wan.city or "?" }}</div>
-        <div class="text-muted small mt-1">Miasto</div>
+        <div class="text-muted small mt-1">City</div>
       </div>
       <div class="col-6 col-md-3">
         <div class="fs-5 fw-bold text-truncate" style="max-width:200px;margin:0 auto">{{ wan.org or "?" }}</div>
-        <div class="text-muted small mt-1">Dostawca (ISP/AS)</div>
+        <div class="text-muted small mt-1">Provider (ISP/AS)</div>
       </div>
     </div>
     <div class="mt-3 text-muted small text-center">
       Region: {{ wan.region or "?" }} &nbsp;|&nbsp;
-      Strefa: {{ wan.timezone or "?" }} &nbsp;|&nbsp;
-      Wspolrzedne: {{ wan.loc or "?" }}
-      {% if wan.updated_at %}&nbsp;|&nbsp; Pobrano: {{ wan.updated_at }}{% endif %}
+      Timezone: {{ wan.timezone or "?" }} &nbsp;|&nbsp;
+      Coordinates: {{ wan.loc or "?" }}
+      {% if wan.updated_at %}&nbsp;|&nbsp; Fetched: {{ wan.updated_at }}{% endif %}
     </div>
   </div>
 </div>
 {% elif wan and not wan.ok %}
-<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-1"></i>Blad WAN lookup: {{ wan.err or "nieznany" }}</div>
+<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-1"></i>WAN lookup error: {{ wan.err or "unknown" }}</div>
 {% endif %}
 
 <div class="row g-3 mb-4">
@@ -51,7 +51,7 @@
           {% if dg.ok %}
           <div class="display-6 text-success"><i class="bi bi-check-circle-fill"></i></div>
           <div class="fs-3 fw-bold mt-1">{{ dg.ms }} ms</div>
-          <div class="text-muted small">TCP latencja</div>
+          <div class="text-muted small">TCP latency</div>
           {% else %}
           <div class="display-6 text-danger"><i class="bi bi-x-circle-fill"></i></div>
           <div class="text-danger small mt-1">{{ dg.err or "FAIL" }}</div>
@@ -68,7 +68,7 @@
           {% if dc.ok %}
           <div class="display-6 text-success"><i class="bi bi-check-circle-fill"></i></div>
           <div class="fs-3 fw-bold mt-1">{{ dc.ms }} ms</div>
-          <div class="text-muted small">TCP latencja</div>
+          <div class="text-muted small">TCP latency</div>
           {% else %}
           <div class="display-6 text-danger"><i class="bi bi-x-circle-fill"></i></div>
           <div class="text-danger small mt-1">{{ dc.err or "FAIL" }}</div>
@@ -82,12 +82,12 @@
 {% set hc = status.http_cloudflare if status else {} %}
 {% if hc %}
 <div class="card mb-4">
-  <div class="card-header"><i class="bi bi-activity me-1"></i>HTTP Latencja i Jitter (1.1.1.1, {{ hc.pings or 6 }} prob)</div>
+  <div class="card-header"><i class="bi bi-activity me-1"></i>HTTP Latency and Jitter (1.1.1.1, {{ hc.pings or 6 }} probes)</div>
   <div class="card-body">
     {% if hc.ok %}
     <div class="row g-3 text-center">
       <div class="col-6 col-md-3">
-        <div class="display-6">{{ hc.avg_ms }}</div><div class="text-muted small">Srednia [ms]</div>
+        <div class="display-6">{{ hc.avg_ms }}</div><div class="text-muted small">Average [ms]</div>
       </div>
       <div class="col-6 col-md-3">
         <div class="display-6 text-success">{{ hc.min_ms }}</div><div class="text-muted small">Min [ms]</div>
@@ -99,9 +99,9 @@
         <div class="display-6">{{ hc.jitter_ms }}</div><div class="text-muted small">Jitter [ms] std dev</div>
       </div>
     </div>
-    {% if hc.errors %}<div class="mt-2 text-warning small"><i class="bi bi-exclamation-triangle me-1"></i>Bledy: {{ hc.errors }}/{{ hc.pings }}</div>{% endif %}
+    {% if hc.errors %}<div class="mt-2 text-warning small"><i class="bi bi-exclamation-triangle me-1"></i>Errors: {{ hc.errors }}/{{ hc.pings }}</div>{% endif %}
     {% else %}
-    <div class="text-danger"><i class="bi bi-x-circle me-1"></i>HTTP nieosiagalny — wszystkie proby zawiodly</div>
+    <div class="text-danger"><i class="bi bi-x-circle me-1"></i>HTTP unreachable — all attempts failed</div>
     {% endif %}
   </div>
 </div>
@@ -116,16 +116,16 @@
       <div class="col-md-4">
         <div class="display-6 text-success"><i class="bi bi-arrow-down-circle me-1"></i>{{ speed.download_mbps }}</div>
         <div class="text-muted small">Download [Mbps]</div>
-        {% if speed.dl_elapsed_s %}<div class="text-muted small">w {{ speed.dl_elapsed_s }}s</div>{% endif %}
+        {% if speed.dl_elapsed_s %}<div class="text-muted small">in {{ speed.dl_elapsed_s }}s</div>{% endif %}
       </div>
       <div class="col-md-4">
         <div class="display-6 text-info"><i class="bi bi-arrow-up-circle me-1"></i>{{ speed.upload_mbps }}</div>
         <div class="text-muted small">Upload [Mbps]</div>
-        {% if speed.ul_elapsed_s %}<div class="text-muted small">w {{ speed.ul_elapsed_s }}s</div>{% endif %}
+        {% if speed.ul_elapsed_s %}<div class="text-muted small">in {{ speed.ul_elapsed_s }}s</div>{% endif %}
       </div>
       <div class="col-md-4 d-flex flex-column justify-content-center">
-        <div class="text-muted small">Wykonano: {{ speed.updated_at or "?" }}</div>
-        {% if next_speed_min is not none %}<div class="text-muted small">Kolejny za ~{{ next_speed_min }} min</div>{% endif %}
+        <div class="text-muted small">Completed: {{ speed.updated_at or "?" }}</div>
+        {% if next_speed_min is not none %}<div class="text-muted small">Next in ~{{ next_speed_min }} min</div>{% endif %}
       </div>
     </div>
     {% else %}
@@ -139,12 +139,12 @@
   <div class="card-body d-flex align-items-center gap-3">
     <i class="bi bi-bar-chart-fill fs-3 text-warning"></i>
     <div>
-      <div class="fw-bold">Dashboard Grafana — metryki historyczne</div>
-      <div class="text-muted small">DNS latencja, jitter i predkosc lacza w czasie</div>
+      <div class="fw-bold">Grafana Dashboard — historical metrics</div>
+      <div class="text-muted small">DNS latency, jitter and link speed over time</div>
     </div>
     <a href="{{ grafana_url }}/d/netdoc-internet/netdoc-internet?orgId=1" target="_blank"
        class="btn btn-outline-warning ms-auto">
-      <i class="bi bi-box-arrow-up-right me-1"></i>Otworz w Grafanie
+      <i class="bi bi-box-arrow-up-right me-1"></i>Open in Grafana
     </a>
   </div>
 </div>

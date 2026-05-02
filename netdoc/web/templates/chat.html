@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Asystent AI{% endblock %}
+{% block title %}AI Assistant{% endblock %}
 {% block head %}
 <style>
   .chat-wrap{display:flex;flex-direction:column;height:calc(100vh - 180px);min-height:400px;}
@@ -66,19 +66,19 @@
 {% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h4 class="mb-0"><i class="bi bi-robot me-2"></i>Asystent AI NetDoc</h4>
+  <h4 class="mb-0"><i class="bi bi-robot me-2"></i>NetDoc AI Assistant</h4>
   <div class="d-flex align-items-center gap-2">
-    <button class="btn btn-sm btn-outline-secondary no-print" onclick="exportPdf()" title="Eksportuj rozmowe do PDF">
+    <button class="btn btn-sm btn-outline-secondary no-print" onclick="exportPdf()" title="Export conversation to PDF">
       <i class="bi bi-file-earmark-pdf me-1"></i>PDF
     </button>
-    <button class="btn btn-sm btn-outline-secondary no-print" onclick="newChat()" title="Nowa rozmowa">
-      <i class="bi bi-plus-circle me-1"></i>Nowa rozmowa
+    <button class="btn btn-sm btn-outline-secondary no-print" onclick="newChat()" title="New conversation">
+      <i class="bi bi-plus-circle me-1"></i>New conversation
     </button>
     <a href="/chat/history" class="btn btn-sm btn-outline-secondary no-print">
-      <i class="bi bi-clock-history me-1"></i>Historia
+      <i class="bi bi-clock-history me-1"></i>History
     </a>
-    <a href="/chat/context" class="btn btn-sm btn-outline-secondary no-print" title="Opis systemu NetDoc">
-      <i class="bi bi-info-circle me-1"></i>O systemie
+    <a href="/chat/context" class="btn btn-sm btn-outline-secondary no-print" title="NetDoc system description">
+      <i class="bi bi-info-circle me-1"></i>About system
     </a>
     <span class="badge {% if disabled %}bg-danger{% else %}bg-success{% endif %} fs-6">
       {% if disabled %}Disabled{% else %}Active{% endif %}
