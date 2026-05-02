@@ -1,5 +1,9 @@
 """Testy REST API dla endpointow /api/devices."""
-from netdoc.storage.models import Device, DeviceType
+from datetime import datetime
+from netdoc.storage.models import (
+    Device, DeviceType, Interface, DeviceVlanPort, DeviceStpPort,
+    DeviceFdbEntry, TopologyLink, TopologyProtocol,
+)
 
 
 def _add_device(db, ip: str, hostname: str = None, active: bool = True, dtype=DeviceType.router) -> Device:
@@ -516,3 +520,435 @@ def test_patch_device_type_explicitly(client, db):
     resp = client.patch(f"/api/devices/{device.id}", json={"device_type": "router"})
     assert resp.status_code == 200
     assert resp.json()["device_type"] == "router"
+
+
+# ── where-connected endpoint ──────────────────────────────────────────────────
+
+def _add_fdb(db, switch_id: int, mac: str, bridge_port: int = 1,
+             if_index: int = None, interface_name: str = None,
+             vlan_id: int = None, fdb_status: int = 3) -> "DeviceFdbEntry":
+    from netdoc.storage.models import DeviceFdbEntry
+    from datetime import datetime
+    entry = DeviceFdbEntry(
+        device_id=switch_id,
+        mac=mac,
+        bridge_port=bridge_port,
+        if_index=if_index,
+        interface_name=interface_name,
+        vlan_id=vlan_id,
+        fdb_status=fdb_status,
+        polled_at=datetime.utcnow(),
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+def test_where_connected_not_found(client):
+    """GET /where-connected na nieistniejacym urzadzeniu zwraca 404."""
+    resp = client.get("/api/devices/99999/where-connected")
+    assert resp.status_code == 404
+
+
+def test_where_connected_no_mac(client, db):
+    """Urzadzenie bez MAC zwraca puste connections."""
+    device = _add_device(db, "10.40.0.1")
+    assert device.mac is None
+    resp = client.get(f"/api/devices/{device.id}/where-connected")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["mac"] is None
+    assert data["connections"] == []
+
+
+def test_where_connected_mac_no_fdb(client, db):
+    """Urzadzenie z MAC ale bez wpisow FDB zwraca puste connections."""
+    device = Device(ip="10.40.0.2", mac="aa:bb:cc:dd:ee:ff",
+                    device_type=DeviceType.server, is_active=True)
+    db.add(device); db.commit(); db.refresh(device)
+
+    resp = client.get(f"/api/devices/{device.id}/where-connected")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["mac"] == "aa:bb:cc:dd:ee:ff"
+    assert data["connections"] == []
+
+
+def test_where_connected_with_fdb_entry(client, db):
+    """Urzadzenie z wpisem FDB na switchu zwraca polaczenie z danymi portu."""
+    switch = _add_device(db, "192.168.1.1", hostname="sw-core-01", dtype=DeviceType.switch)
+    client_dev = Device(ip="192.168.1.100", mac="11:22:33:44:55:66",
+                        device_type=DeviceType.workstation, is_active=True)
+    db.add(client_dev); db.commit(); db.refresh(client_dev)
+
+    _add_fdb(db, switch_id=switch.id, mac="11:22:33:44:55:66",
+             bridge_port=5, if_index=5, interface_name="GigabitEthernet0/5",
+             vlan_id=10, fdb_status=3)
+
+    resp = client.get(f"/api/devices/{client_dev.id}/where-connected")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["mac"] == "11:22:33:44:55:66"
+    assert len(data["connections"]) == 1
+    conn = data["connections"][0]
+    assert conn["switch_id"] == switch.id
+    assert conn["switch_hostname"] == "sw-core-01"
+    assert conn["switch_ip"] == "192.168.1.1"
+    assert conn["interface_name"] == "GigabitEthernet0/5"
+    assert conn["if_index"] == 5
+    assert conn["vlan_id"] == 10
+    assert conn["fdb_status"] == 3
+    assert conn["polled_at"] is not None
+    assert conn["polled_at"].endswith("Z"), f"polled_at musi miec sufiks Z (UTC), got: {conn['polled_at']!r}"
+
+
+def test_where_connected_multiple_switches(client, db):
+    """Gdy ten sam MAC widziany na kilku switchach — zwraca wiele wpisow (max 10)."""
+    sw1 = _add_device(db, "192.168.2.1", hostname="sw-1", dtype=DeviceType.switch)
+    sw2 = _add_device(db, "192.168.2.2", hostname="sw-2", dtype=DeviceType.switch)
+    client_dev = Device(ip="192.168.2.100", mac="aa:11:22:33:44:55",
+                        device_type=DeviceType.server, is_active=True)
+    db.add(client_dev); db.commit(); db.refresh(client_dev)
+
+    _add_fdb(db, switch_id=sw1.id, mac="aa:11:22:33:44:55", bridge_port=1,
+             interface_name="Gi0/1")
+    _add_fdb(db, switch_id=sw2.id, mac="aa:11:22:33:44:55", bridge_port=2,
+             interface_name="Gi0/2")
+
+    resp = client.get(f"/api/devices/{client_dev.id}/where-connected")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["connections"]) == 2
+    switch_ips = {c["switch_ip"] for c in data["connections"]}
+    assert "192.168.2.1" in switch_ips
+    assert "192.168.2.2" in switch_ips
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers for L2 tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _add_iface(db, device_id, if_index, name, alias=None, admin=True, oper=True,
+               speed=1000, port_mode=None, native_vlan=None) -> Interface:
+    iface = Interface(
+        device_id=device_id, if_index=if_index, name=name,
+        alias=alias, admin_status=admin, oper_status=oper,
+        speed=speed, port_mode=port_mode, native_vlan=native_vlan,
+        polled_at=datetime.utcnow(),
+    )
+    db.add(iface)
+    db.commit()
+    db.refresh(iface)
+    return iface
+
+
+def _add_vlan_port(db, device_id, vlan_id, if_index, vlan_name=None,
+                   port_mode="access", is_pvid=True) -> DeviceVlanPort:
+    vp = DeviceVlanPort(
+        device_id=device_id, vlan_id=vlan_id, if_index=if_index,
+        vlan_name=vlan_name, port_mode=port_mode, is_pvid=is_pvid,
+        polled_at=datetime.utcnow(),
+    )
+    db.add(vp)
+    db.commit()
+    db.refresh(vp)
+    return vp
+
+
+def _add_stp_port(db, device_id, stp_port_num, if_index=None,
+                  stp_state=5, stp_role="designated", path_cost=19) -> DeviceStpPort:
+    sp = DeviceStpPort(
+        device_id=device_id, stp_port_num=stp_port_num, if_index=if_index,
+        stp_state=stp_state, stp_role=stp_role, path_cost=path_cost,
+        polled_at=datetime.utcnow(),
+    )
+    db.add(sp)
+    db.commit()
+    db.refresh(sp)
+    return sp
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FDB endpoint tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_fdb_not_found(client):
+    resp = client.get("/api/devices/99999/fdb")
+    assert resp.status_code == 404
+
+
+def test_fdb_empty(client, db):
+    sw = _add_device(db, "10.50.0.1", dtype=DeviceType.switch)
+    resp = client.get(f"/api/devices/{sw.id}/fdb")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 0
+    assert data["entries"] == []
+
+
+def test_fdb_returns_entries(client, db):
+    sw = _add_device(db, "10.50.0.2", dtype=DeviceType.switch)
+    _add_fdb(db, switch_id=sw.id, mac="aa:bb:cc:dd:ee:01",
+             bridge_port=10, if_index=10, interface_name="Gi1/0/10", vlan_id=100, fdb_status=3)
+
+    resp = client.get(f"/api/devices/{sw.id}/fdb")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    e = data["entries"][0]
+    assert e["mac"] == "aa:bb:cc:dd:ee:01"
+    assert e["interface_name"] == "Gi1/0/10"
+    assert e["vlan_id"] == 100
+    assert e["fdb_status"] == 3
+    assert e["polled_at"] is not None
+    assert e["polled_at"].endswith("Z"), f"polled_at must end with Z, got: {e['polled_at']!r}"
+
+
+def test_fdb_mac_filter(client, db):
+    sw = _add_device(db, "10.50.0.3", dtype=DeviceType.switch)
+    _add_fdb(db, switch_id=sw.id, mac="aa:bb:cc:dd:ee:01", bridge_port=1)
+    _add_fdb(db, switch_id=sw.id, mac="11:22:33:44:55:66", bridge_port=2)
+
+    resp = client.get(f"/api/devices/{sw.id}/fdb?mac=aa:bb")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["entries"]) == 1
+    assert data["entries"][0]["mac"] == "aa:bb:cc:dd:ee:01"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VLAN ports endpoint tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_vlan_ports_not_found(client):
+    resp = client.get("/api/devices/99999/vlan-ports")
+    assert resp.status_code == 404
+
+
+def test_vlan_ports_empty(client, db):
+    sw = _add_device(db, "10.51.0.1", dtype=DeviceType.switch)
+    resp = client.get(f"/api/devices/{sw.id}/vlan-ports")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["vlans"] == []
+
+
+def test_vlan_ports_returns_vlan_name(client, db):
+    """vlan_name (opis VLAN) musi byc zwracany przez API."""
+    sw = _add_device(db, "10.51.0.2", dtype=DeviceType.switch)
+    _add_vlan_port(db, sw.id, vlan_id=10, if_index=1,
+                   vlan_name="Management", port_mode="access", is_pvid=True)
+
+    resp = client.get(f"/api/devices/{sw.id}/vlan-ports")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["vlans"]) == 1
+    v = data["vlans"][0]
+    assert v["vlan_id"] == 10
+    assert v["vlan_name"] == "Management", "VLAN name must be returned from DB"
+    assert len(v["ports"]) == 1
+    assert v["ports"][0]["if_index"] == 1
+    assert v["ports"][0]["port_mode"] == "access"
+    assert v["ports"][0]["is_pvid"] is True
+    assert v["polled_at"] is not None
+    assert v["polled_at"].endswith("Z"), f"polled_at must end with Z, got: {v['polled_at']!r}"
+
+
+def test_vlan_ports_groups_by_vlan(client, db):
+    """Porty access i trunk w tym samym VLAN sa grupowane razem."""
+    sw = _add_device(db, "10.51.0.3", dtype=DeviceType.switch)
+    _add_vlan_port(db, sw.id, vlan_id=20, if_index=1, port_mode="access", is_pvid=True)
+    _add_vlan_port(db, sw.id, vlan_id=20, if_index=2, port_mode="trunk", is_pvid=False)
+    _add_vlan_port(db, sw.id, vlan_id=30, if_index=3, port_mode="access", is_pvid=True)
+
+    resp = client.get(f"/api/devices/{sw.id}/vlan-ports")
+    assert resp.status_code == 200
+    data = resp.json()
+    vlans_by_id = {v["vlan_id"]: v for v in data["vlans"]}
+    assert set(vlans_by_id.keys()) == {20, 30}
+    assert len(vlans_by_id[20]["ports"]) == 2
+    assert len(vlans_by_id[30]["ports"]) == 1
+
+
+def test_vlan_ports_filter_by_vlan_id(client, db):
+    sw = _add_device(db, "10.51.0.4", dtype=DeviceType.switch)
+    _add_vlan_port(db, sw.id, vlan_id=10, if_index=1)
+    _add_vlan_port(db, sw.id, vlan_id=20, if_index=2)
+
+    resp = client.get(f"/api/devices/{sw.id}/vlan-ports?vlan_id=10")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["vlans"]) == 1
+    assert data["vlans"][0]["vlan_id"] == 10
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STP endpoint tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_stp_not_found(client):
+    resp = client.get("/api/devices/99999/stp")
+    assert resp.status_code == 404
+
+
+def test_stp_empty(client, db):
+    sw = _add_device(db, "10.52.0.1", dtype=DeviceType.switch)
+    resp = client.get(f"/api/devices/{sw.id}/stp")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ports"] == []
+    assert data["root_mac"] is None
+
+
+def test_stp_returns_ports_with_labels(client, db):
+    """Stan STP musi miec czytelna etykiete (stp_state_label)."""
+    sw = _add_device(db, "10.52.0.2", dtype=DeviceType.switch)
+    iface = _add_iface(db, sw.id, if_index=1, name="Gi1/0/1")
+    _add_stp_port(db, sw.id, stp_port_num=1, if_index=iface.if_index,
+                  stp_state=5, stp_role="designated", path_cost=19)
+
+    resp = client.get(f"/api/devices/{sw.id}/stp")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["ports"]) == 1
+    p = data["ports"][0]
+    assert p["stp_state"] == 5
+    assert p["stp_state_label"] == "forwarding"
+    assert p["stp_role"] == "designated"
+    assert p["path_cost"] == 19
+    assert p["interface_name"] == "Gi1/0/1", "Interface name must be resolved from if_index"
+    assert p["polled_at"] is not None
+    assert p["polled_at"].endswith("Z"), f"polled_at must end with Z, got: {p['polled_at']!r}"
+
+
+def test_stp_is_root_detection(client, db):
+    """is_root=True gdy MAC urzadzenia == root bridge MAC."""
+    sw = Device(ip="10.52.0.3", device_type=DeviceType.switch, is_active=True,
+                mac="aa:bb:cc:dd:ee:ff", stp_root_mac="aa:bb:cc:dd:ee:ff")
+    db.add(sw); db.commit(); db.refresh(sw)
+
+    resp = client.get(f"/api/devices/{sw.id}/stp")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["is_root"] is True
+
+
+def test_stp_not_root(client, db):
+    sw = Device(ip="10.52.0.4", device_type=DeviceType.switch, is_active=True,
+                mac="aa:bb:cc:dd:ee:ff", stp_root_mac="11:22:33:44:55:66")
+    db.add(sw); db.commit(); db.refresh(sw)
+
+    resp = client.get(f"/api/devices/{sw.id}/stp")
+    assert resp.status_code == 200
+    assert resp.json()["is_root"] is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Port Summary endpoint tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_port_summary_not_found(client):
+    resp = client.get("/api/devices/99999/port-summary")
+    assert resp.status_code == 404
+
+
+def test_port_summary_empty(client, db):
+    sw = _add_device(db, "10.53.0.1", dtype=DeviceType.switch)
+    resp = client.get(f"/api/devices/{sw.id}/port-summary")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ports"] == []
+
+
+def test_port_summary_returns_alias(client, db):
+    """alias (opis portu ifAlias) musi byc zwracany przez API."""
+    sw = _add_device(db, "10.53.0.2", dtype=DeviceType.switch)
+    _add_iface(db, sw.id, if_index=1, name="GigabitEthernet1/0/1",
+               alias="Uplink to core")
+
+    resp = client.get(f"/api/devices/{sw.id}/port-summary")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["ports"]) == 1
+    p = data["ports"][0]
+    assert p["name"] == "GigabitEthernet1/0/1"
+    assert p["alias"] == "Uplink to core", "Port alias (ifAlias) must be returned"
+    assert p["speed_mbps"] == 1000
+    assert p["admin_up"] is True
+    assert p["oper_up"] is True
+
+
+def test_port_summary_vlan_from_interface(client, db):
+    """native_vlan z tabeli interfaces musi byc zwracany jako VLAN portu."""
+    sw = _add_device(db, "10.53.0.3", dtype=DeviceType.switch)
+    _add_iface(db, sw.id, if_index=2, name="Gi1/0/2",
+               port_mode="access", native_vlan=42)
+
+    resp = client.get(f"/api/devices/{sw.id}/port-summary")
+    assert resp.status_code == 200
+    port = resp.json()["ports"][0]
+    assert port["port_mode"] == "access"
+    assert port["native_vlan"] == 42
+
+
+def test_port_summary_vlan_from_device_vlan_port(client, db):
+    """Gdy interface.native_vlan=None, VLAN pochodzi z DeviceVlanPort (PVID)."""
+    sw = _add_device(db, "10.53.0.4", dtype=DeviceType.switch)
+    _add_iface(db, sw.id, if_index=3, name="Gi1/0/3")  # brak native_vlan
+    _add_vlan_port(db, sw.id, vlan_id=100, if_index=3, is_pvid=True)
+
+    resp = client.get(f"/api/devices/{sw.id}/port-summary")
+    assert resp.status_code == 200
+    port = resp.json()["ports"][0]
+    assert port["native_vlan"] == 100, "native_vlan must fall back to PVID from DeviceVlanPort"
+
+
+def test_port_summary_port_mode_fallback(client, db):
+    """Gdy interface.port_mode=None, tryb pochodzi z DeviceVlanPort."""
+    sw = _add_device(db, "10.53.0.5", dtype=DeviceType.switch)
+    _add_iface(db, sw.id, if_index=4, name="Gi1/0/4")  # brak port_mode
+    _add_vlan_port(db, sw.id, vlan_id=10, if_index=4, port_mode="trunk", is_pvid=False)
+
+    resp = client.get(f"/api/devices/{sw.id}/port-summary")
+    assert resp.status_code == 200
+    port = resp.json()["ports"][0]
+    assert port["port_mode"] == "trunk", "port_mode must fall back to DeviceVlanPort data"
+
+
+def test_port_summary_stp_info(client, db):
+    """Dane STP (rola, stan) musza byc dolaczone do portu przez if_index."""
+    sw = _add_device(db, "10.53.0.6", dtype=DeviceType.switch)
+    _add_iface(db, sw.id, if_index=5, name="Gi1/0/5")
+    _add_stp_port(db, sw.id, stp_port_num=5, if_index=5,
+                  stp_state=5, stp_role="root", path_cost=4)
+
+    resp = client.get(f"/api/devices/{sw.id}/port-summary")
+    assert resp.status_code == 200
+    port = resp.json()["ports"][0]
+    assert port["stp_role"] == "root"
+    assert port["stp_state"] == "forwarding"
+    assert port["stp_path_cost"] == 4
+
+
+def test_port_summary_lldp_neighbor(client, db):
+    """Sasiad LLDP musi byc dolaczony do portu przez TopologyLink."""
+    sw1 = _add_device(db, "10.53.1.1", hostname="sw-core", dtype=DeviceType.switch)
+    sw2 = _add_device(db, "10.53.1.2", hostname="sw-access", dtype=DeviceType.switch)
+    iface1 = _add_iface(db, sw1.id, if_index=1, name="Gi1/0/1")
+    iface2 = _add_iface(db, sw2.id, if_index=1, name="Gi1/0/1", alias="To sw-core")
+
+    link = TopologyLink(
+        src_device_id=sw1.id, src_interface_id=iface1.id,
+        dst_device_id=sw2.id, dst_interface_id=iface2.id,
+        protocol=TopologyProtocol.lldp,
+    )
+    db.add(link); db.commit()
+
+    resp = client.get(f"/api/devices/{sw1.id}/port-summary")
+    assert resp.status_code == 200
+    port = resp.json()["ports"][0]
+    assert port["neighbor_hostname"] == "sw-access"
+    assert port["neighbor_port"] == "Gi1/0/1"
+    assert port["neighbor_alias"] == "To sw-core"
+    assert port["neighbor_protocol"] == "lldp"
