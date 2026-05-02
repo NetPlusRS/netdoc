@@ -21,6 +21,13 @@ logs/agents/*
 *.pid
 *.log
 
+# CLI Command Reference — extracted YAML databases (generated from live devices)
+device_commands/
+
+# Runtime flags and shortcuts
+scan_now.flag
+*.url
+
 # Python
 __pycache__/
 *.pyc
