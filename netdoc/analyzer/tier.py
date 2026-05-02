@@ -389,9 +389,15 @@ def analyze_device_tier(device_id: int, db, force: bool = False) -> dict[str, An
     if scored_signal_count < 3:
         confidence = min(confidence, 55)
 
+    # Wymagaj minimalnego marginesu nad drugim wynikiem — remis lub mała przewaga
+    # oznacza brak wystarczającej pewności (np. SG300: core=30 == access=30).
+    _MIN_MARGIN = 10
     if best_score == 0 or scored_signal_count == 0:
         tier = "undef"
         confidence = 0
+    elif best_score - second_score < _MIN_MARGIN:
+        tier = "undef"
+        confidence = min(confidence, 35)  # cap — za blisko by stwierdzić
     else:
         tier = best_tier
 

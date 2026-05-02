@@ -642,7 +642,7 @@
             </thead>
             <tbody>
               {% for iface in interfaces | sort(attribute='if_index') %}
-              <tr class="{% if iface.oper_status == false and iface.admin_status != false %}table-warning{% endif %}">
+              <tr>
                 <td class="text-muted">{{ iface.if_index or '' }}</td>
                 <td><code>{{ iface.name }}</code></td>
                 <td class="text-muted small">
