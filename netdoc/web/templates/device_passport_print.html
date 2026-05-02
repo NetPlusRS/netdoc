@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Passport — {{ dev.hostname or dev.ip }}</title>
+  <style>
+    /* ── Base ───────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-size: 13px;
+      color: #111;
+      background: #fff;
+      margin: 0;
+      padding: 20px 28px;
+    }
+    h2 { font-size: 1.35rem; margin: 0 0 2px; }
+    h3 { font-size: .85rem; text-transform: uppercase; letter-spacing: .06em;
+         color: #555; margin: 0 0 6px; border-bottom: 1px solid #ccc; padding-bottom: 3px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+    th { background: #f0f0f0; font-weight: 600; text-align: left; padding: 4px 6px;
+         border: 1px solid #ccc; font-size: .8rem; }
+    td { padding: 3px 6px; border: 1px solid #ddd; vertical-align: top; }
+    td.lbl { width: 38%; color: #555; font-size: .82rem; }
+    code { font-size: .88em; background: #f5f5f5; padding: 0 3px; border-radius: 2px; }
+    .badge { display: inline-block; padding: 1px 6px; border-radius: 3px;
+             font-size: .75rem; font-weight: 600; border: 1px solid; }
+    .badge-up   { background: #d4edda; color: #155724; border-color: #c3e6cb; }
+    .badge-down { background: #f8d7da; color: #721c24; border-color: #f5c6cb; }
+    .badge-trunk  { background: #cce5ff; color: #004085; border-color: #b8daff; }
+    .badge-access { background: #e2e3e5; color: #383d41; border-color: #d6d8db; }
+    .badge-routed { background: #fff3cd; color: #856404; border-color: #ffeeba; }
+    .section { margin-bottom: 18px; page-break-inside: avoid; }
+    .header-meta { color: #555; font-size: .82rem; }
+    .no-data { color: #999; font-style: italic; }
+
+    /* ── Notes textarea ─────────────────────────────────────────────────── */
+    #notes-area {
+      width: 100%; min-height: 120px; font-family: inherit; font-size: .9rem;
+      border: 1px solid #ccc; border-radius: 4px; padding: 8px 10px; resize: vertical;
+      background: #fffef5;
+    }
+    #notes-status { font-size: .78rem; color: #888; margin-top: 4px; min-height: 16px; }
+
+    /* ── Print ──────────────────────────────────────────────────────────── */
+    @media print {
+      body { padding: 8mm 10mm; font-size: 11px; }
+      .no-print { display: none !important; }
+      a { color: inherit; text-decoration: none; }
+      #notes-area {
+        border: 1px solid #bbb;
+        background: #fff;
+        min-height: 80px;
+        resize: none;
+      }
+      .section { page-break-inside: avoid; }
+    }
+    @media screen {
+      body { max-width: 960px; margin: 0 auto; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────────── -->
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;border-bottom:2px solid #333;padding-bottom:10px">
+  <div>
+    <h2>
+      {% if dev.hostname %}<strong>{{ dev.hostname }}</strong>
+      <span style="font-weight:400;font-size:1rem;color:#555"> / {{ dev.ip }}</span>
+      {% else %}<strong>{{ dev.ip }}</strong>{% endif %}
+    </h2>
+    <div class="header-meta">
+      {% if dev.vendor %}{{ dev.vendor }}{% endif %}
+      {% if dev.model %} &middot; <strong>{{ dev.model }}</strong>{% endif %}
+      {% if dev.device_type %} &middot; {{ dev.device_type.value }}{% endif %}
+      {% if dev.serial_number %} &middot; S/N: <code>{{ dev.serial_number }}</code>{% endif %}
+    </div>
+    {% if dev.location %}
+    <div class="header-meta">&#128205; {{ dev.location }}{% if dev.site_id %} ({{ dev.site_id }}){% endif %}</div>
+    {% endif %}
+  </div>
+  <div style="text-align:right">
+    <div class="header-meta">Printed: {{ printed_at }}</div>
+    {% if dev.is_active %}
+      <span class="badge badge-up">&#9679; UP</span>
+    {% else %}
+      <span class="badge badge-down">&#9679; DOWN</span>
+    {% endif %}
+    {% if dev.mac %}
+    <div class="header-meta" style="margin-top:4px">MAC: <code>{{ dev.mac }}</code></div>
+    {% endif %}
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+<!-- ── LEFT ──────────────────────────────────────────────────────────────── -->
+<div>
+
+<!-- Identity & Network -->
+<div class="section">
+  <h3>Identity &amp; Network</h3>
+  <table>
+    <tr><td class="lbl">IP address</td><td><code>{{ dev.ip }}</code>
+      {% if dev.ip_type and dev.ip_type != 'unknown' %} <span class="badge" style="font-size:.7rem">{{ dev.ip_type }}</span>{% endif %}
+    </td></tr>
+    <tr><td class="lbl">Hostname</td><td>{{ dev.hostname or '—' }}</td></tr>
+    <tr><td class="lbl">MAC</td><td>{% if dev.mac %}<code>{{ dev.mac }}</code>{% else %}—{% endif %}</td></tr>
+    <tr><td class="lbl">Vendor (OUI)</td><td>{{ dev.vendor or '—' }}</td></tr>
+    <tr><td class="lbl">Model</td><td>{{ dev.model or '—' }}</td></tr>
+    <tr><td class="lbl">Device type</td><td>{{ dev.device_type.value if dev.device_type else '—' }}</td></tr>
+    <tr><td class="lbl">Serial number</td><td>{{ dev.serial_number or '—' }}</td></tr>
+    <tr><td class="lbl">OS / sysDescr</td><td style="font-size:.8rem">{{ (dev.os_version or '—')[:120] }}</td></tr>
+    <tr><td class="lbl">sysObjectID</td><td><code class="small">{{ dev.snmp_sys_object_id or '—' }}</code></td></tr>
+    <tr><td class="lbl">Uptime (SNMP)</td><td>{{ dev.snmp_uptime or '—' }}</td></tr>
+    {% if dev.ram_total_mb %}<tr><td class="lbl">RAM</td><td>{{ dev.ram_total_mb }} MB</td></tr>{% endif %}
+    <tr><td class="lbl">Location</td><td>{{ dev.location or '—' }}</td></tr>
+    <tr><td class="lbl">Site</td><td>{{ dev.site_id or '—' }}</td></tr>
+    <tr><td class="lbl">Department</td><td>{{ dev.owner_dept or '—' }}</td></tr>
+    <tr><td class="lbl">Contact</td><td>{{ dev.sys_contact or dev.responsible_person or '—' }}</td></tr>
+    <tr><td class="lbl">First seen</td><td>{% if dev.first_seen %}{{ dev.first_seen.strftime('%Y-%m-%d') }}{% else %}—{% endif %}</td></tr>
+    <tr><td class="lbl">Last seen</td><td>{% if dev.last_seen %}{{ dev.last_seen.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}</td></tr>
+  </table>
+</div>
+
+<!-- Credentials -->
+<div class="section">
+  <h3>Credentials &amp; Access</h3>
+  {% if creds %}
+  <table>
+    <tr>
+      <th>Method</th><th>Username</th><th>Password / Key</th><th>Notes</th><th>Last OK</th>
+    </tr>
+    {% for c in creds %}
+    <tr {% if not c.per_device %}style="color:#888"{% endif %}>
+      <td><strong>{{ c.method }}</strong>{% if not c.per_device %} <span style="font-size:.7rem">(global)</span>{% endif %}</td>
+      <td><code>{{ c.username or '—' }}</code></td>
+      <td>
+        {% if c.password %}
+        <span class="pwd-masked" style="cursor:pointer" title="Click to reveal"
+              data-pwd="{{ c.password }}" onclick="togglePwd(this)">&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;</span>
+        {% else %}—{% endif %}
+      </td>
+      <td style="font-size:.8rem">{{ c.notes or '—' }}</td>
+      <td style="font-size:.78rem">
+        {% if c.success_at %}{{ c.success_at.strftime('%Y-%m-%d') }}{% else %}—{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div class="no-print" style="font-size:.75rem;color:#888">
+    &#128274; Passwords hidden on screen — click to reveal. Visible when printed.
+  </div>
+  {% else %}
+  <p class="no-data">No credentials configured.</p>
+  {% endif %}
+</div>
+
+<!-- Sensors -->
+{% if sensors %}
+<div class="section">
+  <h3>Sensors (SNMP)</h3>
+  <table>
+    <tr><th>Name</th><th>Value</th><th>Unit</th></tr>
+    {% for s in sensors %}
+    <tr>
+      <td>{{ s.sensor_name }}</td>
+      <td>
+        {% if s.value is not none %}
+          {% if s.unit == '°C' %}
+            {% if s.value >= 80 %}<strong style="color:red">{{ "%.1f"|format(s.value) }}</strong>
+            {% elif s.value >= 60 %}<strong style="color:orange">{{ "%.1f"|format(s.value) }}</strong>
+            {% else %}{{ "%.1f"|format(s.value) }}{% endif %}
+          {% elif s.unit == '%' %}
+            {% if s.value >= 90 %}<strong style="color:red">{{ "%.0f"|format(s.value) }}</strong>
+            {% elif s.value >= 70 %}<strong style="color:orange">{{ "%.0f"|format(s.value) }}</strong>
+            {% else %}{{ "%.0f"|format(s.value) }}{% endif %}
+          {% else %}{{ s.value }}{% endif %}
+        {% else %}{{ s.raw_str or '—' }}{% endif %}
+      </td>
+      <td>{{ s.unit or '' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+</div><!-- /LEFT -->
+
+<!-- ── RIGHT ─────────────────────────────────────────────────────────────── -->
+<div>
+
+<!-- Open ports -->
+{% if open_ports %}
+<div class="section">
+  <h3>Open TCP Ports</h3>
+  <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px">
+    {% for port, svc in open_ports %}
+    <span style="background:#f0f0f0;border:1px solid #ccc;border-radius:3px;padding:1px 6px;font-size:.8rem">
+      <strong>{{ port }}</strong>{% if svc and svc != port %}/{{ svc }}{% endif %}
+    </span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- LLDP/CDP Neighbors -->
+{% if neighbors %}
+<div class="section">
+  <h3>Topology Neighbors (LLDP/CDP)</h3>
+  <table>
+    <tr><th>Local port</th><th>Peer</th><th>Peer port</th><th>Protocol</th></tr>
+    {% for n in neighbors %}
+    <tr>
+      <td><code>{{ n.local_port }}</code></td>
+      <td>
+        <strong>{{ n.peer_host }}</strong>
+        {% if n.peer_ip and n.peer_ip != n.peer_host %}<br><code style="font-size:.8rem">{{ n.peer_ip }}</code>{% endif %}
+        {% if n.peer_model %}<br><span style="color:#777;font-size:.75rem">{{ n.peer_model }}</span>{% endif %}
+      </td>
+      <td><code>{{ n.peer_port }}</code></td>
+      <td style="font-size:.78rem">{{ n.protocol }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<!-- VLANs -->
+{% if vlans_by_id %}
+<div class="section">
+  <h3>VLANs</h3>
+  <table>
+    <tr><th>VLAN ID</th><th>Name</th><th>Ports (mode)</th></tr>
+    {% for vid, vdata in vlans_by_id.items() | sort(attribute='0') %}
+    <tr>
+      <td><strong>{{ vid }}</strong></td>
+      <td>{{ vdata.name or '—' }}</td>
+      <td style="font-size:.78rem">
+        {% for p in vdata.ports[:20] %}
+        <span class="badge {% if p.mode == 'trunk' %}badge-trunk{% else %}badge-access{% endif %}"
+              style="margin:1px">{{ p.name }}{% if p.is_pvid %}*{% endif %}</span>
+        {% endfor %}
+        {% if vdata.ports|length > 20 %}
+        <span style="color:#888">+{{ vdata.ports|length - 20 }} more</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div style="font-size:.72rem;color:#888">* = PVID (native/access VLAN for port)</div>
+</div>
+{% endif %}
+
+</div><!-- /RIGHT -->
+</div><!-- /grid -->
+
+<!-- ── Interfaces (full width) ─────────────────────────────────────────── -->
+{% if ifaces %}
+<div class="section" style="margin-top:4px">
+  <h3>Interfaces ({{ ifaces|length }})</h3>
+  <table>
+    <tr>
+      <th>Port</th><th>Description (alias)</th><th>Mode</th><th>VLAN</th>
+      <th>Speed</th><th>Duplex</th><th>Admin</th><th>Oper</th><th>IP</th><th>MAC</th>
+    </tr>
+    {% for i in ifaces %}
+    {% set _skip_names = ['loopback', 'null', 'vlan'] %}
+    {% set _skip = namespace(v=false) %}
+    {% for pfx in _skip_names %}{% if i.name.lower().startswith(pfx) %}{% set _skip.v = true %}{% endif %}{% endfor %}
+    <tr {% if i.oper_status == false %}style="color:#999"{% endif %}>
+      <td><code style="white-space:nowrap">{{ i.name }}</code></td>
+      <td>{{ i.alias or '' }}</td>
+      <td>
+        {% if i.port_mode == 'trunk' %}<span class="badge badge-trunk">trunk</span>
+        {% elif i.port_mode == 'access' %}<span class="badge badge-access">access</span>
+        {% elif i.port_mode == 'routed' %}<span class="badge badge-routed">routed</span>
+        {% else %}{% endif %}
+      </td>
+      <td style="font-size:.78rem">
+        {% if i.native_vlan %}{{ i.native_vlan }}
+          {% if i.port_mode == 'trunk' %}<span style="color:#888">(native)</span>
+          {% endif %}
+        {% endif %}
+        {% if i.trunk_vlans and i.port_mode == 'trunk' %}
+          <br><span style="color:#555">{{ i.trunk_vlans }} VLANs</span>
+        {% endif %}
+      </td>
+      <td style="white-space:nowrap">
+        {% if i.speed %}
+          {% if i.speed >= 1000 %}{{ (i.speed / 1000)|round(1)|int }}G
+          {% else %}{{ i.speed }}M{% endif %}
+        {% endif %}
+      </td>
+      <td style="font-size:.78rem">{{ i.duplex or '' }}</td>
+      <td style="text-align:center">
+        {% if i.admin_status == true %}&#9679;{% elif i.admin_status == false %}<span style="color:#ccc">&#9675;</span>{% else %}?{% endif %}
+      </td>
+      <td style="text-align:center">
+        {% if i.oper_status == true %}<span style="color:green">&#9679;</span>
+        {% elif i.oper_status == false %}<span style="color:#ddd">&#9675;</span>
+        {% else %}?{% endif %}
+      </td>
+      <td style="font-size:.78rem">{{ i.ip or '' }}</td>
+      <td style="font-size:.72rem;white-space:nowrap">{{ i.mac or '' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div style="font-size:.72rem;color:#888">&#9679; = up &nbsp; &#9675; = down</div>
+</div>
+{% endif %}
+
+<!-- ── Notes ─────────────────────────────────────────────────────────────── -->
+<div class="section" style="margin-top:8px">
+  <h3>Notes / Remarks</h3>
+  <textarea id="notes-area" placeholder="Enter notes here — saved automatically…">{{ dev.asset_notes or '' }}</textarea>
+  <div id="notes-status" class="no-print"></div>
+</div>
+
+<!-- ── Print button ───────────────────────────────────────────────────────── -->
+<div class="no-print" style="margin-top:16px;display:flex;gap:10px;align-items:center">
+  <button onclick="window.print()"
+          style="padding:8px 20px;font-size:.95rem;background:#222;color:#fff;border:none;border-radius:4px;cursor:pointer">
+    &#128438; Print / Save as PDF
+  </button>
+  <a href="{{ url_for('device_detail', device_id=dev.id) }}"
+     style="font-size:.85rem;color:#555">&#8592; Back to device</a>
+  <span style="font-size:.75rem;color:#888;margin-left:auto">
+    Use browser Print (Ctrl+P) → Save as PDF for best results
+  </span>
+</div>
+
+<script>
+const DEVICE_ID = {{ dev.id }};
+
+// ── Password reveal ───────────────────────────────────────────────────────
+function togglePwd(el) {
+  if (el.dataset.revealed === '1') {
+    el.textContent = '●●●●●●';
+    el.dataset.revealed = '0';
+  } else {
+    el.textContent = el.dataset.pwd;
+    el.dataset.revealed = '1';
+  }
+}
+
+// On print: reveal all passwords automatically
+window.addEventListener('beforeprint', function () {
+  document.querySelectorAll('.pwd-masked').forEach(function (el) {
+    el.textContent = el.dataset.pwd;
+    el.dataset.revealed = '1';
+  });
+});
+
+// ── Notes auto-save ───────────────────────────────────────────────────────
+var _notesTimer = null;
+var _lastSaved = document.getElementById('notes-area').value;
+var _statusEl = document.getElementById('notes-status');
+
+document.getElementById('notes-area').addEventListener('input', function () {
+  _statusEl.textContent = 'Unsaved…';
+  clearTimeout(_notesTimer);
+  _notesTimer = setTimeout(saveNotes, 1200);
+});
+
+function saveNotes() {
+  var text = document.getElementById('notes-area').value;
+  if (text === _lastSaved) return;
+  _statusEl.textContent = 'Saving…';
+  fetch('/devices/' + DEVICE_ID + '/notes', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({notes: text})
+  })
+  .then(function (r) { return r.json(); })
+  .then(function (d) {
+    if (d.ok) {
+      _lastSaved = text;
+      _statusEl.textContent = 'Saved ✓';
+      setTimeout(function () { _statusEl.textContent = ''; }, 2500);
+    } else {
+      _statusEl.textContent = 'Save failed: ' + (d.error || '?');
+    }
+  })
+  .catch(function () { _statusEl.textContent = 'Save failed (network error)'; });
+}
+
+// Save on page unload — use sendBeacon (fetch is dropped by browser on navigation)
+window.addEventListener('beforeunload', function () {
+  var text = document.getElementById('notes-area').value;
+  if (text !== _lastSaved) {
+    navigator.sendBeacon('/devices/' + DEVICE_ID + '/notes',
+      new Blob([JSON.stringify({notes: text})], {type: 'application/json'}));
+  }
+});
+</script>
+
+</body>
+</html>

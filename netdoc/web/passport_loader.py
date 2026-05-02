@@ -101,7 +101,7 @@ def find_passport(vendor: Optional[str], model: Optional[str], os_version: Optio
             best_score = s
             best = p
 
-    return best if best_score >= 10 else None  # min. vendor musi pasować
+    return best if best_score > 10 else None  # vendor alone is not enough — need at least one model/OS keyword
 
 
 def find_passports_bulk(devices: list[dict]) -> dict[int, Optional[dict]]:
