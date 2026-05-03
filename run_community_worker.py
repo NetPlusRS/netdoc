@@ -174,8 +174,10 @@ def scan_once() -> None:
         #   - typ = znane urzadzenie sieciowe (router/switch/ap/firewall)
         #   - LUB wczesniej odpowiadalo na SNMP (snmp_ok_at IS NOT NULL — re-weryfikacja)
         #   - LUB ma otwarty port 161 w ostatnim skanie (kamera/IoT/industrial z SNMP)
+        # Nie skanuj AP-ow — Cisco lightweight AP nie mają SNMP; Ubiquiti AP obsłuże
+        # port 161 check lub snmp_ok_at (ponizej). Nie ma sensu probowac 245 community strings.
         _snmp_types = (
-            DeviceType.router, DeviceType.switch, DeviceType.ap, DeviceType.firewall,
+            DeviceType.router, DeviceType.switch, DeviceType.firewall,
         )
         from sqlalchemy import func
         latest_scan_sq = (

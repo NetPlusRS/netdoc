@@ -237,17 +237,20 @@ def _pick_drivers(db: Session, device: Device) -> List[BaseDriver]:
 
     # 2. UniFi API — TYLKO dla urzadzen Ubiquiti i tylko gdy credentials skonfigurowane
     # Warunek: vendor zawiera "ubiquiti"/"ubnt" LUB device_id ma per-device api credential
+    # Wyklucz AP i switch — sa zarzadzane przez kontroler UniFi, nie bezposrednio przez API
     _vendor_lower = (device.vendor or "").lower()
     _is_ubiquiti = any(k in _vendor_lower for k in ("ubiquiti", "ubnt", "unifi"))
-    if _is_ubiquiti or settings.unifi_username:
+    _is_managed_client = device.device_type in {DT.ap, DT.switch}
+    if (_is_ubiquiti or settings.unifi_username) and not _is_managed_client:
         unifi_cred = _get_credential(db, device, CredentialMethod.api)
         # Jesli nie znamy vendora (brak info) i brak explicit config — pomijamy
         if settings.unifi_username or (_is_ubiquiti and unifi_cred):
             drivers.append(UnifiDriver(ip=device.ip, credential=unifi_cred))
 
     # 3. Cisco SSH — jezeli port 22 otwarty i sa credentials
+    # Wyklucz AP — Cisco lightweight AP nie obsluguje WLC CLI (osobna ekstrakcja przez extract.py)
     ssh_cred = _get_credential(db, device, CredentialMethod.ssh)
-    if ssh_cred and _has_open_port(device, 22):
+    if ssh_cred and _has_open_port(device, 22) and device.device_type != DT.ap:
         # Rozroznij Cisco vs MikroTik po vendorze (z discovery)
         vendor = (device.vendor or "").lower()
         if "cisco" in vendor:

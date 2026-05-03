@@ -859,7 +859,7 @@ $ExpectedContainers = @(
     "netdoc-community"
 )
 
-$maxContainerWait = 120   # total seconds to wait
+$maxContainerWait = 300   # total seconds to wait (first install: image pull can be slow)
 $containerWaited  = 0
 $allUp            = $false
 
@@ -914,7 +914,7 @@ if (-not $allUp) {
 Write-Step "Waiting for Web Panel to become available (http://localhost)..."
 
 $webReady = $false
-$maxWait  = 60
+$maxWait  = 120   # first install: PostgreSQL migrations can take ~60s before web is ready
 $waited   = 0
 $dotCount = 0
 
@@ -1000,6 +1000,9 @@ if ($allUp -and $pythonCmd) {
         if ($updated -ne $autostartContent) {
             Set-Content $autostartFile -Value $updated -Encoding UTF8 -NoNewline
             Write-OK "Updated Python path in install_autostart.ps1: $pythonPath"
+        } else {
+            Write-Warn "Could not update Python path in install_autostart.ps1 (regex no match)."
+            Write-Info "  Set manually: `$PythonExe = `"$pythonPath`" in install_autostart.ps1"
         }
     }
 
