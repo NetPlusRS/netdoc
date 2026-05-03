@@ -1,0 +1,73 @@
+name: Cisco Mobility Express WLC
+match_vendors: [Cisco, "Cisco Systems", "Cisco Systems, Inc"]
+match_models: ["Mobility Express", "Cisco Controller", "AIR-AP3802", "AIR-AP2802", "AIR-CAP3702"]
+match_os: ["Cisco Controller", "8.10", "Mobility Express"]
+tested: true
+tested_at: "2026-05-02"
+notes: >
+  Cisco Mobility Express — wbudowany kontroler bezprzewodowy działający na jednym z AP (Master AP).
+  IP 192.168.5.99 = wirtualny adres WLC (niezależny od fizycznego AP).
+  Master AP wskazany gwiazdką (*) w 'show ap summary'.
+  SSH: interaktywny shell (invoke_shell), NIE exec_command — WLC wymaga własnego dialogu User:/Password:.
+  SNMP: v2c działa, community musi spełniać strong-password (małe+duże+cyfry+znaki specjalne).
+  Standardowe MIB-2 działa (sysName, sysDescr, ifTable, sysUpTime).
+  CPU/RAM dostępne przez sysinfo (SSH) i CISCO-PROCESS-MIB (SNMP).
+  FDB/Q-BRIDGE: niedostępne (WLC nie jest switchem L2).
+  CDP: włączone (Cisco standard).
+  LLDP przez SNMP: niedostępne (nextCmd broken w pysnmp-lextudio 6.x).
+  System Object ID: 1.3.6.1.4.1.9.1.2373
+
+capabilities:
+  snmp: true
+  snmp_interfaces: true        # IF-MIB dostępne dla interfejsów zarządzania WLC
+  snmp_fdb: false              # WLC nie ma Q-BRIDGE/FDB
+  snmp_vlan: false             # VLAN zarządzane przez WLC inaczej niż IEEE
+  snmp_stp: false
+  snmp_cpu: true               # CISCO-PROCESS-MIB: cpmCPUTotal5minRev
+  snmp_ram: true               # CISCO-MEMORY-POOL-MIB: ciscoMemoryPoolFree/Used
+  snmp_arp: false
+  snmp_sensors: false          # Mobility Express nie raportuje temperatury przez SNMP
+  snmp_hc_counters: true       # IF-MIB 64-bit: ifHCInOctets/ifHCOutOctets
+  lldp_snmp: false
+  lldp_ssh: false
+  cdp: true
+  syslog: true
+  config_backup: false         # 'show run-config' wymaga privileged — nie zawsze dostępne
+  ssh: true                    # invoke_shell z dialogiem User:/Password: w shellu
+
+snmp_collection:
+  interfaces:
+    hc_counters: true
+  cpu:
+    enabled: true
+    method: cisco_process       # CISCO-PROCESS-MIB — cpmCPUTotal5minRev
+  ram:
+    enabled: true
+    method: cisco_memory        # CISCO-MEMORY-POOL-MIB
+  extra_oids:
+    cpu_5min:  "1.3.6.1.4.1.9.9.109.1.1.1.1.8.1"  # cpmCPUTotal5minRev (%)
+    ram_free:  "1.3.6.1.4.1.9.9.48.1.1.1.5.1"      # ciscoMemoryPoolFree (bytes)
+    ram_used:  "1.3.6.1.4.1.9.9.48.1.1.1.6.1"      # ciscoMemoryPoolUsed (bytes)
+
+ssh_collection:
+  method: cisco_wlc_interactive  # invoke_shell z dialogiem User:/Password:
+  useful_commands:
+    - "show sysinfo"             # wersja, uptime, CPU/RAM, nazwa systemu
+    - "show ap summary"          # lista AP, model, IP, lokalizacja, klienci (* = Master)
+    - "show client summary"      # aktywni klienci WiFi
+    - "show mobility summary"    # rola w mobility group (Master/Slave)
+    - "show snmpcommunity"       # weryfikacja community strings
+
+mobility_master_detection:
+  method: ssh_ap_summary
+  indicator: "* prefix in 'show ap summary' = Master AP IP"
+  note: >
+    W Cisco Mobility Express jeden AP jest Masterem (zarządza całą grupą).
+    Aby ustalić który: SSH na WLC IP (192.168.5.99), uruchom 'show ap summary'.
+    AP z prefiksem '*' = aktualny Master. IP tego AP = fizyczny adres urządzenia,
+    które aktualnie hostuje WLC. Zmiana Master AP = failover (automatyczny).
+
+relevant_protocols:
+  - snmp
+  - ssh
+  - syslog
