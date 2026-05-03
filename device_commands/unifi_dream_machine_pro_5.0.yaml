@@ -1,0 +1,268 @@
+model: UniFi Dream Machine PRO
+firmware: 5.0.16.30692
+system: UniFiOS Debian 11 aarch64
+source_ip: 192.168.5.1
+notes: 'Device: Krasnicza-W (192.168.5.1). Extracted via SSH exec_command (no PTY).
+  Primary data source: mca-dump JSON. Shell: /bin/bash (UniFiOS Debian 11 aarch64).'
+commands:
+  mca-dump:
+    _desc: 'Full device state dump — primary data source. Returns large JSON with:
+      hostname, model, firmware, if_table (WAN/LAN interfaces), port_table (physical
+      switch ports + mac_table per port), network_table (VLANs/subnets), lldp_table,
+      dpi_stats, connections.'
+    _tags:
+    - status
+    - json
+    - primary
+    - interfaces
+    - neighbors
+    - clients
+  mca-cli-op:
+    _desc: MCA CLI one-shot operations (no interactive shell needed).
+    _tags:
+    - status
+    info:
+      _desc: 'Quick device summary: model, firmware version, MAC, IP, uptime, NTP
+        status, inform URL.'
+      _tags:
+      - status
+      - identity
+  mca-cli:
+    _desc: 'Interactive UniFi CLI shell — management only (4 commands). NOT useful
+      for data extraction. Prompt: ''UniFi# '''
+    _tags:
+    - management
+    info:
+      _desc: Display device information.
+      _tags:
+      - status
+      - identity
+    reboot:
+      _desc: Reboot the device.
+      _tags:
+      - management
+      - dangerous
+    set-default:
+      _desc: Restore device to factory default settings.
+      _tags:
+      - management
+      - dangerous
+    upgrade:
+      _desc: 'Upgrade firmware: upgrade <firmware_url>'
+      _tags:
+      - management
+  mca-sta:
+    _desc: Client station statistics (JSON). May return malformed JSON on some firmware
+      versions (FW 5.0.16 affected).
+    _tags:
+    - clients
+    - wifi
+    - json
+  mca-scan:
+    _desc: WLAN site survey / scan results.
+    _tags:
+    - wifi
+  mca-monitor:
+    _desc: Live monitoring data stream.
+    _tags:
+    - status
+    - monitoring
+  lldpctl:
+    _desc: 'LLDP neighbor table — formatted text. Shows: neighbor chassis ID, system
+      name, system description, local port, remote port, management IP, VLAN. UDM-Pro
+      typically finds 2-4 neighbors.'
+    _tags:
+    - lldp
+    - neighbors
+    - topology
+  ubnt-device-info:
+    _desc: Hardware identity and model information (Ubiquiti proprietary).
+    _tags:
+    - identity
+    summary:
+      _desc: Display device family, model name, MAC address, firmware version.
+      _tags:
+      - status
+      - identity
+  ubnt-systool:
+    _desc: System management tool (Ubiquiti proprietary).
+    _tags:
+    - management
+    - system
+  ubnt-ipcalc:
+    _desc: IP address calculation utility.
+    _tags:
+    - networking
+  ubnt-make-support-file:
+    _desc: Generate a support bundle archive for Ubiquiti TAC submission.
+    _tags:
+    - management
+    - diagnostics
+  ubios-udapi-client:
+    _desc: Internal UDAPI socket client. Connects to /var/run/ubnt-udapi-server.sock.
+      REST-style paths — mostly 404 on FW 5.0.x without known valid routes.
+    _tags:
+    - internal
+    - api
+  ip:
+    _desc: Linux network configuration and monitoring (iproute2).
+    _tags:
+    - networking
+    addr:
+      _desc: Show interface IP addresses (detailed).
+      _tags:
+      - interfaces
+      - networking
+      show:
+        _desc: Display IP addresses for all or a specific interface.
+        _tags:
+        - interfaces
+    route:
+      _desc: Show or modify routing table.
+      _tags:
+      - routing
+      show:
+        _desc: Display current IPv4 routing table.
+        _tags:
+        - routing
+    neigh:
+      _desc: Show ARP/IPv6 neighbor cache.
+      _tags:
+      - arp
+      - neighbors
+      show:
+        _desc: Display ARP neighbor table with state (REACHABLE/STALE/FAILED).
+        _tags:
+        - arp
+    link:
+      _desc: Show interface link-layer information.
+      _tags:
+      - interfaces
+    -br:
+      _desc: Brief output modifier (combine with addr/link/route for compact view).
+      _tags:
+      - interfaces
+      addr:
+        _desc: Interface addresses in brief one-line format.
+        _tags:
+        - interfaces
+      link:
+        _desc: Interface link status in brief one-line format.
+        _tags:
+        - interfaces
+  ss:
+    _desc: Socket statistics — replacement for netstat (faster, more features).
+    _tags:
+    - networking
+    - security
+    -tulpn:
+      _desc: TCP and UDP listening ports with PID/process names (no DNS lookup).
+      _tags:
+      - networking
+      - security
+    -s:
+      _desc: Summary statistics for all socket types.
+      _tags:
+      - networking
+      - status
+  arp:
+    _desc: ARP cache (legacy — prefer 'ip neigh show' for richer output).
+    _tags:
+    - arp
+    - neighbors
+    -a:
+      _desc: Display ARP cache in BSD format.
+      _tags:
+      - arp
+    -n:
+      _desc: Display numeric addresses (skip reverse DNS lookups).
+      _tags:
+      - arp
+  cat /proc/meminfo:
+    _desc: Memory usage details (total, free, available, cached, swap).
+    _tags:
+    - system
+    - status
+  cat /proc/loadavg:
+    _desc: 'System load averages: 1min / 5min / 15min, running/total processes, last
+      PID.'
+    _tags:
+    - system
+    - status
+  uname -a:
+    _desc: Full kernel version string and architecture (Linux aarch64).
+    _tags:
+    - system
+    - identity
+  mca-ap-neighbor-max-signal:
+    _desc: Discovered binary — run 'mca-ap-neighbor-max-signal --help 2>&1' for usage.
+    _tags:
+    - discovered
+  mca-ctrl:
+    _desc: Discovered binary — run 'mca-ctrl --help 2>&1' for usage.
+    _tags:
+    - discovered
+  mca-custom-alert.sh:
+    _desc: Discovered binary — run 'mca-custom-alert.sh --help 2>&1' for usage.
+    _tags:
+    - discovered
+  ubnt-ble-http-transport:
+    _desc: Discovered binary — run 'ubnt-ble-http-transport --help 2>&1' for usage.
+    _tags:
+    - discovered
+  ubnt-config-restore:
+    _desc: Discovered binary — run 'ubnt-config-restore --help 2>&1' for usage.
+    _tags:
+    - discovered
+  ubnt-doh-srv-update:
+    _desc: Discovered binary — run 'ubnt-doh-srv-update --help 2>&1' for usage.
+    _tags:
+    - discovered
+  ubnt-domain-resolver:
+    _desc: Discovered binary — run 'ubnt-domain-resolver --help 2>&1' for usage.
+    _tags:
+    - discovered
+  ubnt-file-download:
+    _desc: Discovered binary — run 'ubnt-file-download --help 2>&1' for usage.
+    _tags:
+    - discovered
+  ubnt-file-upload.sh:
+    _desc: Discovered binary — run 'ubnt-file-upload.sh --help 2>&1' for usage.
+    _tags:
+    - discovered
+  ubnt-geoip-build:
+    _desc: Discovered binary — run 'ubnt-geoip-build --help 2>&1' for usage.
+    _tags:
+    - discovered
+  ubnt-geoip-update:
+    _desc: Discovered binary — run 'ubnt-geoip-update --help 2>&1' for usage.
+    _tags:
+    - discovered
+  ubnt-hb46pp:
+    _desc: Discovered binary — run 'ubnt-hb46pp --help 2>&1' for usage.
+    _tags:
+    - discovered
+  ubnt-hb46pp-request:
+    _desc: Discovered binary — run 'ubnt-hb46pp-request --help 2>&1' for usage.
+    _tags:
+    - discovered
+  ubnt-idsips-daemon:
+    _desc: Discovered binary — run 'ubnt-idsips-daemon --help 2>&1' for usage.
+    _tags:
+    - discovered
+  ubnt-shadow-mode-adopt:
+    _desc: Discovered binary — run 'ubnt-shadow-mode-adopt --help 2>&1' for usage.
+    _tags:
+    - discovered
+  ubnt-ulogd-logrotate:
+    _desc: Discovered binary — run 'ubnt-ulogd-logrotate --help 2>&1' for usage.
+    _tags:
+    - discovered
+  ubnt-update-dnsmasq-lease:
+    _desc: Discovered binary — run 'ubnt-update-dnsmasq-lease --help 2>&1' for usage.
+    _tags:
+    - discovered
+  ubnt-vrrp-failover:
+    _desc: Discovered binary — run 'ubnt-vrrp-failover --help 2>&1' for usage.
+    _tags:
+    - discovered
