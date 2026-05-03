@@ -3671,12 +3671,14 @@ def create_app():
                         capture_output=True, text=True, timeout=300,
                     )
                 if result.returncode == 0:
+                    _api("delete", f"/api/scan/stopped-profiles/{profile}")
                     return jsonify({"ok": True, "started": absent, "created": True, "errors": errors})
                 else:
                     err_out = (result.stderr or result.stdout or "")[:300]
                     return jsonify({"ok": False, "absent": absent, "message": err_out}), 500
             except Exception as exc:
                 return jsonify({"ok": False, "absent": absent, "message": str(exc)}), 500
+        _api("delete", f"/api/scan/stopped-profiles/{profile}")
         return jsonify({"ok": True, "started": started, "errors": errors})
 
     @app.route("/settings/services/<profile>/stop", methods=["POST"])
@@ -3705,6 +3707,7 @@ def create_app():
                 "ok": False, "stopped": stopped, "absent": absent,
                 "message": f"Kontenery nie istnieją — uruchom: docker compose --profile {profile} up -d",
             })
+        _api("post", f"/api/scan/stopped-profiles/{profile}")
         return jsonify({"ok": True, "stopped": stopped, "absent": absent, "errors": errors})
 
     # ── lab environment ────────────────────────────────────────────────────────

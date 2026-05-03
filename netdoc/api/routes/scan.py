@@ -361,6 +361,38 @@ def update_worker_settings(body: WorkerSettings, db: Session = Depends(get_db)):
     return get_worker_settings(db)
 
 
+_VALID_PROFILES = {"workers", "monitoring", "syslog", "pro"}
+
+
+@router.get("/stopped-profiles")
+def get_stopped_profiles(db: Session = Depends(get_db)):
+    """Zwraca profile zatrzymane świadomie przez użytkownika (watchdog je pomija)."""
+    raw = _get_status(db, "intentionally_stopped_profiles") or ""
+    profiles = [p.strip() for p in raw.split(",") if p.strip() and p.strip() in _VALID_PROFILES]
+    return {"profiles": profiles}
+
+
+@router.post("/stopped-profiles/{profile}", status_code=204)
+def mark_profile_stopped(profile: str, db: Session = Depends(get_db)):
+    """Oznacza profil jako świadomie zatrzymany — watchdog nie uruchomi go ponownie."""
+    if profile not in _VALID_PROFILES:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=f"Unknown profile: {profile}")
+    raw = _get_status(db, "intentionally_stopped_profiles") or ""
+    profiles = {p.strip() for p in raw.split(",") if p.strip()}
+    profiles.add(profile)
+    _set_status(db, {"intentionally_stopped_profiles": ",".join(sorted(profiles))}, category="internal")
+
+
+@router.delete("/stopped-profiles/{profile}", status_code=204)
+def unmark_profile_stopped(profile: str, db: Session = Depends(get_db)):
+    """Usuwa profil z listy świadomie zatrzymanych — watchdog wznowi monitoring."""
+    raw = _get_status(db, "intentionally_stopped_profiles") or ""
+    profiles = {p.strip() for p in raw.split(",") if p.strip()}
+    profiles.discard(profile)
+    _set_status(db, {"intentionally_stopped_profiles": ",".join(sorted(profiles))}, category="internal")
+
+
 @router.get("/ip-batch-status")
 def get_ip_batch_status():
     """Zwraca aktualny postep skanowania per IP (z pliku scan_batch_status.json).

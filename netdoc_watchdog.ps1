@@ -210,6 +210,32 @@ $runningNames = @(docker ps --filter "name=netdoc" --format "{{.Names}}" 2>&1 | 
 # Compare with expected list
 $missing = $ExpectedContainers | Where-Object { $runningNames -notcontains $_ }
 
+# Filter out profiles intentionally stopped by the user via UI
+if ($missing.Count -gt 0) {
+    try {
+        $stoppedData = Invoke-RestMethod -Uri "http://localhost:8000/api/scan/stopped-profiles" -TimeoutSec 3 -ErrorAction Stop
+        $stoppedProfiles = @($stoppedData.profiles)
+        if ($stoppedProfiles.Count -gt 0) {
+            $profileContainerMap = @{
+                "workers"    = @("netdoc-ping","netdoc-snmp","netdoc-cred","netdoc-vuln","netdoc-community","netdoc-internet")
+                "monitoring" = @("netdoc-prometheus","netdoc-loki","netdoc-promtail","netdoc-grafana")
+                "syslog"     = @("netdoc-vector","netdoc-rsyslog")
+                "pro"        = @("netdoc-ntopng","netdoc-wazuh")
+            }
+            $skipped = @()
+            foreach ($p in $stoppedProfiles) {
+                if ($profileContainerMap.ContainsKey($p)) { $skipped += $profileContainerMap[$p] }
+            }
+            if ($skipped.Count -gt 0) {
+                Write-Log "Profiles intentionally stopped by user: $($stoppedProfiles -join ', ') — skipping: $($skipped -join ', ')" "INFO"
+                $missing = @($missing | Where-Object { $skipped -notcontains $_ })
+            }
+        }
+    } catch {
+        # API unavailable — proceed normally (restart all missing)
+    }
+}
+
 if ($missing.Count -eq 0) {
     if (-not $Quiet) {
         Write-Log "All $($ExpectedContainers.Count) containers running - OK"

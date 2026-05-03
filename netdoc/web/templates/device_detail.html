@@ -260,8 +260,9 @@
         };
 
         function renderTier(data) {
-          const tier   = data.network_tier || "undef";
           const conf   = data.tier_confidence ?? 0;
+          let   tier   = data.network_tier || "undef";
+          if (!data.tier_overridden && tier !== "undef" && conf < 50) { tier = "undef"; }
           const ev     = data.tier_evidence  || {signals: [], missing: []};
           const label  = TIER_LABELS[tier] || tier;
           const color  = TIER_COLORS[tier] || "secondary";
