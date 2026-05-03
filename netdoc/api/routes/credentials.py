@@ -228,7 +228,7 @@ def cred_scan_stats(db: Session = Depends(get_db)):
                 pass
 
     # 4b. Lista aktywnych urzadzen z tried stats
-    devices = db.query(Device).filter(Device.is_active == True).all()
+    devices = db.query(Device).filter(Device.is_active.is_(True)).all()
     dev_stats = []
     for d in devices:
         tried = tried_by_device.get(d.id, {})

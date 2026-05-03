@@ -474,14 +474,13 @@ def db_writer_thread(q: queue.Queue, stop_event: threading.Event) -> None:
     proto_counts: dict[str, int] = {"unifi": 0, "mndp": 0, "mdns": 0, "ssdp": 0}
     last_stats_save = time.monotonic()
 
-    db = SessionLocal()
-    try:
-        while not stop_event.is_set():
-            try:
-                r = q.get(timeout=1.0)
-            except queue.Empty:
-                # Co minute zapisz statystyki do systemu
-                if time.monotonic() - last_stats_save > 60:
+    while not stop_event.is_set():
+        try:
+            r = q.get(timeout=1.0)
+        except queue.Empty:
+            # Co minute zapisz statystyki do systemu
+            if time.monotonic() - last_stats_save > 60:
+                with SessionLocal() as db:
                     try:
                         _set_status(db, {
                             "broadcast_last_at":         datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
@@ -492,18 +491,16 @@ def db_writer_thread(q: queue.Queue, stop_event: threading.Event) -> None:
                             "broadcast_ssdp":  proto_counts["ssdp"],
                         })
                     except Exception:
-                        try:
-                            db.rollback()
-                        except Exception:
-                            pass
-                    last_stats_save = time.monotonic()
-                continue
+                        pass
+                last_stats_save = time.monotonic()
+            continue
 
-            ip = r.get("ip", "")
-            now = time.monotonic()
-            if now - last_saved.get(ip, 0) < DB_THROTTLE_S:
-                continue  # za czesto — pomijamy
+        ip = r.get("ip", "")
+        now = time.monotonic()
+        if now - last_saved.get(ip, 0) < DB_THROTTLE_S:
+            continue  # za czesto — pomijamy
 
+        with SessionLocal() as db:
             if _save_one(db, r):
                 last_saved[ip] = now
                 proto = r.get("protocol", "other")
@@ -513,8 +510,6 @@ def db_writer_thread(q: queue.Queue, stop_event: threading.Event) -> None:
                             r.get("hostname") or "-",
                             r.get("vendor") or "-",
                             r.get("model") or "-")
-    finally:
-        db.close()
 
 
 # ===========================================================================

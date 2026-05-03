@@ -66,7 +66,7 @@ def get_topology(
     """Zwraca pelny graf topologii sieci. Format kompatybilny z D3.js / vis.js."""
     q = db.query(Device)
     if active_only:
-        q = q.filter(Device.is_active == True)
+        q = q.filter(Device.is_active.is_(True))
     nodes = q.all()
 
     device_ids = {d.id for d in nodes}

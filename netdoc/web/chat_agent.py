@@ -161,9 +161,9 @@ def _tool_list_devices(db, inputs) -> str:
     q = db.query(Device)
     sf = inputs.get("status_filter", "all")
     if sf == "up":
-        q = q.filter(Device.is_active == True)
+        q = q.filter(Device.is_active.is_(True))
     elif sf == "down":
-        q = q.filter(Device.is_active == False)
+        q = q.filter(Device.is_active.is_(False))
     devices = q.order_by(Device.ip).all()
     if not devices:
         return "Brak urzadzen w bazie."
@@ -208,7 +208,7 @@ def _tool_device_details(db, inputs) -> str:
             info.append(f"Otwarte porty: {', '.join(plist)}")
     vulns = db.query(Vulnerability).filter(
         Vulnerability.device_id == d.id,
-        Vulnerability.is_open == True,
+        Vulnerability.is_open.is_(True),
         Vulnerability.suppressed == False
     ).all()
     if vulns:
@@ -229,7 +229,7 @@ def _tool_device_details(db, inputs) -> str:
 
 def _tool_vulnerabilities(db, inputs) -> str:
     q = db.query(Vulnerability).filter(
-        Vulnerability.is_open == True,
+        Vulnerability.is_open.is_(True),
         Vulnerability.suppressed == False
     )
     sev = inputs.get("severity", "all")
@@ -299,15 +299,15 @@ def _tool_internet_status(db) -> str:
 def _tool_network_summary(db) -> str:
     from sqlalchemy import func
     total = db.query(Device).count()
-    active = db.query(Device).filter(Device.is_active == True).count()
+    active = db.query(Device).filter(Device.is_active.is_(True)).count()
     down = total - active
     crit = db.query(Vulnerability).filter(
-        Vulnerability.is_open == True,
+        Vulnerability.is_open.is_(True),
         Vulnerability.suppressed == False,
         Vulnerability.severity == "critical"
     ).count()
     high = db.query(Vulnerability).filter(
-        Vulnerability.is_open == True,
+        Vulnerability.is_open.is_(True),
         Vulnerability.suppressed == False,
         Vulnerability.severity == "high"
     ).count()

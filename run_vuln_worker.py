@@ -1687,7 +1687,7 @@ def _close_stale(db, device_id: int, found_keys: set, close_after: int = 3) -> i
     Gdy podatność zostanie ponownie wykryta, licznik consecutive_ok jest zerowany.
     """
     stale = (db.query(Vulnerability)
-        .filter(Vulnerability.device_id == device_id, Vulnerability.is_open == True).all())
+        .filter(Vulnerability.device_id == device_id, Vulnerability.is_open.is_(True)).all())
     closed = 0
     now = datetime.utcnow()
     for v in stale:
@@ -1907,7 +1907,7 @@ def scan_once() -> None:
     try:
         dev_list = [(d.id, d.ip, d.device_type)
                     for d in db.query(Device).filter(
-                        Device.is_active == True,
+                        Device.is_active.is_(True),
                         Device.skip_port_scan == False,
                     ).all()]
         _global_creds_cache = _preload_global_creds(db)
@@ -1932,7 +1932,7 @@ def scan_once() -> None:
     _total_new += new_t; _total_resolved += closed_t
     db = SessionLocal()
     try:
-        open_count = db.query(Vulnerability).filter(Vulnerability.is_open == True).count()
+        open_count = db.query(Vulnerability).filter(Vulnerability.is_open.is_(True)).count()
     finally:
         db.close()
     elapsed = time.monotonic() - t0

@@ -68,7 +68,7 @@ def _update_metrics(db, stats: dict) -> None:
     try:
         from netdoc.api.metrics import devices_total, devices_active, discovery_runs_total
         total = db.query(Device).count()
-        active = db.query(Device).filter(Device.is_active == True).count()
+        active = db.query(Device).filter(Device.is_active.is_(True)).count()
         devices_total.set(total)
         devices_active.set(active)
         discovery_runs_total.inc()

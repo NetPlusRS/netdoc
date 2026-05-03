@@ -122,7 +122,7 @@ def list_devices(
     """Zwraca liste urzadzen z opcjonalnym filtrowaniem."""
     q = db.query(Device)
     if active_only:
-        q = q.filter(Device.is_active == True)
+        q = q.filter(Device.is_active.is_(True))
     if device_type:
         q = q.filter(Device.device_type == device_type)
     return q.order_by(Device.ip).all()

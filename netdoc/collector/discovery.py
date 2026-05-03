@@ -1036,7 +1036,7 @@ def get_scan_targets(db):
             targets.add(cidr)
             _upsert_network(db, cidr, NetworkSource.auto)
             logger.info("Auto-detected new network: %s (added to scan targets)", cidr)
-    for net in db.query(DiscoveredNetwork).filter(DiscoveredNetwork.is_active == True).all():
+    for net in db.query(DiscoveredNetwork).filter(DiscoveredNetwork.is_active.is_(True)).all():
         if _is_infrastructure_cidr(net.cidr):
             logger.debug("Pomijam infrastrukturalny zakres z DB: %s", net.cidr)
             continue
@@ -1572,7 +1572,7 @@ def get_stale_full_scan_ips(db, max_age_days: int) -> list:
         db.query(Device.ip)
         .outerjoin(latest_full, Device.id == latest_full.c.device_id)
         .filter(
-            Device.is_active == True,
+            Device.is_active.is_(True),
             Device.no_full_scan == False,
             or_(latest_full.c.last_full.is_(None), latest_full.c.last_full < cutoff),
         )
@@ -1645,7 +1645,7 @@ def run_full_scan(db, ips=None, progress_callback=None):
     if ips is not None:
         active_ips = list(ips)
     else:
-        active_ips = [d.ip for d in db.query(Device).filter(Device.is_active == True).all()]
+        active_ips = [d.ip for d in db.query(Device).filter(Device.is_active.is_(True)).all()]
     if not active_ips:
         logger.info("Full scan: no active devices")
         return 0
@@ -2338,7 +2338,7 @@ def detect_ip_conflicts(db, arp_map: dict) -> list:
         if not re.match(r'^[0-9A-F]{2}(?::[0-9A-F]{2}){5}$', _norm_current):
             continue
 
-        device = db.query(Device).filter(Device.ip == ip, Device.is_active == True).first()
+        device = db.query(Device).filter(Device.ip == ip, Device.is_active.is_(True)).first()
         if not device or not device.mac:
             continue  # Nowe urzadzenie lub brak MAC w DB — nie ma z czym porownac
 
@@ -2420,7 +2420,7 @@ def mark_missing_devices(db, found_ips, cooldown_minutes: int = 10):
         logger.warning("mark_missing_devices: found_ips jest puste — pomijam deaktywacje")
         return
     threshold = datetime.utcnow() - timedelta(minutes=cooldown_minutes)
-    missing = db.query(Device).filter(Device.is_active == True, Device.ip.notin_(found_ips)).all()
+    missing = db.query(Device).filter(Device.is_active.is_(True), Device.ip.notin_(found_ips)).all()
     deactivated = 0
     for device in missing:
         if device.last_seen and device.last_seen > threshold:

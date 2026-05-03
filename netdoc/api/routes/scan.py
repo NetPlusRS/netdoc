@@ -54,7 +54,7 @@ def trigger_scan(db: Session = Depends(get_db)):
     """
     _set_status(db, {"scan_requested": "discovery"}, category="scanner")
     total = db.query(Device).count()
-    active = db.query(Device).filter(Device.is_active == True).count()
+    active = db.query(Device).filter(Device.is_active.is_(True)).count()
     scanner_mode = _get_status(db, "scanner_mode")
     return ScanStatus(
         status="requested" if scanner_mode == "host" else "no_scanner",
@@ -70,7 +70,7 @@ def trigger_scan(db: Session = Depends(get_db)):
 def scan_status(db: Session = Depends(get_db)):
     """Aktualny stan bazy + status skanera hosta."""
     total = db.query(Device).count()
-    active = db.query(Device).filter(Device.is_active == True).count()
+    active = db.query(Device).filter(Device.is_active.is_(True)).count()
     scanner_job = _get_status(db, "scanner_job") or "-"
     status = "scanning" if scanner_job not in ("-", "", None) else "idle"
     # Ile urzadzen czeka na pelny skan portow

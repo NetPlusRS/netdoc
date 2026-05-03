@@ -105,7 +105,7 @@ def _refresh_gauges(db) -> None:
         from netdoc.collector.discovery import get_stale_full_scan_ips
 
         total = db.query(Device).count()
-        active = db.query(Device).filter(Device.is_active == True).count()
+        active = db.query(Device).filter(Device.is_active.is_(True)).count()
         devices_total.set(total)
         devices_active.set(active)
 

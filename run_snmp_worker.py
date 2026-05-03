@@ -1593,7 +1593,7 @@ def scan_once() -> None:
         # Tylko urzadzenia ze znana community — autodiscovery robi community-worker
         devices = (
             db.query(Device)
-            .filter(Device.is_active == True, Device.snmp_community.isnot(None))
+            .filter(Device.is_active.is_(True), Device.snmp_community.isnot(None))
             .all()
         )
     finally:
@@ -1851,46 +1851,50 @@ def scan_once() -> None:
         l2_candidates = [d for d in devices if d.snmp_community and d.device_type in _L2_TYPES]
         if l2_candidates:
             logger.info("L2 collection: %d switches (FDB/VLAN/STP)", len(l2_candidates))
-            db_l2 = SessionLocal()
             try:
                 import threading as _threading
                 from netdoc.collector.snmp_l2 import collect_fdb, collect_vlan_port, collect_stp_ports, collect_trunk_info
                 _L2_PER_DEVICE_TIMEOUT = 60  # BUG-WRK2: daemon thread — zabezpiecza przed zawieszonym walkiem
 
                 def _collect_l2_device(d_arg, prof_arg, ip_arg, comm_arg):
-                    if prof_arg.get("fdb_supported", True):
-                        try:
-                            fdb = collect_fdb(ip_arg, comm_arg, snmp_timeout)
-                            if fdb:
-                                n = _save_fdb(db_l2, d_arg.id, fdb)
-                                logger.info("FDB  %-18s: %d entries", ip_arg, n)
-                        except Exception as exc:
-                            logger.debug("FDB %s: %s", ip_arg, exc)
-                    if prof_arg.get("vlan_supported", True):
-                        try:
-                            vlan_ports = collect_vlan_port(ip_arg, comm_arg, snmp_timeout)
-                            if vlan_ports:
-                                n = _save_vlan_port(db_l2, d_arg.id, vlan_ports)
-                                logger.info("VLAN %-18s: %d vlan-port entries", ip_arg, n)
-                        except Exception as exc:
-                            logger.debug("VLAN %s: %s", ip_arg, exc)
-                    if prof_arg.get("stp_supported", True):
-                        try:
-                            stp_ports, root_mac, root_cost = collect_stp_ports(ip_arg, comm_arg, snmp_timeout)
-                            if stp_ports or root_mac:
-                                n = _save_stp_ports(db_l2, d_arg.id, stp_ports, root_mac, root_cost)
-                                logger.info("STP  %-18s: %d ports, root=%s", ip_arg, n, root_mac or "-")
-                        except Exception as exc:
-                            logger.debug("STP %s: %s", ip_arg, exc)
-                    # Cisco trunk port mode (VTP MIB) — access/trunk, native VLAN, encap, allowed VLANs
+                    # Each thread owns its session — safe even if thread outlives the timeout
+                    _db = SessionLocal()
                     try:
-                        trunk_data = collect_trunk_info(ip_arg, comm_arg, snmp_timeout)
-                        if trunk_data:
-                            n = _save_trunk_info(db_l2, d_arg.id, trunk_data)
-                            trunk_count = sum(1 for v in trunk_data.values() if v["port_mode"] == "trunk")
-                            logger.info("TRNK %-18s: %d ports (%d trunk)", ip_arg, n, trunk_count)
-                    except Exception as exc:
-                        logger.debug("TRUNK %s: %s", ip_arg, exc)
+                        if prof_arg.get("fdb_supported", True):
+                            try:
+                                fdb = collect_fdb(ip_arg, comm_arg, snmp_timeout)
+                                if fdb:
+                                    n = _save_fdb(_db, d_arg.id, fdb)
+                                    logger.info("FDB  %-18s: %d entries", ip_arg, n)
+                            except Exception as exc:
+                                logger.debug("FDB %s: %s", ip_arg, exc)
+                        if prof_arg.get("vlan_supported", True):
+                            try:
+                                vlan_ports = collect_vlan_port(ip_arg, comm_arg, snmp_timeout)
+                                if vlan_ports:
+                                    n = _save_vlan_port(_db, d_arg.id, vlan_ports)
+                                    logger.info("VLAN %-18s: %d vlan-port entries", ip_arg, n)
+                            except Exception as exc:
+                                logger.debug("VLAN %s: %s", ip_arg, exc)
+                        if prof_arg.get("stp_supported", True):
+                            try:
+                                stp_ports, root_mac, root_cost = collect_stp_ports(ip_arg, comm_arg, snmp_timeout)
+                                if stp_ports or root_mac:
+                                    n = _save_stp_ports(_db, d_arg.id, stp_ports, root_mac, root_cost)
+                                    logger.info("STP  %-18s: %d ports, root=%s", ip_arg, n, root_mac or "-")
+                            except Exception as exc:
+                                logger.debug("STP %s: %s", ip_arg, exc)
+                        # Cisco trunk port mode (VTP MIB) — access/trunk, native VLAN, encap, allowed VLANs
+                        try:
+                            trunk_data = collect_trunk_info(ip_arg, comm_arg, snmp_timeout)
+                            if trunk_data:
+                                n = _save_trunk_info(_db, d_arg.id, trunk_data)
+                                trunk_count = sum(1 for v in trunk_data.values() if v["port_mode"] == "trunk")
+                                logger.info("TRNK %-18s: %d ports (%d trunk)", ip_arg, n, trunk_count)
+                        except Exception as exc:
+                            logger.debug("TRUNK %s: %s", ip_arg, exc)
+                    finally:
+                        _db.close()
 
                 for d in l2_candidates:
                     _prof = get_profile(d.snmp_sys_object_id, d.os_version)
@@ -1906,8 +1910,6 @@ def scan_once() -> None:
                 scan_once._l2_last = _l2_now  # type: ignore[attr-defined]
             except Exception as exc:
                 logger.warning("L2 collection error: %s", exc)
-            finally:
-                db_l2.close()
 
     # Interface metrics → ClickHouse (in/out octets HC, errors, discards)
     # BUG-WRK3: _ensure_metrics_table() wywoływana tu (nie tylko w main()) — ponawia po restarcie CH.

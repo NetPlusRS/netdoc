@@ -2249,7 +2249,7 @@ def run_scan_cycle(db, scan_type: str = "discovery") -> dict:
                 # Pomijaj tylko urzadzenia które SĄ w DB i są nieaktywne
                 # (IP których nie ma w DB przepuszczamy — mogą być nowe odkrycia)
                 inactive_set = {d.ip for d in db.query(_Device).filter(
-                    _Device.ip.in_(queued_ips), _Device.is_active == False).all()}
+                    _Device.ip.in_(queued_ips), _Device.is_active.is_(False)).all()}
                 if inactive_set:
                     logger.info("full_single: pomijam nieaktywne urzadzenia: %s", ", ".join(sorted(inactive_set)))
                 queued_ips = [ip for ip in queued_ips if ip not in inactive_set]
@@ -2276,7 +2276,7 @@ def run_scan_cycle(db, scan_type: str = "discovery") -> dict:
             from netdoc.collector.discovery import FULL_SCAN_BATCH_SIZE
             import math as _math
             logger.info("=== Full port scan 1-65535 ===")
-            active_ips = [d.ip for d in db.query(Device).filter(Device.is_active == True).all()]
+            active_ips = [d.ip for d in db.query(Device).filter(Device.is_active.is_(True)).all()]
             _total_b = max(1, _math.ceil(len(active_ips) / FULL_SCAN_BATCH_SIZE))
             _set_status(db, {"scanning_ips": ",".join(active_ips), "scan_progress": f"0/{_total_b} batches"})
 

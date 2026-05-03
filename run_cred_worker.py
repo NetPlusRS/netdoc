@@ -2206,15 +2206,14 @@ def _process_device(device_id: int, ip: str,
 
     except Exception as exc:
         logger.warning("Error device_id=%s ip=%s: %s", device_id, ip, exc)
-        db.rollback()
+        try:
+            db.rollback()
+        except Exception:
+            pass
     finally:
         # Zawsze drenuj zdarzenia ochrony — nawet gdy wystąpił wyjątek wcześniej.
         # Bez finally: zdarzenia z poprzedniego cyklu narastają w globalnym dict
         # i przy następnym cyklu count jest fałszywie zawyżony.
-        try:
-            db.rollback()  # ensure clean session state even if except-block rollback failed
-        except Exception:
-            pass
         try:
             _process_protection_events(db, device_id, ip)
         except Exception:
@@ -2304,7 +2303,7 @@ def scan_once() -> None:
         # Wyciagnij (id, ip) przed zamknieciem sesji — ORM obiekty staja sie detached po db.close()
         candidates = [
             (d.id, d.ip) for d in db.query(Device).filter(
-                Device.is_active == True,
+                Device.is_active.is_(True),
                 Device.last_seen >= recent_seen,
                 Device.skip_cred_scan == False,
                 (Device.last_credential_ok_at.is_(None)) |

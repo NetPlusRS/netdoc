@@ -196,7 +196,7 @@ def scan_once() -> None:
         }
         devices = (
             db.query(Device)
-            .filter(Device.is_active == True)
+            .filter(Device.is_active.is_(True))
             .filter(
                 (Device.snmp_community.is_(None)) |
                 (Device.snmp_ok_at < stale_threshold)

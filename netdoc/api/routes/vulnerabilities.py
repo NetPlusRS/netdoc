@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from netdoc.storage.database import get_db
@@ -69,14 +70,21 @@ def list_vulnerabilities(
 @router.get("/summary", response_model=VulnSummary)
 def vulnerability_summary(db: Session = Depends(get_db)):
     """Podsumowanie otwartych podatnosci wg severity."""
-    open_vulns = db.query(Vulnerability).filter(Vulnerability.is_open == True).all()
+    rows = (
+        db.query(Vulnerability.severity, Vulnerability.vuln_type, func.count(Vulnerability.id))
+        .filter(Vulnerability.is_open.is_(True))
+        .group_by(Vulnerability.severity, Vulnerability.vuln_type)
+        .all()
+    )
+    counts: dict = {s.value: 0 for s in VulnSeverity}
     by_type: dict = {}
-    counts = {s.value: 0 for s in VulnSeverity}
-    for v in open_vulns:
-        counts[v.severity.value] = counts.get(v.severity.value, 0) + 1
-        by_type[v.vuln_type.value] = by_type.get(v.vuln_type.value, 0) + 1
+    total = 0
+    for severity, vuln_type, cnt in rows:
+        counts[severity.value] = counts.get(severity.value, 0) + cnt
+        by_type[vuln_type.value] = by_type.get(vuln_type.value, 0) + cnt
+        total += cnt
     return VulnSummary(
-        total_open=len(open_vulns),
+        total_open=total,
         critical=counts.get("critical", 0),
         high=counts.get("high", 0),
         medium=counts.get("medium", 0),
@@ -119,13 +127,19 @@ def unsuppress_vulnerability(vuln_id: int, db: Session = Depends(get_db)):
 @router.patch("/unsuppress-all")
 def unsuppress_all_vulnerabilities(db: Session = Depends(get_db)):
     """Cofniecie akceptacji ryzyka dla wszystkich wyciszonych podatnosci."""
-    suppressed = db.query(Vulnerability).filter(Vulnerability.suppressed == True).all()
-    count = len(suppressed)
-    for v in suppressed:
-        v.suppressed = False
-        v.is_open = True
-        v.last_seen = datetime.utcnow()
-    db.commit()
+    try:
+        count = (
+            db.query(Vulnerability)
+            .filter(Vulnerability.suppressed.is_(True))
+            .update(
+                {"suppressed": False, "is_open": True, "last_seen": datetime.utcnow()},
+                synchronize_session=False,
+            )
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return {"unsuppressed": count}
 
 
