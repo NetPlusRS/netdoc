@@ -95,6 +95,52 @@ def save_yaml(vendor: str, platform: str, firmware: str, doc: dict) -> Path:
     return out
 
 
+# ── WLC/IOS help-output parser ───────────────────────────────────────────────
+
+def _parse_help_output(raw: str) -> dict[str, str]:
+    """Parse Cisco 'cmd ?' output into {command: description}.
+
+    Handles WLC and AP IOS Shell help formats. Strips HELP: section,
+    parameter placeholders, Ctrl-* keys, and --More-- pagination.
+    """
+    result: dict[str, str] = {}
+    lines = raw.replace("\r", "").split("\n")
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if line == "HELP:" or line.startswith("HELP:"):
+            break
+        if "(Cisco Controller)" in line or line.endswith(">") or line.endswith("#"):
+            continue
+        if line.startswith("--More--") or line == "<cr>" or line.startswith("% "):
+            continue
+        if line.endswith(" ") and not re.search(r"\s{2,}", line):
+            continue
+        m = re.match(r"^(\S+)\s{2,}(.+)$", line)
+        if m:
+            cmd, desc = m.group(1).strip(), m.group(2).strip()
+            if (cmd and len(cmd) < 50 and cmd != "<cr>"
+                    and not cmd.startswith("<") and not cmd.startswith("Ctrl-")):
+                result[cmd] = desc
+        elif re.match(r"^(\S+)$", line):
+            cmd = line.strip()
+            if (cmd and len(cmd) < 50
+                    and not cmd.startswith("-") and not cmd.startswith("<")
+                    and not cmd.startswith("Ctrl-") and cmd != "<cr>"):
+                result.setdefault(cmd, "")
+    return result
+
+
+def _slugify(model: str, firmware: str) -> str:
+    """Return a filesystem-safe slug from model + firmware (major.minor only)."""
+    def clean(s: str) -> str:
+        s = s.lower().strip()
+        return re.sub(r"[^a-z0-9.]+", "_", s).strip("_")
+    fw_short = ".".join(firmware.split(".")[:2]) if firmware else "unknown"
+    return f"{clean(model)}_{clean(fw_short)}"
+
+
 # ── Abstract base extractor ──────────────────────────────────────────────────
 
 class BaseCliExtractor(ABC):

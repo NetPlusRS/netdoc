@@ -459,6 +459,46 @@ def test_mikrotik_driver_selected_for_mikrotik_vendor_with_cred(db):
     assert any("mikrotik" in n.lower() for n in names)
 
 
+def test_cisco_driver_skipped_for_ap_device_type(db):
+    """Cisco AP (device_type=ap) must not get CiscoDriver even with SSH cred + port 22.
+
+    Lightweight APs don't expose WLC CLI — SSH goes to AP IOS Shell, not WLC.
+    Extraction is done out-of-band via extract.py, not the pipeline.
+    """
+    device = _make_device(db, "10.0.1.1", vendor="Cisco Systems")
+    device.device_type = DeviceType.ap
+    db.commit()
+    _add_scan_with_ports(db, device, [22])
+    _add_ssh_cred(db, device)
+
+    drivers = _pick_drivers(db, device)
+    assert not any(isinstance(d, CiscoDriver) for d in drivers)
+
+
+def test_unifi_driver_skipped_for_ap_device_type(db):
+    """Ubiquiti AP (device_type=ap) must not get UnifiDriver — managed by controller."""
+    from netdoc.collector.drivers.unifi import UnifiDriver
+
+    device = _make_device(db, "10.0.1.2", vendor="Ubiquiti Networks")
+    device.device_type = DeviceType.ap
+    db.commit()
+
+    drivers = _pick_drivers(db, device)
+    assert not any(isinstance(d, UnifiDriver) for d in drivers)
+
+
+def test_unifi_driver_skipped_for_switch_device_type(db):
+    """Ubiquiti switch (device_type=switch) must not get UnifiDriver — managed by controller."""
+    from netdoc.collector.drivers.unifi import UnifiDriver
+
+    device = _make_device(db, "10.0.1.3", vendor="Ubiquiti Networks")
+    device.device_type = DeviceType.switch
+    db.commit()
+
+    drivers = _pick_drivers(db, device)
+    assert not any(isinstance(d, UnifiDriver) for d in drivers)
+
+
 # --- collect_device exception handling ---
 
 def test_collect_device_driver_exception_continues_to_next(db):

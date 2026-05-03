@@ -1,4 +1,4 @@
-"""Regression tests for netdoc.collector.cli_extractor.
+"""Regression tests for CLI extractor utilities.
 
 Tests cover:
 - _parse_help_output(): WLC HELP: section, parameter placeholders, Ctrl-* keys
@@ -7,7 +7,7 @@ Tests cover:
 - _guess_device_type(): Cisco AP detection via hostname / sysDescr
 """
 import pytest
-from netdoc.collector.cli_extractor import _parse_help_output, _slugify
+from netdoc.collector.cli.base import _parse_help_output, _slugify
 
 
 # ── _parse_help_output ───────────────────────────────────────────────────────

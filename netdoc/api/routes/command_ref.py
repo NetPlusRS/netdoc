@@ -1,7 +1,6 @@
 """API dla CLI Command Reference — baza komend urządzeń per model+firmware."""
 from __future__ import annotations
 
-import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
@@ -10,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/api/command-ref", tags=["command-ref"])
 
-_COMMANDS_DIR = Path(__file__).parent.parent.parent.parent / "device_commands"
+_COMMANDS_DIR = Path(__file__).parent.parent.parent.parent / "cli-library"
 
 
 # ─────────────────────────────────────────────────────────────
@@ -18,7 +17,7 @@ _COMMANDS_DIR = Path(__file__).parent.parent.parent.parent / "device_commands"
 # ─────────────────────────────────────────────────────────────
 
 def _load_all() -> list[dict]:
-    """Wczytuje wszystkie pliki YAML z device_commands/."""
+    """Wczytuje wszystkie pliki YAML z cli-library/ (rekurencyjnie)."""
     try:
         import yaml
     except ImportError:
@@ -28,14 +27,14 @@ def _load_all() -> list[dict]:
         return []
 
     result = []
-    for fpath in sorted(_COMMANDS_DIR.glob("*.yaml")):
-        if fpath.stem.endswith(".partial"):
+    for fpath in sorted(_COMMANDS_DIR.rglob("*.yaml")):
+        if fpath.name.endswith(".partial.yaml"):
             continue
         try:
             with open(fpath, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
             if isinstance(data, dict):
-                data["_slug"] = fpath.stem
+                data["_slug"] = fpath.relative_to(_COMMANDS_DIR).with_suffix("").as_posix()
                 data["_file"] = fpath.name
                 result.append(data)
         except Exception:
@@ -45,14 +44,6 @@ def _load_all() -> list[dict]:
 
 def _get_db() -> list[dict]:
     return _load_all()
-
-
-def _slugify(model: str, firmware: str) -> str:
-    def clean(s: str) -> str:
-        s = s.lower().strip()
-        return re.sub(r"[^a-z0-9.]+", "_", s).strip("_")
-    fw_short = ".".join(firmware.split(".")[:2]) if firmware else "unknown"
-    return f"{clean(model)}_{clean(fw_short)}"
 
 
 def _collect_tags(tree: dict, path: str = "") -> set[str]:
