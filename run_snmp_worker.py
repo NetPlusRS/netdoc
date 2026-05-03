@@ -2658,15 +2658,21 @@ def main() -> None:
     start_http_server(METRICS_PORT)
     logger.info("Metrics: http://0.0.0.0:%d/metrics", METRICS_PORT)
     # PERF-02: sleep-until-next-run zamiast sleep-after-work
+    import signal as _signal
+    import threading as _threading
+    _shutdown = _threading.Event()
+    _signal.signal(_signal.SIGTERM, lambda s, f: (_shutdown.set(),
+                                                  logger.info("SIGTERM — snmp worker shutting down")))
+
     interval = _DEFAULT_SNMP_INTERVAL
-    while True:
+    while not _shutdown.is_set():
         next_run = time.monotonic() + interval
         try:
             scan_once()
         except Exception as exc:
             logger.exception("Unhandled exception in scan_once: %s", exc)
         interval, *_ = _read_snmp_settings()
-        time.sleep(max(0.0, next_run - time.monotonic()))
+        _shutdown.wait(timeout=max(0.0, next_run - time.monotonic()))
 
 
 if __name__ == "__main__":

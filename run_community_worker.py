@@ -301,9 +301,15 @@ def main() -> None:
     init_db()
     start_http_server(METRICS_PORT)
     logger.info("Metrics: http://0.0.0.0:%d/metrics", METRICS_PORT)
+    import signal as _signal
+    import threading as _threading
+    _shutdown = _threading.Event()
+    _signal.signal(_signal.SIGTERM, lambda s, f: (_shutdown.set(),
+                                                  logger.info("SIGTERM — community worker shutting down")))
+
     # PERF-02: sleep-until-next-run zamiast sleep-after-work
     interval = _DEFAULT_INTERVAL
-    while True:
+    while not _shutdown.is_set():
         next_run = time.monotonic() + interval
         try:
             from netdoc.storage.models import SystemStatus
@@ -325,7 +331,7 @@ def main() -> None:
         interval, *_ = _get_settings()
         sleep_time = max(0.0, next_run - time.monotonic())
         logger.info("Next cycle in %.0fs", sleep_time)
-        time.sleep(sleep_time)
+        _shutdown.wait(timeout=sleep_time)
 
 
 if __name__ == "__main__":

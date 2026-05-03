@@ -1019,7 +1019,10 @@ def main() -> None:
                 new_t = threading.Thread(target=db_writer_thread,
                                          args=(pkt_queue, stop_event), name="db-writer", daemon=False)
                 new_t.start()
-                threads[threads.index(db_thread)] = new_t
+                try:
+                    threads[threads.index(db_thread)] = new_t
+                except (ValueError, IndexError):
+                    threads.append(new_t)
             # Wykryj zmianę interfejsu sieciowego → rebind socketów + scan_now.flag
             now = time.monotonic()
             if now - _last_ip_check >= _IP_CHECK_INTERVAL:

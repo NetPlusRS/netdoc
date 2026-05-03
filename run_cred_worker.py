@@ -54,6 +54,15 @@ def _is_banned(ip: str) -> bool:
     return _ip_ban_until.get(ip, 0.0) > time.monotonic()
 
 
+def _prune_ban_cache() -> None:
+    """Usuwa wygasłe wpisy z _ip_ban_until — wywołuj na początku każdego cyklu."""
+    now = time.monotonic()
+    with _protection_lock:
+        expired = [ip for ip, t in _ip_ban_until.items() if t <= now]
+        for ip in expired:
+            del _ip_ban_until[ip]
+
+
 def _record_protection(ip: str, service: str, port: int, reason: str) -> None:
     """Rejestruje wykrycie ochrony aktywnej na porcie serwisu (thread-safe).
     Ustawia in-memory cooldown — IP jest pomijane przez BAN_COOLDOWN_S sekund.
@@ -2278,6 +2287,7 @@ def _process_device_with_timeout(timeout_s: int, device_id: int, ip: str,
 # Main loop -------------------------------------------------------------------
 def scan_once() -> None:
     global _total_new
+    _prune_ban_cache()
     (interval, ssh_w, web_w, retry_days, max_creds,
      pairs_per_cycle, min_delay, max_delay, dev_timeout) = _read_settings()
     method_flags = _read_method_flags()
@@ -2596,8 +2606,14 @@ def main() -> None:
     start_http_server(METRICS_PORT)
     logger.info("Metryki: http://0.0.0.0:%d/metrics", METRICS_PORT)
     # PERF-02: sleep-until-next-run zamiast sleep-after-work
+    import signal as _signal
+    import threading as _threading
+    _shutdown = _threading.Event()
+    _signal.signal(_signal.SIGTERM, lambda s, f: (_shutdown.set(),
+                                                  logger.info("SIGTERM — cred worker shutting down")))
+
     interval = _DEFAULT_INTERVAL
-    while True:
+    while not _shutdown.is_set():
         next_run = time.monotonic() + interval
         try:
             db = SessionLocal()
@@ -2616,7 +2632,7 @@ def main() -> None:
         except Exception as exc:
             logger.exception("Unhandled exception in scan_once (cred): %s", exc)
         interval, *_ = _read_settings()
-        time.sleep(max(0.0, next_run - time.monotonic()))
+        _shutdown.wait(timeout=max(10, next_run - time.monotonic()))
 
 
 if __name__ == "__main__":

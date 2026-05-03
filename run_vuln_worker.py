@@ -1966,8 +1966,14 @@ def main() -> None:
     # PERF-02: sleep-until-next-run instead of sleep-after-work.
     # _MIN_PAUSE_S guarantees a short break even when a scan overshoots the
     # configured interval (prevents back-to-back scans with sleep(0)).
+    import signal as _signal
+    import threading as _threading
+    _shutdown = _threading.Event()
+    _signal.signal(_signal.SIGTERM, lambda s, f: (_shutdown.set(),
+                                                  logger.info("SIGTERM — vuln worker shutting down")))
+
     interval = _DEFAULT_INTERVAL
-    while True:
+    while not _shutdown.is_set():
         next_run = time.monotonic() + interval
         try:
             db = SessionLocal()
@@ -1986,7 +1992,7 @@ def main() -> None:
         except Exception as exc:
             logger.exception("Unhandled exception in scan_once (vuln): %s", exc)
         interval, *_ = _read_settings()
-        time.sleep(max(_MIN_PAUSE_S, next_run - time.monotonic()))
+        _shutdown.wait(timeout=max(_MIN_PAUSE_S, next_run - time.monotonic()))
 
 
 if __name__ == "__main__":
