@@ -21,11 +21,17 @@ logs/agents/*
 *.pid
 *.log
 
-# CLI Command Reference — only partial checkpoints are excluded (HTML is tracked)
+# CLI Command Reference (old layout) — partial checkpoints excluded
 device_commands/*.partial.yaml
 
-# CLI Extractor — proprietary extraction tool, private knowledge (results tracked, tool not)
+# CLI Extractor — proprietary vendor modules gitignored, public interface tracked
 netdoc/collector/cli_extractor.py
+netdoc/collector/cli/*.py
+!netdoc/collector/cli/__init__.py
+!netdoc/collector/cli/base.py
+
+# CLI Library — full YAMLs are tracked, partial checkpoints are not
+cli-library/**/*.partial.yaml
 
 # Runtime flags
 scan_now.flag

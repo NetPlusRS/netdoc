@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Generate a standalone HTML CLI reference from device_commands/*.yaml files.
+"""Generate a standalone HTML CLI reference from cli-library/**/*.yaml files.
 
 Usage:
     python export_cli_reference.py [output_path]
 
-Output defaults to device_commands/cli_reference.html
+Output defaults to cli-library/cli_reference.html
 """
 
 import json
 import sys
 from pathlib import Path
 
-COMMANDS_DIR = Path(__file__).parent / "device_commands"
-DEFAULT_OUTPUT = COMMANDS_DIR / "cli_reference.html"
+CLI_LIBRARY   = Path(__file__).parent / "cli-library"
+DEFAULT_OUTPUT = CLI_LIBRARY / "cli_reference.html"
 
 
 def _collect_tags(tree: dict) -> set:
@@ -44,18 +44,20 @@ def load_databases() -> list:
         sys.exit("PyYAML not installed — run: pip install pyyaml")
 
     dbs = []
-    for fpath in sorted(COMMANDS_DIR.glob("*.yaml")):
-        if fpath.stem.endswith(".partial"):
+    for fpath in sorted(CLI_LIBRARY.rglob("*.yaml")):
+        if fpath.name.endswith(".partial.yaml"):
             continue
         try:
             with open(fpath, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
             if not isinstance(data, dict):
                 continue
+            # slug = vendor/platform/fw  (relative path without extension)
+            slug = fpath.relative_to(CLI_LIBRARY).with_suffix("").as_posix()
             commands = data.get("commands", {})
             dbs.append({
-                "slug":          fpath.stem,
-                "model":         data.get("model", fpath.stem),
+                "slug":          slug,
+                "model":         data.get("model", slug),
                 "firmware":      data.get("firmware", ""),
                 "system":        data.get("system", ""),
                 "source_ip":     data.get("source_ip", ""),
@@ -65,7 +67,7 @@ def load_databases() -> list:
                 "commands":      commands,
             })
         except Exception as e:
-            print(f"Warning: skip {fpath.name}: {e}", file=sys.stderr)
+            print(f"Warning: skip {fpath}: {e}", file=sys.stderr)
     return dbs
 
 
@@ -441,7 +443,7 @@ def main():
     output = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_OUTPUT
     dbs = load_databases()
     if not dbs:
-        sys.exit(f"No YAML files found in {COMMANDS_DIR}")
+        sys.exit(f"No YAML files found in {CLI_LIBRARY}")
     generate_html(dbs, output)
 
 
