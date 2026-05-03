@@ -27,6 +27,7 @@ class VulnOut(BaseModel):
     last_seen: datetime
     is_open: bool
     suppressed: bool = False
+    consecutive_ok: int = 0
 
 
 class VulnSummary(BaseModel):

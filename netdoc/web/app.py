@@ -2742,7 +2742,7 @@ def create_app():
             "responsible_person": request.form.get("responsible_person") or None,
             "asset_notes":        request.form.get("asset_notes") or None,
         }
-        payload = {k: v for k, v in payload.items() if v is not None}
+        # Zachowaj None — PATCH z exclude_unset=True potrzebuje jawnego None żeby wyczyścić pole
         _, err = _api("patch", f"/api/devices/{device_id}", json=payload)
         if err:
             flash(f"Blad zapisu: {err}", "danger")

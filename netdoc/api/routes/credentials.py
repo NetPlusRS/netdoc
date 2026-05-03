@@ -175,7 +175,7 @@ def cred_scan_stats(db: Session = Depends(get_db)):
         "ssh": _count_global(CredentialMethod.ssh),
         "api": _count_global(CredentialMethod.api),
         "rdp": _count_global(CredentialMethod.rdp),
-        "ftp": _count_global(CredentialMethod.ssh),  # FTP uzywa tych samych par co SSH
+        "ftp": _count_global(CredentialMethod.ftp),
     }
 
     # 2. Wszystkie tried_* keys z SystemStatus (jeden SELECT)

@@ -55,9 +55,6 @@ class DeviceOut(BaseModel):
     skip_cred_scan: bool = False
     skip_port_scan: bool = False
 
-    # Internal field — populated from ORM but never serialized
-    _snmp_community_raw: Optional[str] = None
-
     model_config = {"from_attributes": True}
 
     @model_validator(mode="wrap")
@@ -65,10 +62,13 @@ class DeviceOut(BaseModel):
     def _compute_snmp_configured(cls, value, handler):
         if hasattr(value, "snmp_community"):
             community = value.snmp_community
-            obj = handler(value)
-            obj.snmp_configured = bool(community)
-            return obj
-        return handler(value)
+        elif isinstance(value, dict):
+            community = value.get("snmp_community")
+        else:
+            community = None
+        obj = handler(value)
+        obj.snmp_configured = bool(community)
+        return obj
 
 
 class DeviceUpdate(BaseModel):
