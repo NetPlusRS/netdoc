@@ -4,7 +4,7 @@ from datetime import datetime, date as pydate
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from sqlalchemy.orm import Session
 
 from netdoc.storage.database import get_db
@@ -45,7 +45,7 @@ class DeviceOut(BaseModel):
     asset_notes: Optional[str] = None
     sys_contact: Optional[str] = None
     ip_type: str = "unknown"
-    snmp_community: Optional[str] = None
+    snmp_configured: bool = False
     snmp_ok_at: Optional[datetime] = None
     snmp_uptime: Optional[str] = None
     snmp_sys_object_id: Optional[str] = None
@@ -55,7 +55,20 @@ class DeviceOut(BaseModel):
     skip_cred_scan: bool = False
     skip_port_scan: bool = False
 
+    # Internal field — populated from ORM but never serialized
+    _snmp_community_raw: Optional[str] = None
+
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _compute_snmp_configured(cls, value, handler):
+        if hasattr(value, "snmp_community"):
+            community = value.snmp_community
+            obj = handler(value)
+            obj.snmp_configured = bool(community)
+            return obj
+        return handler(value)
 
 
 class DeviceUpdate(BaseModel):

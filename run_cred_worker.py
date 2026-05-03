@@ -144,7 +144,6 @@ SSH_CREDENTIAL_FALLBACK = [
     ("enable",      "enable"),
     # --- Ubiquiti ---
     ("ubnt",        "ubnt"),
-    ("root",        "526FJq8HyGRr9jamK5ov"),
     # --- MikroTik ---
     ("mikrotik",    ""),
     # --- Huawei ---
@@ -710,7 +709,7 @@ def _try_ssh(ip: str, port: int, username: str, password: str) -> bool:
     if _ip_ban_until.get(ip, 0.0) > time.monotonic():
         return False
     if _VERBOSE:
-        logger.info("SSH proba %-18s port=%-5d u=%-15s p=%s", ip, port, username, password or "(puste)")
+        logger.info("SSH proba %-18s port=%-5d u=%-15s p=***", ip, port, username)
     try:
         c = paramiko.SSHClient()
         c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -2508,9 +2507,8 @@ def _seed_default_credentials() -> None:
     """
     # Poświadczenia wysokiego priorytetu — testowane PIERWSZE (priority=0)
     # Dodaj tu znane hasła środowiskowe / klientów — zawsze będą sprawdzone jako pierwsze
-    HIGH_PRIORITY_SSH = [
-        ("root", "526FJq8HyGRr9jamK5ov"),   # UniFi / sieć biurowa
-    ]
+    # WAŻNE: nie wpisuj prawdziwych haseł w kod — dodaj je przez UI (Credentials)
+    HIGH_PRIORITY_SSH: list[tuple[str, str]] = []
 
     db = SessionLocal()
     try:

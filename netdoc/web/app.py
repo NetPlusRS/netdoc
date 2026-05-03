@@ -3024,6 +3024,12 @@ def create_app():
         if not cidr:
             flash("CIDR jest wymagany.", "danger")
             return redirect(url_for("networks"))
+        try:
+            import ipaddress as _ip
+            _ip.ip_network(cidr, strict=False)
+        except ValueError:
+            flash(f"Niepoprawny format CIDR: {cidr}", "danger")
+            return redirect(url_for("networks"))
         db = SessionLocal()
         try:
             existing = db.query(DiscoveredNetwork).filter_by(cidr=cidr).first()

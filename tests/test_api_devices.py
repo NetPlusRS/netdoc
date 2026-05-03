@@ -469,10 +469,10 @@ def test_persist_scan_batch_clears_old_nmap_full(db):
     assert "22" not in results[0].open_ports
 
 
-# === NOWE TESTY: DeviceOut zwraca snmp_community i snmp_ok_at ===
+# === TESTY: DeviceOut snmp_configured (community nie jest eksponowane) ===
 
 def test_api_device_out_has_snmp_fields(client, db):
-    """GET /api/devices/ zawiera pola snmp_community i snmp_ok_at."""
+    """GET /api/devices/ zwraca snmp_configured=True gdy community ustawione, nie eksponuje wartości."""
     from netdoc.storage.models import Device, DeviceType
     from datetime import datetime
     d = Device(ip="10.30.0.1", device_type=DeviceType.router,
@@ -484,12 +484,13 @@ def test_api_device_out_has_snmp_fields(client, db):
     data = resp.json()
     dev = next((x for x in data if x["ip"] == "10.30.0.1"), None)
     assert dev is not None
-    assert dev["snmp_community"] == "public"
+    assert dev["snmp_configured"] is True        # community ustawione
+    assert "snmp_community" not in dev           # community NIE eksponowane przez API
     assert dev["snmp_ok_at"] is not None
 
 
 def test_api_device_out_snmp_null_by_default(client, db):
-    """GET /api/devices/ zwraca snmp_community=null gdy nie ustawiono."""
+    """GET /api/devices/ zwraca snmp_configured=False gdy community nie ustawiono."""
     from netdoc.storage.models import Device, DeviceType
     d = Device(ip="10.30.0.2", device_type=DeviceType.unknown)
     db.add(d); db.commit(); db.refresh(d)
@@ -499,7 +500,8 @@ def test_api_device_out_snmp_null_by_default(client, db):
     data = resp.json()
     dev = next((x for x in data if x["ip"] == "10.30.0.2"), None)
     assert dev is not None
-    assert dev["snmp_community"] is None
+    assert dev["snmp_configured"] is False       # brak community
+    assert "snmp_community" not in dev
     assert dev["snmp_ok_at"] is None
 
 
