@@ -454,7 +454,7 @@ def _update_asset_notes_tag(notes: str | None, tag: str, value: str) -> str:
     return (notes + "\n" + new_tag) if notes else new_tag
 
 
-_UBNT_AP_PFX     = ("u6-", "u7-", "u5-", "u2-", "uap", "unifi ap")
+_UBNT_AP_PFX     = ("u6-", "u7-", "u5-", "u2-", "u6", "u7", "u5", "u2", "uap", "unifi ap", "ap")
 _UBNT_SWITCH_PFX = ("us-", "usw", "us8", "us16", "us24", "us48", "unifi switch")
 _UBNT_ROUTER_PFX = ("udm", "usg", "udr", "unifi dream", "unifi gateway")
 _NAS_OS_HINTS    = ("diskstation", "synology", "dsm ", "qts ", "qnap",
@@ -463,7 +463,7 @@ _NAS_OS_HINTS    = ("diskstation", "synology", "dsm ", "qts ", "qnap",
 # Cisco — słowa kluczowe w modelu/sysDescr identyfikujące switch vs router
 _CISCO_SWITCH_KEYWORDS = (
     "catalyst", "ws-c", "c9300", "c9200", "c9100", "c9500", "c9600",
-    "c3750", "c3850", "c3560", "c2960", "c2950", "me-3", "ie-", "sg-",
+    "c3750", "c3850", "c3560", "c2960", "c2950", "2960", "2950", "me-3", "ie-", "sg-",
     "nexus", "nx-os",
 )
 _CISCO_ROUTER_KEYWORDS = (

@@ -1070,8 +1070,8 @@ def test_guess_ubiquiti_router_by_hostname():
     assert _guess_device_type({}, "", vendor="Ubiquiti", hostname="UDM-Pro") == DeviceType.router
 
 
-def test_guess_ubiquiti_no_hostname_is_ap():
-    assert _guess_device_type({}, "", vendor="Ubiquiti", hostname=None) == DeviceType.ap
+def test_guess_ubiquiti_no_hostname_is_unknown():
+    assert _guess_device_type({}, "", vendor="Ubiquiti", hostname=None) == DeviceType.unknown
 
 
 def test_guess_fortinet_vendor_firewall():
@@ -1966,7 +1966,7 @@ def test_run_discovery_classifies_ap_via_arp_mac_oui(db):
 
     dev = db.query(Device).filter_by(ip="192.168.1.10").first()
     assert dev is not None
-    assert dev.device_type == DeviceType.ap
+    assert dev.device_type == DeviceType.unknown
     assert dev.vendor == "Ubiquiti Inc"
     assert dev.mac == "9C:05:D6:AA:BB:CC"
 

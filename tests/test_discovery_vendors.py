@@ -87,8 +87,8 @@ def test_guess_nas_by_mac():
 # --- router / network ---
 
 def test_guess_ubiquiti_ap_default():
-    """Ubiquiti bez hostname -> domyslnie ap (najczestszy typ)."""
-    assert _guess_device_type({80: {}, 443: {}}, None, vendor="Ubiquiti Inc") == DeviceType.ap
+    """Ubiquiti bez hostname -> unknown (bez danych nie zgaduj)."""
+    assert _guess_device_type({80: {}, 443: {}}, None, vendor="Ubiquiti Inc") == DeviceType.unknown
 
 
 def test_guess_ubiquiti_ap_by_hostname():
@@ -123,11 +123,11 @@ def test_guess_firewall_fortinet_os():
 
 
 def test_guess_ubiquiti_by_mac():
-    """Ubiquiti rozpoznany przez MAC OUI — bez hostname -> ap."""
+    """Ubiquiti rozpoznany przez MAC OUI — bez hostname -> unknown (bez danych nie zgaduj)."""
     with patch("netdoc.collector.discovery.oui_db") as mock_oui:
         mock_oui.lookup.return_value = "Ubiquiti Inc"
         result = _guess_device_type({80: {}}, None, vendor=None, mac="9C:05:D6:00:00:01")
-    assert result == DeviceType.ap
+    assert result == DeviceType.unknown
 
 
 # --- iot ---
@@ -301,15 +301,15 @@ def test_get_default_gateways_parses_windows_output():
     assert "192.168.5.1" in result
 
 
-def test_ubiquiti_no_hostname_default_ap():
-    """Ubiquiti bez hostname domyslnie AP (istniejace zachowanie)."""
-    assert _guess_device_type({22: {}, 443: {}}, None, vendor="Ubiquiti Inc", hostname="") == DeviceType.ap
+def test_ubiquiti_no_hostname_default_unknown():
+    """Ubiquiti bez hostname -> unknown (bez danych nie zgaduj)."""
+    assert _guess_device_type({22: {}, 443: {}}, None, vendor="Ubiquiti Inc", hostname="") == DeviceType.unknown
 
 
-def test_ubiquiti_custom_hostname_default_ap():
-    """Ubiquiti z niestandardowym hostname (np. 'Krasnicza-W') -> AP (bez gateway fix)."""
+def test_ubiquiti_custom_hostname_default_unknown():
+    """Ubiquiti z niestandardowym hostname (np. 'Krasnicza-W') -> unknown (nie zgaduj)."""
     assert _guess_device_type({22: {}, 80: {}, 443: {}}, None, vendor="Ubiquiti Inc",
-                              hostname="Krasnicza-W") == DeviceType.ap
+                              hostname="Krasnicza-W") == DeviceType.unknown
 
 
 def test_moxa_technologies_classified_as_switch():

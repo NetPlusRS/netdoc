@@ -1690,7 +1690,7 @@ _NETWORK_VENDORS = (
 
 # Wzorce hostname dla sprzetu Ubiquiti (rozroznienie AP/switch/router)
 # AP: U6-*, U7-*, UAP-*, U2-*, U5-*
-_UBIQUITI_AP_PREFIXES = ("u6-", "u7-", "u5-", "u2-", "uap", "unifi ap")
+_UBIQUITI_AP_PREFIXES = ("u6-", "u7-", "u5-", "u2-", "u6", "u7", "u5", "u2", "uap", "unifi ap", "ap")
 # Switch: US-*, USW*, US8*, US16*, US24*, US48* (modele bez myslnika np. US860W, USWLite8PoE)
 _UBIQUITI_SWITCH_PREFIXES = ("us-", "usw", "unifi switch", "us8", "us16", "us24", "us48")
 # Router/gateway: UDM, USG, UDR, UniFi Dream
@@ -1895,11 +1895,13 @@ def _guess_device_type(open_ports, os_name, vendor=None, mac=None, hostname=None
     # Wyjątek: Cisco WAP/AP — hostname zaczyna się od "AP" (enterprise: AP4C71-...)
     # lub OS/model zawiera "wap", "air-ap", "aironet", "cisco ap"
     _hostname_lower = (hostname or "").lower()
+    import re as _re
+    _CISCO_WLC_AP_RE = _re.compile(r'^ap[0-9a-f]{4}[.\-]', _re.IGNORECASE)
     _is_cisco_wap = ("cisco" in _effective_os or "cisco" in vendor_lower) and (
         "wap" in _hostname_lower or "wap" in os_lower
         or "air-ap" in os_lower or "aironet" in os_lower or "cisco ap" in os_lower
         or "access point" in os_lower or "ap3g" in os_lower
-        or (_hostname_lower.startswith("ap") and len(_hostname_lower) > 4)  # AP4C71-..., AP3802-...
+        or bool(_CISCO_WLC_AP_RE.match(_hostname_lower))  # AP4C71-..., AP3802-... (WLC MAC-based name)
     )
     if not _is_cisco_wap and ("cisco" in _effective_os or "junos" in _effective_os or "routeros" in _effective_os):
         return DeviceType.router
@@ -2072,8 +2074,8 @@ def _guess_device_type(open_ports, os_name, vendor=None, mac=None, hostname=None
             # "U6-", "U7-", "UAP" w OS → AP
             if any(kw in os_lower_u for kw in ("u6-", "u7-", "uap", "u5-")):
                 return DeviceType.ap
-            # Ubiquiti bez pasujacego hostname ani OS — domyslnie AP (najczestszy typ)
-            return DeviceType.ap
+            # Ubiquiti bez pasujacego hostname ani OS — za malo danych, nie zgaduj
+            return DeviceType.unknown
         # Cisco WAP (Wireless Access Point) — hostname lub OS zawiera "wap"
         if _is_cisco_wap:
             return DeviceType.ap
