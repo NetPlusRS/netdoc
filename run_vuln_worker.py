@@ -1884,7 +1884,7 @@ def _preload_global_creds(db) -> dict:
     rows = db.query(Credential).filter(
         Credential.device_id.is_(None),
         Credential.method.in_(_methods),
-    ).order_by(Credential.method, Credential.priority.desc()).all()
+    ).order_by(Credential.method, Credential.priority).all()
     # WRK-13: inicjalizuj kazda metode jako [] — bez tego brak wpisow w DB
     # powoduje ze check_mysql/check_vnc_weak/etc otwieraja wlasna sesje DB
     # per watek (potencjalnie 1600+ sesji przy 100 urzadzeniach i 16 workerach)
@@ -1908,7 +1908,7 @@ def scan_once() -> None:
         dev_list = [(d.id, d.ip, d.device_type)
                     for d in db.query(Device).filter(
                         Device.is_active.is_(True),
-                        Device.skip_port_scan == False,
+                        Device.skip_port_scan.is_(False),
                     ).all()]
         _global_creds_cache = _preload_global_creds(db)
     finally:
@@ -1976,7 +1976,7 @@ def main() -> None:
                     SystemStatus.key == "vuln_scanning_enabled",
                     SystemStatus.category == "config",
                 ).first()
-                _enabled = (_row.value if _row else "0") != "0"
+                _enabled = (_row.value if _row else "1") != "0"
             finally:
                 db.close()
             if _enabled:

@@ -1881,7 +1881,7 @@ def _reverify_existing_creds(db, device_id: int, ip: str) -> None:
                         break
 
             elif cred.method == CredentialMethod.ssh:
-                valid = _try_ssh(ip, 22, u, p)
+                valid = any(_try_ssh(ip, port, u, p) for port in _SSH_PORTS)
 
             elif cred.method == CredentialMethod.telnet:
                 result = discover_telnet(ip, [(u, p)])
@@ -2304,7 +2304,7 @@ def scan_once() -> None:
             (d.id, d.ip) for d in db.query(Device).filter(
                 Device.is_active.is_(True),
                 Device.last_seen >= recent_seen,
-                Device.skip_cred_scan == False,
+                Device.skip_cred_scan.is_(False),
                 (Device.last_credential_ok_at.is_(None)) |
                 (Device.last_credential_ok_at < threshold),
             ).all()
