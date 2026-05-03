@@ -351,6 +351,7 @@ commands:
     - backup
 firmware: 8.10.196.0
 model: Cisco Mobility Express WLC
-notes: ''
+notes: 'Extracted via SSH interactive shell (invoke_shell + ? traversal). Partial
+  — 15/18 top-level commands; re-run extract.py to complete.'
 source_ip: 192.168.5.99
 system: wlc-controller

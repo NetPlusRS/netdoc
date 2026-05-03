@@ -25,7 +25,7 @@ def main() -> None:
         print("Available vendors:")
         for v in _VENDORS:
             print(f"  {v}")
-        sys.exit(0 if "--help" in sys.argv else 1)
+        sys.exit(0 if len(sys.argv) >= 2 else 1)
 
     vendor = sys.argv[1]
     if vendor not in _VENDORS:
