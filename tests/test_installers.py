@@ -57,12 +57,19 @@ def _ps_quoted_strings(path: pathlib.Path) -> list:
 
 
 def _scanner_docker_services() -> list:
-    """Parsuje _DOCKER_SERVICES z run_scanner.py."""
+    """Parsuje _DOCKER_SERVICES + _DOCKER_SERVICES_OPTIONAL + _DOCKER_SERVICES_PRO z run_scanner.py."""
     text = RUN_SCANNER.read_text(encoding="utf-8")
-    m = re.search(r'_DOCKER_SERVICES\s*=\s*\[(.*?)\]', text, re.DOTALL)
-    assert m, "_DOCKER_SERVICES nie znaleziono w run_scanner.py"
-    block = m.group(1)
-    return re.findall(r'"(netdoc-[^"]+)"', block)
+    all_containers = []
+    for pattern in [
+        r'_DOCKER_SERVICES\s*=\s*\[(.*?)\]',
+        r'_DOCKER_SERVICES_OPTIONAL\s*=\s*\[(.*?)\]',
+        r'_DOCKER_SERVICES_PRO\s*=\s*\[(.*?)\]',
+    ]:
+        m = re.search(pattern, text, re.DOTALL)
+        if m:
+            all_containers.extend(re.findall(r'"(netdoc-[^"]+)"', m.group(1)))
+    assert all_containers, "_DOCKER_SERVICES nie znaleziono w run_scanner.py"
+    return all_containers
 
 
 def _setup_ps_expected_containers() -> list:

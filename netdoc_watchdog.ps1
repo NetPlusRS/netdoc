@@ -210,6 +210,8 @@ $runningNames = @(docker ps --filter "name=netdoc" --format "{{.Names}}" 2>&1 | 
 # Compare with expected list
 $missing = $ExpectedContainers | Where-Object { $runningNames -notcontains $_ }
 
+$stoppedProfiles = @()  # default: nothing intentionally stopped
+
 # Filter out profiles intentionally stopped by the user via UI
 if ($missing.Count -gt 0) {
     try {
@@ -245,14 +247,19 @@ if ($missing.Count -eq 0) {
     Write-Log "Missing/stopped: $($missing -join ', ')" "WARN"
     Write-Log "Starting: docker compose up -d ..." "WARN"
 
-    # First attempt: up -d (uses existing images) — include all non-pro profiles
-    $composeOut = docker compose -f $ComposeFile --profile workers --profile syslog --profile monitoring --profile pro up -d 2>&1
+    # Build profile list excluding profiles intentionally stopped by the user
+    $allProfiles    = @("workers", "syslog", "monitoring", "pro")
+    $activeProfiles = @($allProfiles | Where-Object { $stoppedProfiles -notcontains $_ })
+    $profileArgs    = @($activeProfiles | ForEach-Object { "--profile"; $_ })
+
+    # First attempt: up -d (uses existing images)
+    $composeOut = docker compose -f $ComposeFile @profileArgs up -d 2>&1
     $composeOk  = ($LASTEXITCODE -eq 0)
 
     if (-not $composeOk) {
         # Image may have been deleted  -  try with rebuild
         Write-Log "up -d failed (missing image?)  -  retrying with --build ..." "WARN"
-        $composeOut = docker compose -f $ComposeFile --profile workers --profile syslog --profile monitoring --profile pro up -d --build 2>&1
+        $composeOut = docker compose -f $ComposeFile @profileArgs up -d --build 2>&1
         $composeOk  = ($LASTEXITCODE -eq 0)
     }
 

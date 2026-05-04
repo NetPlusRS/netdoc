@@ -1690,7 +1690,7 @@ _NETWORK_VENDORS = (
 
 # Wzorce hostname dla sprzetu Ubiquiti (rozroznienie AP/switch/router)
 # AP: U6-*, U7-*, UAP-*, U2-*, U5-*
-_UBIQUITI_AP_PREFIXES = ("u6-", "u7-", "u5-", "u2-", "u6", "u7", "u5", "u2", "uap", "unifi ap", "ap")
+_UBIQUITI_AP_PREFIXES = ("u6-", "u7-", "u5-", "u2-", "u6", "u7", "u5", "u2", "uap", "unifi ap", "ap-")
 # Switch: US-*, USW*, US8*, US16*, US24*, US48* (modele bez myslnika np. US860W, USWLite8PoE)
 _UBIQUITI_SWITCH_PREFIXES = ("us-", "usw", "unifi switch", "us8", "us16", "us24", "us48")
 # Router/gateway: UDM, USG, UDR, UniFi Dream

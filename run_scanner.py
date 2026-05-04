@@ -2704,6 +2704,9 @@ _DOCKER_SERVICES_OPTIONAL = [
     "netdoc-prometheus", "netdoc-loki", "netdoc-promtail",
     "netdoc-grafana", "netdoc-rsyslog", "netdoc-vector",
 ]
+_DOCKER_SERVICES_PRO = [
+    "netdoc-ntopng", "netdoc-wazuh",
+]
 
 _POSTGRES_PORT = 15432
 _DOCKER_MAX_ATTEMPTS = 5       # attempts to start missing containers

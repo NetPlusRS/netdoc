@@ -353,13 +353,12 @@ class TestContainerVerificationScenario:
         block     = m.group(1)
         monitored = set(re.findall(r'"(netdoc-[^"]+)"', block))
 
-        # Core kontenery — bez nich system nie dziala (musza byc monitorowane)
+        # Core kontenery — bez nich system nie dziala (musza byc monitorowane).
+        # Grafana/Prometheus sa w profilu "monitoring" — opcjonalne, nie core.
         core_containers = {
             "netdoc-postgres",
             "netdoc-api",
             "netdoc-web",
-            "netdoc-grafana",
-            "netdoc-prometheus",
             "netdoc-ping",
             "netdoc-snmp",
             "netdoc-cred",

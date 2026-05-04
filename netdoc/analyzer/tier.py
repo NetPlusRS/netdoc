@@ -403,6 +403,7 @@ def analyze_device_tier(device_id: int, db, force: bool = False) -> dict[str, An
         tier = best_tier
         if confidence < _CONFIDENCE_THRESHOLD:
             tier = "undef"
+            confidence = min(confidence, 35)
 
     evidence = {"signals": signals, "missing": missing, "scores": scores}
 

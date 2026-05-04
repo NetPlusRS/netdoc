@@ -146,7 +146,8 @@ def test_reclassify_device_uses_mac_oui_when_no_vendor(client, db):
         mock_oui.lookup.return_value = "Ubiquiti Inc"
         resp = client.post(f"/api/devices/{device.id}/reclassify")
     assert resp.status_code == 200
-    assert resp.json()["device_type"] == "ap"
+    # Without hostname or port patterns to confirm AP type, Ubiquiti fallback is "unknown"
+    assert resp.json()["device_type"] == "unknown"
 
 
 def test_reclassify_device_vendor_field_wins_over_mac_oui(client, db):

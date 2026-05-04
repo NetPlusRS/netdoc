@@ -5,7 +5,7 @@ Architektura:
   - API zapisuje flage scan_requested do system_status, skaner ja odbiera i uruchamia scan.
   - Status skanowania dostepny przez GET /api/scan/status (odczyt z system_status).
 """
-from fastapi import APIRouter, Depends, BackgroundTasks
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -376,21 +376,22 @@ def get_stopped_profiles(db: Session = Depends(get_db)):
 def mark_profile_stopped(profile: str, db: Session = Depends(get_db)):
     """Oznacza profil jako świadomie zatrzymany — watchdog nie uruchomi go ponownie."""
     if profile not in _VALID_PROFILES:
-        from fastapi import HTTPException
         raise HTTPException(status_code=400, detail=f"Unknown profile: {profile}")
     raw = _get_status(db, "intentionally_stopped_profiles") or ""
     profiles = {p.strip() for p in raw.split(",") if p.strip()}
     profiles.add(profile)
-    _set_status(db, {"intentionally_stopped_profiles": ",".join(sorted(profiles))}, category="internal")
+    _set_status(db, {"intentionally_stopped_profiles": ",".join(sorted(profiles))}, category="config")
 
 
 @router.delete("/stopped-profiles/{profile}", status_code=204)
 def unmark_profile_stopped(profile: str, db: Session = Depends(get_db)):
     """Usuwa profil z listy świadomie zatrzymanych — watchdog wznowi monitoring."""
+    if profile not in _VALID_PROFILES:
+        raise HTTPException(status_code=400, detail=f"Unknown profile: {profile}")
     raw = _get_status(db, "intentionally_stopped_profiles") or ""
     profiles = {p.strip() for p in raw.split(",") if p.strip()}
     profiles.discard(profile)
-    _set_status(db, {"intentionally_stopped_profiles": ",".join(sorted(profiles))}, category="internal")
+    _set_status(db, {"intentionally_stopped_profiles": ",".join(sorted(profiles))}, category="config")
 
 
 @router.get("/ip-batch-status")

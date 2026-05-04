@@ -85,10 +85,12 @@ commands:
       - status
       - identity
   ubnt-systool:
-    _desc: System management tool (Ubiquiti proprietary).
+    _desc: 'Ubiquiti system management tool: hardware reset, soft reset, firmware flash,
+      factory defaults. Subcommands: reset, hw-reset, fwupdate, cfgupdate.'
     _tags:
     - management
     - system
+    - dangerous
   ubnt-ipcalc:
     _desc: IP address calculation utility.
     _tags:
@@ -195,13 +197,18 @@ commands:
     - system
     - identity
   mca-ap-neighbor-max-signal:
-    _desc: Discovered binary — run 'mca-ap-neighbor-max-signal --help 2>&1' for usage.
+    _desc: Reports maximum RSSI signal from neighbor APs per radio. Used for RF planning
+      and interference analysis. Returns per-AP signal strength data.
     _tags:
-    - discovered
+    - wifi
+    - rf
+    - neighbors
   mca-ctrl:
-    _desc: Discovered binary — run 'mca-ctrl --help 2>&1' for usage.
+    _desc: UniFi controller management tool. Handles adopt/inform, device state changes,
+      and configuration sync between AP/switch and the controller.
     _tags:
-    - discovered
+    - management
+    - controller
   mca-custom-alert.sh:
     _desc: Discovered binary — run 'mca-custom-alert.sh --help 2>&1' for usage.
     _tags:

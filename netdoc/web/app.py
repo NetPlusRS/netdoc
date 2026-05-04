@@ -2446,7 +2446,7 @@ def create_app():
             try:
                 cfg = get_wazuh_api_config(db)
             except Exception as exc:
-                logger.warning("Wazuh API config error: %s", exc)
+                app.logger.warning("Wazuh API config error: %s", exc)
                 return jsonify({"agents": [], "available": False, "count": 0,
                                 "message": "DB error reading Wazuh config"}), 200
             if not cfg:

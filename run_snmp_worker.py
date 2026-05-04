@@ -454,7 +454,7 @@ def _update_asset_notes_tag(notes: str | None, tag: str, value: str) -> str:
     return (notes + "\n" + new_tag) if notes else new_tag
 
 
-_UBNT_AP_PFX     = ("u6-", "u7-", "u5-", "u2-", "u6", "u7", "u5", "u2", "uap", "unifi ap", "ap")
+_UBNT_AP_PFX     = ("u6-", "u7-", "u5-", "u2-", "u6", "u7", "u5", "u2", "uap", "unifi ap", "ap-")
 _UBNT_SWITCH_PFX = ("us-", "usw", "us8", "us16", "us24", "us48", "unifi switch")
 _UBNT_ROUTER_PFX = ("udm", "usg", "udr", "unifi dream", "unifi gateway")
 _NAS_OS_HINTS    = ("diskstation", "synology", "dsm ", "qts ", "qnap",
