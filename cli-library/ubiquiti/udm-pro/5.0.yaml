@@ -1,9 +1,8 @@
 model: UniFi Dream Machine PRO
 firmware: 5.0.16.30692
 system: UniFiOS Debian 11 aarch64
-source_ip: 192.168.5.1
-notes: 'Device: Krasnicza-W (192.168.5.1). Extracted via SSH exec_command (no PTY).
-  Primary data source: mca-dump JSON. Shell: /bin/bash (UniFiOS Debian 11 aarch64).'
+notes: 'Extracted via SSH exec_command (no PTY). Primary data source: mca-dump JSON.
+  Shell: /bin/bash (UniFiOS Debian 11 aarch64).'
 commands:
   mca-dump:
     _desc: 'Full device state dump — primary data source. Returns large JSON with:
