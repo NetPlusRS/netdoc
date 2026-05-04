@@ -2003,9 +2003,9 @@ def test_kb_ports_filter_category_web(client):
 
 
 def test_kb_ports_filter_risk_critical(client):
-    """/kb/ports?risk=critical pokazuje tylko krytyczne."""
+    """/kb/ports?risk=critical shows only critical entries."""
     html = client.get("/kb/ports?risk=critical").data.decode()
-    assert "Krytyczne" in html
+    assert "Critical" in html
 
 
 def test_kb_ports_filter_ot(client):
@@ -2024,10 +2024,10 @@ def test_kb_ports_shows_category_select_options(client):
 
 
 def test_kb_ports_risk_badges_present(client):
-    """/kb/ports wyświetla etykiety ryzyka."""
+    """/kb/ports displays risk level labels."""
     html = client.get("/kb/ports").data.decode()
-    for label in ("Krytyczne", "Wysokie", "Średnie", "Niskie"):
-        assert label in html, f"Brakuje etykiety ryzyka {label!r}"
+    for label in ("Critical", "High", "Medium", "Low"):
+        assert label in html, f"Missing risk label {label!r}"
 
 
 def test_kb_ports_nav_link_in_base():
@@ -2099,10 +2099,10 @@ def test_kb_ports_template_has_ot_badge():
 
 
 def test_kb_ports_template_shows_device_list():
-    """Szablon kb_ports.html zawiera sekcję z listą wykrytych urządzeń."""
+    """kb_ports.html contains the detected-devices section."""
     import pathlib
     tmpl = pathlib.Path("netdoc/web/templates/kb_ports.html").read_text(encoding="utf-8")
-    assert "Wykryto na" in tmpl, "Brak sekcji urządzeń z otwartym portem"
+    assert "Detected on" in tmpl, "Missing detected-devices section in template"
 
 
 # ── KB Ports — testy regresji HTML i logiki ───────────────────────────────────
@@ -2161,8 +2161,8 @@ def test_kb_ports_tpl_active_badge_vs_secondary():
 
 
 def test_kb_ports_tpl_ot_filter_checkbox():
-    """Formularz filtrów ma checkbox 'Tylko OT/SCADA'."""
-    assert "Tylko OT/SCADA" in _KB_PORTS_TPL
+    """Filter form has OT/SCADA-only checkbox."""
+    assert "OT/SCADA only" in _KB_PORTS_TPL
 
 
 def test_kb_ports_tpl_risk_select_all_options():
@@ -2174,27 +2174,23 @@ def test_kb_ports_tpl_risk_select_all_options():
 # ─── Logika filtrowania (kombinacje) ──────────────────────────────────────────
 
 def test_kb_ports_combined_search_and_risk(client):
-    """Filtr q + risk razem zawęża wyniki do obu warunków."""
+    """q + risk filters together narrow results correctly."""
     html = client.get("/kb/ports?q=telnet&risk=critical").data.decode()
-    # Telnet (23) jest critical — musi być widoczny
     assert "23" in html
-    # Brak wyników lub wyniki — strona nie może się wysypać (200 zawsze)
-    assert "Encyklopedia portów" in html
+    assert "Network Ports" in html
 
 
 def test_kb_ports_combined_search_and_category(client):
-    """Filtr q + cat razem — strona renderuje się bez błędu."""
+    """q + cat filters together — page renders without error."""
     html = client.get("/kb/ports?q=ssh&cat=remote").data.decode()
-    assert "Encyklopedia portów" in html
+    assert "Network Ports" in html
 
 
 def test_kb_ports_filter_ot_zero_ignored(client):
-    """ot=0 (nie '1') jest ignorowany — pokazuje wszystkie porty."""
-    html_all  = client.get("/kb/ports").data.decode()
-    html_ot0  = client.get("/kb/ports?ot=0").data.decode()
-    # Liczba wpisów powinna byc identyczna — ot=0 nie filtruje
+    """ot=0 (not '1') is ignored — shows all ports."""
+    html_ot0 = client.get("/kb/ports?ot=0").data.decode()
     from netdoc.web.port_kb import PORT_KB
-    assert f"{len(PORT_KB)} portów w bazie" in html_ot0
+    assert f"{len(PORT_KB)} ports in database" in html_ot0
 
 
 def test_kb_ports_vendor_search(client):
@@ -2247,8 +2243,8 @@ def test_kb_ports_shows_device_for_open_port(db_engine):
             html = c.get("/kb/ports?q=ssh").data.decode()
 
     assert "10.5.5.5" in html or "srv-ssh" in html, \
-        "Urządzenie z otwartym portem 22 musi pojawić się w KB pod SSH"
-    assert "Wykryto na" in html
+        "Device with open port 22 must appear in KB under SSH"
+    assert "Detected on" in html
 
 
 def test_kb_ports_nmap_full_overrides_nmap_in_port_devices(db_engine):
@@ -3882,8 +3878,8 @@ class TestInventoryPageStructure:
     def test_col_serial(self):                 assert "S/N" in self.html
     def test_col_asset_tag(self):              assert "Asset tag" in self.html
     def test_col_vendor_model(self):           assert "Vendor" in self.html or "Model" in self.html
-    def test_col_responsible(self):            assert "Odpowiedzialny" in self.html
-    def test_col_snmp_contact(self):           assert "Kontakt" in self.html
+    def test_col_responsible(self):            assert "Owner" in self.html
+    def test_col_snmp_contact(self):           assert "Contact" in self.html
     def test_col_uptime(self):                 assert "Uptime" in self.html
 
     # Eksport CSV
@@ -4041,7 +4037,7 @@ class TestAiBadgeAndReport:
                 _setup_mock_api(mr, {})
                 with app.test_client() as c:
                     html = c.get("/devices").data.decode()
-        assert "Raport AI" in html
+        assert "AI Report" in html
         assert "ai-report" in html
 
 
