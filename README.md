@@ -1,5 +1,10 @@
 # NetDoc Collector
 
+> **📌 This project is not under active development right now.** Development effort has moved to
+> a new, currently-in-progress NetDoc project — for the latest work, live demo and contact, see
+> **[netdoc.pl](https://netdoc.pl)**. This repository stays public as a reference/portfolio piece
+> and its code/history remain available below.
+
 **Universal Network Discovery & Documentation System**
 
 Automatic discovery, documentation and monitoring of network infrastructure.
