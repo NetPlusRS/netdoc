@@ -1,16 +1,14 @@
 # NetDoc Collector
 
-> **📌 This project is not under active development right now.** Development effort has moved to
-> a new, currently-in-progress NetDoc project — for the latest work, live demo and contact, see
-> **[netdoc.pl](https://netdoc.pl)**. This repository stays public as a reference/portfolio piece
-> and its code/history remain available below.
+> **📌 No longer maintained by the original author.** The **[netdoc.pl](https://netdoc.pl)** domain
+> now hosts a different, newer NetDoc project — for current work and contact, go there instead.
+> This repository stays public and open — feel free to fork it and continue development yourself
+> if it's useful to you; the code and full history remain available below.
 
 **Universal Network Discovery & Documentation System**
 
 Automatic discovery, documentation and monitoring of network infrastructure.
 Vendor-agnostic — Cisco, MikroTik, Ubiquiti, Fortinet and more.
-
-🌐 **[netdoc.pl](https://netdoc.pl)** — project website with demo, screenshots and feature overview
 
 > **⚠️ Beta Release — please read before running in a production network**
 >
